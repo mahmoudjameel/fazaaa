@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Lock, Mail } from 'lucide-react';
 
-export const Login = () => {
+export const Login = ({ onLogin }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -13,7 +13,12 @@ export const Login = () => {
     // TODO: Add actual authentication
     if (email === 'admin@fazaaa.com' && password === 'admin123') {
       localStorage.setItem('admin_authenticated', 'true');
-      navigate('/');
+      // استدعاء callback إذا كان موجوداً
+      if (onLogin) {
+        onLogin();
+      }
+      // إعادة تحميل الصفحة للتأكد من تحديث حالة المصادقة
+      window.location.href = '/';
     } else {
       setError('البريد الإلكتروني أو كلمة المرور غير صحيحة');
     }
