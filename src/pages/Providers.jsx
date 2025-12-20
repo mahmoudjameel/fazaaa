@@ -12,8 +12,9 @@ import {
   deleteProviderGroup,
   assignProvidersToGroup,
   removeProviderFromGroup,
+  updateProviderServiceStatus,
 } from '../services/adminService';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, collection, getDocs } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
@@ -22,6 +23,7 @@ export const Providers = () => {
   const [providers, setProviders] = useState([]);
   const [filteredProviders, setFilteredProviders] = useState([]);
   const [groups, setGroups] = useState([]);
+  const [mainServices, setMainServices] = useState([]); // الخدمات الرئيسية من emergency-services
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -47,7 +49,30 @@ export const Providers = () => {
   useEffect(() => {
     fetchProviders();
     fetchGroups();
+    fetchMainServices();
   }, []);
+
+  // جلب الخدمات الرئيسية من emergency-services
+  const fetchMainServices = async () => {
+    try {
+      const servicesRef = collection(db, 'emergency-services');
+      const querySnapshot = await getDocs(servicesRef);
+      const services = [];
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        if (data.isActive !== false) {
+          services.push({
+            id: doc.id, // Firebase document ID
+            serviceId: data.id || doc.id, // Service ID
+            name: data.name || '',
+          });
+        }
+      });
+      setMainServices(services);
+    } catch (error) {
+      console.error('Error fetching main services:', error);
+    }
+  };
 
   useEffect(() => {
     filterProviders();
@@ -77,7 +102,16 @@ export const Providers = () => {
     let filtered = providers;
 
     if (statusFilter !== 'all') {
-      filtered = filtered.filter((p) => p.status === statusFilter);
+      // استخدام approvalStatus بدلاً من status (status قد يكون "online"/"offline")
+      filtered = filtered.filter((p) => {
+        const approvalStatus = p.approvalStatus || p.status;
+        // إذا كانت statusFilter هي pending/approved/rejected، استخدم approvalStatus
+        // إذا كانت statusFilter هي online/offline، استخدم status
+        if (['pending', 'approved', 'rejected'].includes(statusFilter)) {
+          return approvalStatus === statusFilter;
+        }
+        return p.status === statusFilter;
+      });
     }
 
     if (typeFilter !== 'all') {
@@ -108,9 +142,10 @@ export const Providers = () => {
     try {
       await updateProviderStatus(providerId, newStatus);
       setProviders((prev) =>
-        prev.map((p) => (p.id === providerId ? { ...p, status: newStatus } : p))
+        prev.map((p) => (p.id === providerId ? { ...p, approvalStatus: newStatus } : p))
       );
       setSelectedProvider(null);
+      alert(`تم ${newStatus === 'approved' ? 'قبول' : newStatus === 'rejected' ? 'رفض' : 'إعادة'} المزود بنجاح`);
     } catch (error) {
       console.error('Error updating provider status:', error);
       alert('فشل تحديث حالة المزود');
@@ -503,7 +538,9 @@ export const Providers = () => {
                 </tr>
               ) : (
                 filteredProviders.map((provider) => {
-                  const statusBadge = getStatusBadge(provider.status);
+                  // استخدام approvalStatus بدلاً من status (status قد يكون "online"/"offline")
+                  const approvalStatus = provider.approvalStatus || provider.status;
+                  const statusBadge = getStatusBadge(approvalStatus);
                   const typeBadge = getTypeBadge(provider.type);
                   const groupBadge = getGroupBadge(provider.groupId);
                   const StatusIcon = statusBadge.icon;
@@ -529,16 +566,70 @@ export const Providers = () => {
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex flex-wrap gap-2">
-                          {provider.services?.map((service) => (
-                            <span
-                              key={service}
-                              className="px-2 py-1 bg-teal-100 text-teal-700 text-xs rounded-full"
-                            >
-                              {service === 'tires' && '🚗 كفرات'}
-                              {service === 'battery' && '🔋 بطاريات'}
-                              {service === 'locksmith' && '🔐 أقفال'}
-                            </span>
-                          ))}
+                          {(() => {
+                            // دعم البنية القديمة (array) والجديدة (object)
+                            const services = provider.services || {};
+                            let serviceList = [];
+                            
+                            if (Array.isArray(services)) {
+                              // البنية القديمة
+                              serviceList = services.map(s => ({ 
+                                id: typeof s === 'string' ? s : String(s), 
+                                status: 'approved' 
+                              }));
+                            } else if (typeof services === 'object' && services !== null) {
+                              // البنية الجديدة
+                              serviceList = Object.entries(services)
+                                .filter(([id, data]) => {
+                                  // تجاهل إذا كان data هو array أو null
+                                  return data !== null && !Array.isArray(data) && typeof data === 'object';
+                                })
+                                .map(([id, data]) => ({
+                                  id: String(id),
+                                  status: data?.status || 'pending',
+                                }));
+                            }
+                            
+                            return serviceList.map((service) => {
+                              // البحث عن اسم الخدمة من mainServices أو استخدام serviceNames القديم
+                              const serviceId = String(service.id || '');
+                              let serviceName = serviceId;
+                              
+                              // البحث في الخدمات الرئيسية (emergency-services)
+                              const mainService = mainServices.find(s => 
+                                s.id === serviceId || s.serviceId === serviceId
+                              );
+                              
+                              if (mainService) {
+                                serviceName = mainService.name;
+                              } else {
+                                // استخدام serviceNames القديم للتوافق مع الخدمات القديمة
+                                const oldServiceNames = {
+                                  tires: '🚗 كفرات',
+                                  battery: '🔋 بطاريات',
+                                  locksmith: '🔐 أقفال',
+                                  fuel: '⛽ تعبئة وقود',
+                                };
+                                serviceName = oldServiceNames[serviceId] || serviceId;
+                              }
+                              
+                              const statusColors = {
+                                approved: 'bg-green-100 text-green-700',
+                                pending: 'bg-yellow-100 text-yellow-700',
+                                rejected: 'bg-red-100 text-red-700',
+                              };
+                              
+                              return (
+                                <span
+                                  key={serviceId}
+                                  className={`px-2 py-1 ${statusColors[service.status] || 'bg-gray-100 text-gray-700'} text-xs rounded-full`}
+                                  title={`حالة: ${service.status === 'approved' ? 'مقبولة' : service.status === 'pending' ? 'قيد المراجعة' : 'مرفوضة'}`}
+                                >
+                                  {serviceName}
+                                </span>
+                              );
+                            });
+                          })()}
                         </div>
                       </td>
                       <td className="px-6 py-4">
@@ -618,22 +709,62 @@ export const Providers = () => {
                               <X size={18} />
                             </button>
                           )}
-                          {provider.status === 'pending' && (
-                            <>
-                              <button
-                                onClick={() => handleStatusChange(provider.id, 'approved')}
-                                className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-all text-sm font-semibold"
-                              >
-                                قبول
-                              </button>
-                              <button
-                                onClick={() => handleStatusChange(provider.id, 'rejected')}
-                                className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-all text-sm font-semibold"
-                              >
-                                رفض
-                              </button>
-                            </>
-                          )}
+                          {(() => {
+                            // استخدام approvalStatus بدلاً من status
+                            const approvalStatus = provider.approvalStatus || provider.status;
+                            return (
+                              <>
+                                {approvalStatus === 'pending' && (
+                                  <>
+                                    <button
+                                      onClick={() => handleStatusChange(provider.id, 'approved')}
+                                      className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-all text-sm font-semibold"
+                                    >
+                                      قبول
+                                    </button>
+                                    <button
+                                      onClick={() => handleStatusChange(provider.id, 'rejected')}
+                                      className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-all text-sm font-semibold"
+                                    >
+                                      رفض
+                                    </button>
+                                  </>
+                                )}
+                                {approvalStatus === 'approved' && (
+                                  <>
+                                    <button
+                                      onClick={() => handleStatusChange(provider.id, 'rejected')}
+                                      className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-all text-sm font-semibold"
+                                    >
+                                      رفض
+                                    </button>
+                                    <button
+                                      onClick={() => handleStatusChange(provider.id, 'pending')}
+                                      className="px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 transition-all text-sm font-semibold"
+                                    >
+                                      إعادة للمراجعة
+                                    </button>
+                                  </>
+                                )}
+                                {approvalStatus === 'rejected' && (
+                                  <>
+                                    <button
+                                      onClick={() => handleStatusChange(provider.id, 'approved')}
+                                      className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-all text-sm font-semibold"
+                                    >
+                                      قبول
+                                    </button>
+                                    <button
+                                      onClick={() => handleStatusChange(provider.id, 'pending')}
+                                      className="px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 transition-all text-sm font-semibold"
+                                    >
+                                      إعادة للمراجعة
+                                    </button>
+                                  </>
+                                )}
+                              </>
+                            );
+                          })()}
                         </div>
                       </td>
                     </tr>
@@ -836,18 +967,141 @@ export const Providers = () => {
                 </div>
               )}
               <div>
-                <h3 className="font-semibold text-gray-700 mb-2">الخدمات</h3>
-                <div className="flex flex-wrap gap-2">
-                  {selectedProvider.services?.map((service) => (
-                    <span
-                      key={service}
-                      className="px-3 py-1 bg-teal-100 text-teal-700 rounded-full text-sm"
-                    >
-                      {service === 'tires' && '🚗 خدمات الكفرات'}
-                      {service === 'battery' && '🔋 خدمات البطاريات'}
-                      {service === 'locksmith' && '🔐 فتح الأقفال'}
-                    </span>
-                  ))}
+                <h3 className="font-semibold text-gray-700 mb-4">إدارة الخدمات</h3>
+                <div className="space-y-3">
+                  {(() => {
+                    // دعم البنية القديمة (array) والجديدة (object)
+                    const services = selectedProvider.services || {};
+                    let serviceList = [];
+                    
+                    if (Array.isArray(services)) {
+                      // البنية القديمة: تحويل إلى object
+                      serviceList = services.map(s => ({ 
+                        id: typeof s === 'string' ? s : String(s), 
+                        status: 'approved' 
+                      }));
+                    } else if (typeof services === 'object' && services !== null) {
+                      // البنية الجديدة
+                      serviceList = Object.entries(services)
+                        .filter(([id, data]) => {
+                          // تجاهل إذا كان data هو array أو null
+                          return data !== null && !Array.isArray(data) && typeof data === 'object';
+                        })
+                        .map(([id, data]) => ({
+                          id: String(id),
+                          status: data?.status || 'pending',
+                          requestedAt: data?.requestedAt,
+                          updatedAt: data?.updatedAt,
+                        }));
+                    }
+                    
+                    return serviceList.length > 0 ? (
+                      serviceList.map((service) => {
+                        const serviceId = String(service.id || '');
+                        
+                        // البحث عن اسم الخدمة من mainServices أو استخدام serviceNames القديم
+                        let serviceName = serviceId;
+                        const mainService = mainServices.find(s => 
+                          s.id === serviceId || s.serviceId === serviceId
+                        );
+                        
+                        if (mainService) {
+                          serviceName = mainService.name;
+                        } else {
+                          // استخدام serviceNames القديم للتوافق مع الخدمات القديمة
+                          const oldServiceNames = {
+                            tires: '🚗 خدمات الكفرات',
+                            battery: '🔋 خدمات البطاريات',
+                            locksmith: '🔐 فتح الأقفال',
+                            fuel: '⛽ تعبئة الوقود',
+                          };
+                          serviceName = oldServiceNames[serviceId] || serviceId;
+                        }
+                        
+                        const handleServiceStatusChange = async (newStatus) => {
+                          try {
+                            await updateProviderServiceStatus(selectedProvider.id, serviceId, newStatus);
+                            // تحديث الحالة في القائمة
+                            setSelectedProvider(prev => {
+                              const updatedServices = { ...prev.services };
+                              if (updatedServices[serviceId]) {
+                                updatedServices[serviceId] = {
+                                  ...updatedServices[serviceId],
+                                  status: newStatus,
+                                  updatedAt: new Date().toISOString(),
+                                };
+                              }
+                              return { ...prev, services: updatedServices };
+                            });
+                            // تحديث القائمة الرئيسية
+                            await fetchProviders();
+                            alert(`تم ${newStatus === 'approved' ? 'قبول' : newStatus === 'rejected' ? 'رفض' : 'إعادة'} الخدمة بنجاح`);
+                          } catch (error) {
+                            console.error('Error updating service status:', error);
+                            alert('فشل تحديث حالة الخدمة');
+                          }
+                        };
+                        
+                        return (
+                          <div
+                            key={serviceId}
+                            className="border-2 border-gray-200 rounded-lg p-4 hover:border-teal-300 transition-all"
+                          >
+                            <div className="flex items-center justify-between mb-3">
+                              <div className="flex items-center gap-3">
+                                {(() => {
+                                  const serviceIcon = '📦'; // يمكن إضافة أيقونة من mainService.imageUrl لاحقاً
+                                  return (
+                                    <>
+                                      <span className="text-2xl">{serviceIcon}</span>
+                                      <div>
+                                        <p className="font-semibold text-gray-800">
+                                          {serviceName}
+                                        </p>
+                                        <p className="text-xs text-gray-500">
+                                          {service.status === 'approved' && '✅ مقبولة'}
+                                          {service.status === 'pending' && '⏳ قيد المراجعة'}
+                                          {service.status === 'rejected' && '❌ مرفوضة'}
+                                        </p>
+                                      </div>
+                                    </>
+                                  );
+                                })()}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                {service.status !== 'approved' && (
+                                  <button
+                                    onClick={() => handleServiceStatusChange('approved')}
+                                    className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-all text-sm font-semibold"
+                                  >
+                                    قبول
+                                  </button>
+                                )}
+                                {service.status !== 'rejected' && (
+                                  <button
+                                    onClick={() => handleServiceStatusChange('rejected')}
+                                    className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-all text-sm font-semibold"
+                                  >
+                                    رفض
+                                  </button>
+                                )}
+                                {service.status !== 'pending' && (
+                                  <button
+                                    onClick={() => handleServiceStatusChange('pending')}
+                                    className="px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 transition-all text-sm font-semibold"
+                                  >
+                                    إعادة للمراجعة
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <p className="text-gray-500 text-center py-4">لا توجد خدمات</p>
+                    );
+                  })()}
                 </div>
               </div>
 

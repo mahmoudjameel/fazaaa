@@ -176,22 +176,22 @@ export const DistributionSettings = () => {
 
       {/* Tabs */}
       <div className="bg-white rounded-2xl shadow-lg mb-6">
-        <div className="border-b border-gray-200">
-          <nav className="flex space-x-8 px-6" dir="ltr">
+        <div className="border-b border-gray-200 overflow-x-auto">
+          <nav className="flex flex-nowrap space-x-4 md:space-x-8 px-4 md:px-6 min-w-max" dir="ltr">
             {tabs.map((tab) => {
               const Icon = tab.icon;
               return (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-2 py-4 px-1 border-b-2 font-medium text-sm transition-all ${
+                  className={`flex items-center gap-1 md:gap-2 py-4 px-2 md:px-1 border-b-2 font-medium text-xs md:text-sm transition-all whitespace-nowrap flex-shrink-0 ${
                     activeTab === tab.id
                       ? 'border-green-500 text-green-600'
                       : 'border-transparent text-gray-500 hover:text-gray-700'
                   }`}
                 >
-                  <Icon size={16} />
-                  {tab.label}
+                  <Icon size={14} className="md:w-4 md:h-4" />
+                  <span>{tab.label}</span>
                 </button>
               );
             })}

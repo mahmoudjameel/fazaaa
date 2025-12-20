@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Search, Plus, Edit2, Trash2, DollarSign, Settings, Package } from 'lucide-react';
+import { Search, Plus, Edit2, Trash2, DollarSign, Settings, Package, Users } from 'lucide-react';
 import { collection, getDocs, doc, updateDoc, deleteDoc, addDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../services/firebase';
@@ -65,27 +65,39 @@ export const Services = () => {
       const serviceData = {
         ...toFirestore,
         imageUrl: uploadedImageUrl,
-        basePrice: parseFloat(formData.basePrice),
+        basePrice: activeTab === 'customer' ? parseFloat(formData.basePrice) : undefined,
         updatedAt: new Date().toISOString()
       };
 
+      // إزالة basePrice إذا كان null أو undefined لخدمات المزود
+      if (activeTab === 'provider' && !serviceData.basePrice) {
+        delete serviceData.basePrice;
+      }
+
+      const collectionName = activeTab === 'customer' ? 'services' : 'provider-services';
+      const currentList = activeTab === 'customer' ? services : providerServices;
+      const setCurrentList = activeTab === 'customer' ? setServices : setProviderServices;
+
       if (selectedService) {
         // Update existing service
-        const serviceRef = doc(db, 'services', selectedService.id);
+        const serviceRef = doc(db, collectionName, selectedService.id);
         await updateDoc(serviceRef, serviceData);
-        setServices(services.map(s => s.id === selectedService.id ? { ...s, ...serviceData } : s));
+        setCurrentList(currentList.map(s => s.id === selectedService.id ? { ...s, ...serviceData } : s));
       } else {
         // Add new service
-        const servicesRef = collection(db, 'services');
+        const servicesRef = collection(db, collectionName);
         const docRef = await addDoc(servicesRef, {
           ...serviceData,
           createdAt: new Date().toISOString()
         });
-        setServices([...services, { id: docRef.id, ...serviceData, createdAt: new Date().toISOString() }]);
+        setCurrentList([...currentList, { id: docRef.id, ...serviceData, createdAt: new Date().toISOString() }]);
       }
 
       setIsModalOpen(false);
       resetForm();
+      if (activeTab === 'provider') {
+        fetchProviderServices();
+      }
     } catch (error) {
       console.error('Error saving service:', error);
     } finally {
@@ -96,8 +108,12 @@ export const Services = () => {
   const handleDelete = async (serviceId) => {
     if (confirm('هل أنت متأكد من حذف هذه الخدمة؟')) {
       try {
-        await deleteDoc(doc(db, 'services', serviceId));
-        setServices(services.filter(s => s.id !== serviceId));
+        const collectionName = activeTab === 'customer' ? 'services' : 'provider-services';
+        const currentList = activeTab === 'customer' ? services : providerServices;
+        const setCurrentList = activeTab === 'customer' ? setServices : setProviderServices;
+        
+        await deleteDoc(doc(db, collectionName, serviceId));
+        setCurrentList(currentList.filter(s => s.id !== serviceId));
       } catch (error) {
         console.error('Error deleting service:', error);
       }
@@ -106,12 +122,16 @@ export const Services = () => {
 
   const toggleServiceStatus = async (serviceId, isActive) => {
     try {
-      const serviceRef = doc(db, 'services', serviceId);
+      const collectionName = activeTab === 'customer' ? 'services' : 'provider-services';
+      const currentList = activeTab === 'customer' ? services : providerServices;
+      const setCurrentList = activeTab === 'customer' ? setServices : setProviderServices;
+      
+      const serviceRef = doc(db, collectionName, serviceId);
       await updateDoc(serviceRef, { 
         isActive,
         updatedAt: new Date().toISOString()
       });
-      setServices(services.map(s => s.id === serviceId ? { ...s, isActive, updatedAt: new Date().toISOString() } : s));
+      setCurrentList(currentList.map(s => s.id === serviceId ? { ...s, isActive, updatedAt: new Date().toISOString() } : s));
     } catch (error) {
       console.error('Error updating service status:', error);
     }
@@ -173,6 +193,42 @@ export const Services = () => {
         </button>
       </div>
 
+      {/* Tabs */}
+      <div className="mb-6 flex gap-4 border-b border-gray-200">
+        <button
+          onClick={() => {
+            setActiveTab('customer');
+            setSearchTerm('');
+          }}
+          className={`px-6 py-3 font-semibold transition-all border-b-2 ${
+            activeTab === 'customer'
+              ? 'border-green-500 text-green-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <Package size={20} />
+            <span>خدمات العملاء</span>
+          </div>
+        </button>
+        <button
+          onClick={() => {
+            setActiveTab('provider');
+            setSearchTerm('');
+          }}
+          className={`px-6 py-3 font-semibold transition-all border-b-2 ${
+            activeTab === 'provider'
+              ? 'border-green-500 text-green-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <Users size={20} />
+            <span>خدمات المزود</span>
+          </div>
+        </button>
+      </div>
+
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
         <div className="bg-white rounded-2xl p-6 shadow-lg">
@@ -180,7 +236,7 @@ export const Services = () => {
             <Package className="text-blue-500" size={24} />
             <span className="text-sm text-gray-600">إجمالي الخدمات</span>
           </div>
-          <p className="text-3xl font-black text-gray-800">{services.length}</p>
+          <p className="text-3xl font-black text-gray-800">{currentServices.length}</p>
         </div>
         <div className="bg-white rounded-2xl p-6 shadow-lg">
           <div className="flex items-center justify-between mb-2">
@@ -188,20 +244,30 @@ export const Services = () => {
             <span className="text-sm text-gray-600">خدمات نشطة</span>
           </div>
           <p className="text-3xl font-black text-gray-800">
-            {services.filter(s => s.isActive !== false).length}
+            {currentServices.filter(s => s.isActive !== false).length}
           </p>
         </div>
-        <div className="bg-white rounded-2xl p-6 shadow-lg">
-          <div className="flex items-center justify-between mb-2">
-            <DollarSign className="text-yellow-500" size={24} />
-            <span className="text-sm text-gray-600">متوسط السعر</span>
+        {activeTab === 'customer' ? (
+          <div className="bg-white rounded-2xl p-6 shadow-lg">
+            <div className="flex items-center justify-between mb-2">
+              <DollarSign className="text-yellow-500" size={24} />
+              <span className="text-sm text-gray-600">متوسط السعر</span>
+            </div>
+            <p className="text-3xl font-black text-gray-800">
+              {currentServices.length > 0 
+                ? (currentServices.reduce((sum, s) => sum + (s.basePrice || 0), 0) / currentServices.length).toFixed(1)
+                : 0} ر.س
+            </p>
           </div>
-          <p className="text-3xl font-black text-gray-800">
-            {services.length > 0 
-              ? (services.reduce((sum, s) => sum + (s.basePrice || 0), 0) / services.length).toFixed(1)
-              : 0} ر.س
-          </p>
-        </div>
+        ) : (
+          <div className="bg-white rounded-2xl p-6 shadow-lg">
+            <div className="flex items-center justify-between mb-2">
+              <Users className="text-purple-500" size={24} />
+              <span className="text-sm text-gray-600">خدمات المزود</span>
+            </div>
+            <p className="text-3xl font-black text-gray-800">{providerServices.length}</p>
+          </div>
+        )}
       </div>
 
       {/* Search */}
@@ -249,7 +315,9 @@ export const Services = () => {
                 </div>
                 <div className="flex items-center gap-4">
                   <div className="text-left">
-                    <p className="text-2xl font-black text-green-600">{service.basePrice || 0} ر.س</p>
+                    {activeTab === 'customer' && (
+                      <p className="text-2xl font-black text-green-600">{service.basePrice || 0} ر.س</p>
+                    )}
                     <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
                       service.isActive !== false 
                         ? 'bg-green-100 text-green-700' 
@@ -329,19 +397,21 @@ export const Services = () => {
                   placeholder="أدخل فئة الخدمة"
                 />
               </div>
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">السعر الأساسي (ر.س)</label>
-                <input
-                  type="number"
-                  required
-                  min="0"
-                  step="0.01"
-                  value={formData.basePrice}
-                  onChange={(e) => setFormData({...formData, basePrice: e.target.value})}
-                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-green-400 focus:ring-green-500 outline-none"
-                  placeholder="أدخل السعر الأساسي"
-                />
-              </div>
+              {activeTab === 'customer' && (
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">السعر الأساسي (ر.س)</label>
+                  <input
+                    type="number"
+                    required
+                    min="0"
+                    step="0.01"
+                    value={formData.basePrice}
+                    onChange={(e) => setFormData({...formData, basePrice: e.target.value})}
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-green-400 focus:ring-green-500 outline-none"
+                    placeholder="أدخل السعر الأساسي"
+                  />
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">الوصف</label>
                 <textarea

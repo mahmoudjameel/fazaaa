@@ -36,13 +36,56 @@ export const getAllProviders = async () => {
 export const updateProviderStatus = async (providerId, status) => {
   try {
     const providerRef = doc(db, 'providers', providerId);
+    // تحديث approvalStatus (حالة الموافقة) وليس status (حالة الاتصال)
+    // status قد يحتوي على "online"/"offline" لذلك نستخدم approvalStatus
     await updateDoc(providerRef, {
-      status,
+      approvalStatus: status, // حالة الموافقة: pending, approved, rejected
       updatedAt: new Date().toISOString(),
     });
     return { success: true };
   } catch (error) {
     console.error('Update provider status error:', error);
+    throw error;
+  }
+};
+
+// إدارة الخدمات للمزود
+export const updateProviderServiceStatus = async (providerId, serviceId, status) => {
+  try {
+    const providerRef = doc(db, 'providers', providerId);
+    const providerSnap = await getDoc(providerRef);
+    
+    if (!providerSnap.exists()) {
+      throw new Error('المزود غير موجود');
+    }
+    
+    const providerData = providerSnap.data();
+    const services = providerData.services || {};
+    
+    // تحديث حالة الخدمة
+    if (services[serviceId]) {
+      services[serviceId] = {
+        ...services[serviceId],
+        status, // pending, approved, rejected
+        updatedAt: new Date().toISOString(),
+      };
+    } else {
+      // إذا كانت الخدمة غير موجودة، إضافتها
+      services[serviceId] = {
+        status,
+        requestedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+    }
+    
+    await updateDoc(providerRef, {
+      services,
+      updatedAt: new Date().toISOString(),
+    });
+    
+    return { success: true };
+  } catch (error) {
+    console.error('Update provider service status error:', error);
     throw error;
   }
 };
@@ -304,26 +347,67 @@ export const getRecentActivity = async () => {
           activityType = 'rejection';
           activityTitle = `رفض من المزود - ${data.serviceName || 'خدمة'}`;
         } else if (event.action === 'provider_cancellation' || ['canceled_by_provider', 'canceled_by_provider_with_reason'].includes(event.status)) {
-          activityType = 'provider_cancel';
-          activityTitle = `إلغاء من المزود بعد القبول - ${data.serviceName || 'خدمة'}`;
+          // التحقق من أن المزود قبل الطلب أولاً
+          const wasAccepted = data.status === 'assigned' || 
+                             data.status === 'en_route' || 
+                             data.status === 'arrived' || 
+                             data.status === 'in_progress' ||
+                             data.assignedAt ||
+                             history.some(h => h.status === 'assigned' && h.updatedBy === 'provider');
+          
+          if (wasAccepted) {
+            activityType = 'provider_cancel_after_accept';
+            activityTitle = `رفض المزود بعد قبول الطلب - ${data.serviceName || 'خدمة'}`;
+          } else {
+            activityType = 'provider_cancel';
+            activityTitle = `إلغاء من المزود - ${data.serviceName || 'خدمة'}`;
+          }
         } else if (['canceled_by_client', 'canceled_by_client_with_reason'].includes(event.status)) {
-          activityType = 'client_cancel';
-          activityTitle = `إلغاء من العميل بعد القبول - ${data.serviceName || 'خدمة'}`;
+          // التحقق من أن العميل ألغى بعد القبول
+          const wasAccepted = data.status === 'assigned' || 
+                             data.status === 'en_route' || 
+                             data.status === 'arrived' || 
+                             data.status === 'in_progress' ||
+                             data.assignedAt ||
+                             history.some(h => h.status === 'assigned');
+          
+          if (wasAccepted) {
+            activityType = 'client_cancel_after_accept';
+            activityTitle = `إلغاء العميل بعد قبول الطلب - ${data.serviceName || 'خدمة'}`;
+          } else {
+            activityType = 'client_cancel';
+            activityTitle = `إلغاء من العميل - ${data.serviceName || 'خدمة'}`;
+          }
         }
         
         if (activityType !== 'order') {
+          // تحديد ما إذا كان الرفض/الإلغاء بعد القبول
+          const wasAccepted = data.status === 'assigned' || 
+                             data.status === 'en_route' || 
+                             data.status === 'arrived' || 
+                             data.status === 'in_progress' ||
+                             data.assignedAt ||
+                             history.some(h => h.status === 'assigned');
+          
           activities.push({
             id: `${doc.id}-${index}`,
             requestId: doc.id,
             type: activityType,
             title: activityTitle,
-            message: event.message || event.reason || '',
+            message: event.message || event.reason || event.cancelReason || '',
             location: data.location || 'موقع غير محدد',
             providerName: event.providerName || data.providerName || 'غير محدد',
             customerId: data.customerId,
             status: event.status || data.status,
             timestamp: event.timestamp || data.updatedAt,
             createdAt: event.timestamp || data.updatedAt,
+            wasAcceptedAfter: wasAccepted && (
+              activityType === 'provider_cancel' || 
+              activityType === 'provider_cancel_after_accept' ||
+              activityType === 'client_cancel' ||
+              activityType === 'client_cancel_after_accept'
+            ),
+            reason: event.reason || event.cancelReason || '',
           });
         }
       });
