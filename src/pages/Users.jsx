@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Search, Users as UsersIcon, Mail, Phone, Calendar, MapPin, Filter, Loader2, UserCheck } from 'lucide-react';
+import { Search, Users as UsersIcon, Mail, Phone, Calendar, MapPin, Filter, Loader2, UserCheck, Package, Clock, AlertCircle, CheckCircle, XCircle } from 'lucide-react';
 import { collection, getDocs, query, orderBy, where } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { format } from 'date-fns';
@@ -13,6 +13,8 @@ export const Users = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [selectedUser, setSelectedUser] = useState(null);
+  const [userOrders, setUserOrders] = useState([]);
+  const [loadingOrders, setLoadingOrders] = useState(false);
 
   useEffect(() => {
     fetchUsers();
@@ -21,6 +23,62 @@ export const Users = () => {
   useEffect(() => {
     filterUsers();
   }, [usersList, searchTerm, statusFilter]);
+
+  // جلب طلبات المستخدم عند فتح Modal
+  useEffect(() => {
+    const fetchUserOrders = async () => {
+      if (!selectedUser) {
+        setUserOrders([]);
+        return;
+      }
+
+      const userId = selectedUser.id || selectedUser.uid;
+      if (!userId) {
+        setUserOrders([]);
+        return;
+      }
+
+      setLoadingOrders(true);
+      try {
+        const requestsRef = collection(db, 'requests');
+        const q = query(
+          requestsRef,
+          where('userId', '==', userId),
+          orderBy('createdAt', 'desc')
+        );
+        const querySnapshot = await getDocs(q);
+        const ordersList = [];
+        querySnapshot.forEach((doc) => {
+          ordersList.push({ id: doc.id, ...doc.data() });
+        });
+        setUserOrders(ordersList);
+      } catch (error) {
+        console.error('Error fetching user orders:', error);
+        // إذا فشل مع userId، جرب customerId
+        try {
+          const requestsRef = collection(db, 'requests');
+          const q = query(
+            requestsRef,
+            where('customerId', '==', userId),
+            orderBy('createdAt', 'desc')
+          );
+          const querySnapshot = await getDocs(q);
+          const ordersList = [];
+          querySnapshot.forEach((doc) => {
+            ordersList.push({ id: doc.id, ...doc.data() });
+          });
+          setUserOrders(ordersList);
+        } catch (error2) {
+          console.error('Error fetching user orders with customerId:', error2);
+          setUserOrders([]);
+        }
+      } finally {
+        setLoadingOrders(false);
+      }
+    };
+
+    fetchUserOrders();
+  }, [selectedUser]);
 
   const fetchUsers = async () => {
     try {
@@ -47,11 +105,14 @@ export const Users = () => {
     }
 
     if (searchTerm) {
+      const searchLower = searchTerm.toLowerCase().trim();
       filtered = filtered.filter(
         (u) =>
-          u.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          u.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          u.phone?.includes(searchTerm)
+          u.name?.toLowerCase().includes(searchLower) ||
+          u.email?.toLowerCase().includes(searchLower) ||
+          u.phone?.includes(searchTerm) ||
+          u.firstName?.toLowerCase().includes(searchLower) ||
+          u.lastName?.toLowerCase().includes(searchLower)
       );
     }
 
@@ -65,6 +126,23 @@ export const Users = () => {
       banned: { text: 'محظور', color: 'bg-red-100 text-red-700' },
     };
     return badges[status] || { text: status, color: 'bg-blue-100 text-blue-700' };
+  };
+
+  const getOrderStatusBadge = (status) => {
+    const badges = {
+      searching: { text: 'جاري البحث', color: 'bg-yellow-100 text-yellow-700' },
+      assigned: { text: 'مقبول', color: 'bg-teal-100 text-teal-700' },
+      en_route: { text: 'في الطريق', color: 'bg-blue-100 text-blue-700' },
+      arrived: { text: 'وصل', color: 'bg-purple-100 text-purple-700' },
+      in_progress: { text: 'قيد التنفيذ', color: 'bg-orange-100 text-orange-700' },
+      pending_client_confirmation: { text: 'بانتظار العميل', color: 'bg-yellow-100 text-yellow-700' },
+      completed: { text: 'مكتمل', color: 'bg-green-100 text-green-700' },
+      canceled_by_client: { text: 'ملغي من العميل', color: 'bg-red-100 text-red-700' },
+      canceled_by_provider: { text: 'ملغي من المزود', color: 'bg-red-100 text-red-700' },
+      canceled_by_client_with_reason: { text: 'ملغي من العميل', color: 'bg-red-100 text-red-700' },
+      canceled_by_provider_with_reason: { text: 'ملغي من المزود', color: 'bg-red-100 text-red-700' },
+    };
+    return badges[status] || { text: status, color: 'bg-gray-100 text-gray-700' };
   };
 
   if (loading) {
@@ -127,7 +205,7 @@ export const Users = () => {
             <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
             <input
               type="text"
-              placeholder="ابحث عن مستخدم..."
+              placeholder="ابحث بالاسم، البريد الإلكتروني، أو رقم الهاتف..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pr-9 sm:pr-10 pl-4 py-2.5 sm:py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none text-sm sm:text-base"
@@ -272,6 +350,138 @@ export const Users = () => {
                   <p className="text-sm sm:text-base text-gray-800">{selectedUser.location}</p>
                 </div>
               )}
+
+              {/* قائمة الطلبات */}
+              <div className="border-t border-gray-200 pt-4 mt-4">
+                <div className="flex items-center gap-2 mb-4">
+                  <Package className="w-5 h-5 text-gray-600" />
+                  <h3 className="font-semibold text-base sm:text-lg text-gray-700">طلبات المستخدم</h3>
+                  <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded-full text-xs font-semibold">
+                    {userOrders.length}
+                  </span>
+                </div>
+
+                {loadingOrders ? (
+                  <div className="text-center py-8">
+                    <Loader2 className="w-6 h-6 animate-spin text-gray-400 mx-auto mb-2" />
+                    <p className="text-sm text-gray-500">جاري تحميل الطلبات...</p>
+                  </div>
+                ) : userOrders.length === 0 ? (
+                  <div className="bg-gray-50 rounded-lg p-6 text-center">
+                    <Package className="w-12 h-12 text-gray-300 mx-auto mb-2" />
+                    <p className="text-sm text-gray-500">لا توجد طلبات لهذا المستخدم</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3 max-h-96 overflow-y-auto">
+                    {userOrders.map((order) => {
+                      const orderStatusBadge = getOrderStatusBadge(order.status);
+                      const isCanceled = order.status?.includes('canceled');
+                      const cancelReason = order.cancelReason || 
+                        (Array.isArray(order.history) 
+                          ? order.history.find(h => h.cancelReason)?.cancelReason 
+                          : null);
+                      
+                      // تحديد تاريخ الإنشاء
+                      let createdAt = null;
+                      if (order.createdAt) {
+                        if (order.createdAt?.toMillis) {
+                          createdAt = new Date(order.createdAt.toMillis());
+                        } else if (order.createdAt?.toDate) {
+                          createdAt = order.createdAt.toDate();
+                        } else if (order.createdAt?.seconds) {
+                          createdAt = new Date(order.createdAt.seconds * 1000);
+                        } else {
+                          createdAt = new Date(order.createdAt);
+                        }
+                      }
+
+                      // تحديد تاريخ الإلغاء إن وجد
+                      let canceledAt = null;
+                      if (order.cancelledAt) {
+                        if (order.cancelledAt?.toMillis) {
+                          canceledAt = new Date(order.cancelledAt.toMillis());
+                        } else if (order.cancelledAt?.toDate) {
+                          canceledAt = order.cancelledAt.toDate();
+                        } else if (order.cancelledAt?.seconds) {
+                          canceledAt = new Date(order.cancelledAt.seconds * 1000);
+                        } else {
+                          canceledAt = new Date(order.cancelledAt);
+                        }
+                      }
+
+                      return (
+                        <div
+                          key={order.id}
+                          className={`bg-white rounded-lg p-4 border ${
+                            isCanceled 
+                              ? 'border-red-200 bg-red-50' 
+                              : order.status === 'completed'
+                              ? 'border-green-200 bg-green-50'
+                              : 'border-gray-200'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-3 mb-2">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                <Package className="w-4 h-4 text-gray-600 flex-shrink-0" />
+                                <h4 className="font-semibold text-sm text-gray-800 truncate">
+                                  {order.serviceName || order.serviceType || 'خدمة'}
+                                </h4>
+                              </div>
+                              {order.location && (
+                                <div className="flex items-center gap-2 text-xs text-gray-600 mb-1">
+                                  <MapPin className="w-3 h-3" />
+                                  <span className="truncate">{order.location}</span>
+                                </div>
+                              )}
+                              {createdAt && !isNaN(createdAt.getTime()) && (
+                                <div className="flex items-center gap-2 text-xs text-gray-500">
+                                  <Clock className="w-3 h-3" />
+                                  <span>تاريخ الطلب: {format(createdAt, 'dd MMM yyyy, HH:mm', { locale: ar })}</span>
+                                </div>
+                              )}
+                            </div>
+                            <span className={`px-2 py-1 rounded-full text-xs font-semibold whitespace-nowrap ${orderStatusBadge.color}`}>
+                              {orderStatusBadge.text}
+                            </span>
+                          </div>
+
+                          {/* تفاصيل الإلغاء */}
+                          {isCanceled && (
+                            <div className="mt-3 pt-3 border-t border-red-200">
+                              <div className="flex items-start gap-2">
+                                <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
+                                <div className="flex-1">
+                                  <p className="text-xs font-semibold text-red-800 mb-1">تفاصيل الإلغاء:</p>
+                                  {cancelReason && (
+                                    <p className="text-xs text-red-700 mb-1">
+                                      <span className="font-semibold">السبب:</span> {cancelReason}
+                                    </p>
+                                  )}
+                                  {canceledAt && !isNaN(canceledAt.getTime()) && (
+                                    <p className="text-xs text-red-600">
+                                      <span className="font-semibold">تاريخ الإلغاء:</span> {format(canceledAt, 'dd MMM yyyy, HH:mm', { locale: ar })}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* معلومات إضافية */}
+                          {order.price && (
+                            <div className="mt-2 pt-2 border-t border-gray-100">
+                              <p className="text-xs text-gray-600">
+                                <span className="font-semibold">السعر:</span> {order.price} ر.س
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>

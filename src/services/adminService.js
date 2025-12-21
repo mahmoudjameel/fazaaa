@@ -33,6 +33,23 @@ export const getAllProviders = async () => {
   }
 };
 
+// جلب بيانات مزود محدد
+export const getProviderById = async (providerId) => {
+  try {
+    const providerRef = doc(db, 'providers', providerId);
+    const providerSnap = await getDoc(providerRef);
+    
+    if (!providerSnap.exists()) {
+      return { success: false, error: 'المزود غير موجود' };
+    }
+    
+    return { success: true, provider: { id: providerSnap.id, ...providerSnap.data() } };
+  } catch (error) {
+    console.error('Get provider by ID error:', error);
+    throw error;
+  }
+};
+
 export const updateProviderStatus = async (providerId, status) => {
   try {
     const providerRef = doc(db, 'providers', providerId);

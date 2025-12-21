@@ -166,9 +166,9 @@ export const Services = () => {
             resetForm();
             setIsModalOpen(true);
           }}
-          className="flex items-center justify-center gap-2 px-4 sm:px-6 py-2.5 sm:py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:shadow-lg transition-all font-semibold text-sm sm:text-base"
+          className="flex items-center justify-center gap-2 px-4 sm:px-5 md:px-6 py-2.5 sm:py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:shadow-lg active:shadow-md transition-all font-semibold text-sm sm:text-base whitespace-nowrap"
         >
-          <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
+          <Plus className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
           <span className="hidden sm:inline">إضافة خدمة جديدة</span>
           <span className="sm:hidden">إضافة</span>
         </button>
@@ -248,8 +248,8 @@ export const Services = () => {
                     )}
                   </div>
                 </div>
-                <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-4">
-                  <div className="text-left sm:text-right">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between sm:justify-end gap-3 sm:gap-4">
+                  <div className="text-left sm:text-right w-full sm:w-auto">
                     <p className="text-lg sm:text-2xl font-black text-green-600">{service.basePrice || 0} ر.س</p>
                     <span className={`inline-block mt-1 px-2 sm:px-3 py-1 rounded-full text-xs font-semibold ${
                       service.isActive !== false 
@@ -259,31 +259,34 @@ export const Services = () => {
                       {service.isActive !== false ? 'نشط' : 'معطل'}
                     </span>
                   </div>
-                  <div className="flex gap-2 flex-shrink-0">
+                  <div className="flex gap-2 flex-shrink-0 w-full sm:w-auto justify-end sm:justify-start">
                     <button
                       onClick={() => openEditModal(service)}
-                      className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-all"
+                      className="p-2 sm:p-2.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 active:bg-blue-200 transition-all flex items-center justify-center"
                       aria-label="تعديل"
+                      title="تعديل"
                     >
-                      <Edit2 className="w-4 h-4" />
+                      <Edit2 className="w-4 h-4 sm:w-5 sm:h-5" />
                     </button>
                     <button
                       onClick={() => toggleServiceStatus(service.id, service.isActive === false)}
-                      className={`p-2 rounded-lg transition-all ${
+                      className={`p-2 sm:p-2.5 rounded-lg transition-all flex items-center justify-center ${
                         service.isActive !== false
-                          ? 'bg-yellow-50 text-yellow-600 hover:bg-yellow-100'
-                          : 'bg-green-50 text-green-600 hover:bg-green-100'
+                          ? 'bg-yellow-50 text-yellow-600 hover:bg-yellow-100 active:bg-yellow-200'
+                          : 'bg-green-50 text-green-600 hover:bg-green-100 active:bg-green-200'
                       }`}
                       aria-label="تفعيل/تعطيل"
+                      title={service.isActive !== false ? 'تعطيل' : 'تفعيل'}
                     >
-                      {service.isActive !== false ? '⏸️' : '▶️'}
+                      <span className="text-base sm:text-lg">{service.isActive !== false ? '⏸️' : '▶️'}</span>
                     </button>
                     <button
                       onClick={() => handleDelete(service.id)}
-                      className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-all"
+                      className="p-2 sm:p-2.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 active:bg-red-200 transition-all flex items-center justify-center"
                       aria-label="حذف"
+                      title="حذف"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="w-4 h-4 sm:w-5 sm:h-5" />
                     </button>
                   </div>
                 </div>

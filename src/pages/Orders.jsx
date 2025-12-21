@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Search, Eye, MapPin, Clock, DollarSign, Star, AlertCircle, XCircle } from 'lucide-react';
-import { listenToAllRequests } from '../services/adminService';
+import { Search, Eye, MapPin, Clock, DollarSign, Star, AlertCircle, XCircle, User, Phone, Package, CheckCircle, X, Mail } from 'lucide-react';
+import { listenToAllRequests, getProviderById } from '../services/adminService';
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
+import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
+import { db } from '../services/firebase';
 
 export const Orders = () => {
   const [orders, setOrders] = useState([]);
@@ -11,6 +13,11 @@ export const Orders = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [selectedOrder, setSelectedOrder] = useState(null);
+  const [selectedProvider, setSelectedProvider] = useState(null);
+  const [loadingProvider, setLoadingProvider] = useState(false);
+  const [mainServices, setMainServices] = useState([]);
+  const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [loadingCustomer, setLoadingCustomer] = useState(false);
 
   useEffect(() => {
     // استخدام real-time listener بدلاً من fetch
@@ -19,12 +26,120 @@ export const Orders = () => {
       setLoading(false);
     });
 
+    // جلب الخدمات الرئيسية
+    fetchMainServices();
+
     return () => unsubscribe();
   }, []);
+
+  const fetchMainServices = async () => {
+    try {
+      const servicesRef = collection(db, 'emergency-services');
+      const querySnapshot = await getDocs(servicesRef);
+      const servicesList = [];
+      querySnapshot.forEach((doc) => {
+        servicesList.push({ 
+          id: doc.id, 
+          serviceId: doc.data().id || doc.id,
+          name: doc.data().name || '',
+          ...doc.data() 
+        });
+      });
+      setMainServices(servicesList);
+    } catch (error) {
+      console.error('Error fetching main services:', error);
+    }
+  };
 
   useEffect(() => {
     filterOrders();
   }, [orders, searchTerm, statusFilter]);
+
+  // جلب بيانات العميل عند فتح Modal تفاصيل الطلب
+  useEffect(() => {
+    const fetchCustomer = async () => {
+      if (!selectedOrder) {
+        setSelectedCustomer(null);
+        return;
+      }
+
+      const userId = selectedOrder.userId || selectedOrder.customerId || selectedOrder.uid;
+      if (!userId) {
+        setSelectedCustomer(null);
+        return;
+      }
+
+      setLoadingCustomer(true);
+      try {
+        const customerRef = doc(db, 'customers', userId);
+        const customerSnap = await getDoc(customerRef);
+        
+        if (customerSnap.exists()) {
+          setSelectedCustomer({ id: customerSnap.id, ...customerSnap.data() });
+        } else {
+          setSelectedCustomer(null);
+        }
+      } catch (error) {
+        console.error('Error fetching customer:', error);
+        setSelectedCustomer(null);
+      } finally {
+        setLoadingCustomer(false);
+      }
+    };
+
+    fetchCustomer();
+  }, [selectedOrder]);
+
+  const handleProviderClick = async (order, e) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    
+    console.log('Order data:', order); // للتتبع
+    
+    // محاولة جلب providerId بطرق مختلفة
+    let providerId = order.providerId || order.provider?.id;
+    
+    // إذا لم يكن موجوداً مباشرة، نبحث في history
+    if (!providerId && order.history && Array.isArray(order.history)) {
+      const assignedEvent = order.history.find(h => 
+        (h.status === 'assigned' && h.providerId) || 
+        h.providerId
+      );
+      if (assignedEvent && assignedEvent.providerId) {
+        providerId = assignedEvent.providerId;
+      }
+    }
+    
+    console.log('Provider ID found:', providerId); // للتتبع
+    
+    if (!providerId) {
+      // إذا لم يكن هناك providerId، نبحث عن المزود بالاسم
+      if (order.providerName) {
+        console.warn('Provider ID not found for provider:', order.providerName);
+        alert('معرف المزود غير متوفر في بيانات الطلب. يرجى البحث عن المزود من صفحة إدارة المزودين.');
+        return;
+      }
+      alert('بيانات المزود غير متوفرة');
+      return;
+    }
+
+    setLoadingProvider(true);
+    try {
+      const result = await getProviderById(providerId);
+      if (result.success) {
+        setSelectedProvider(result.provider);
+      } else {
+        alert(result.error || 'فشل جلب بيانات المزود');
+      }
+    } catch (error) {
+      console.error('Error fetching provider:', error);
+      alert('حدث خطأ أثناء جلب بيانات المزود: ' + error.message);
+    } finally {
+      setLoadingProvider(false);
+    }
+  };
 
   const filterOrders = () => {
     let filtered = orders;
@@ -367,7 +482,17 @@ export const Orders = () => {
                                 {order.serviceName || order.serviceType || 'خدمة'}
                               </p>
                               <p className="text-xs text-gray-600 mb-1">
-                                المزود: <span className="font-semibold">{order.providerName || 'غير محدد'}</span>
+                                المزود: {order.providerName ? (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => handleProviderClick(order, e)}
+                                    className="font-semibold text-teal-600 hover:text-teal-700 underline decoration-dotted cursor-pointer"
+                                  >
+                                    {order.providerName}
+                                  </button>
+                                ) : (
+                                  <span className="font-semibold">غير محدد</span>
+                                )}
                               </p>
                               <p className="text-xs text-red-700 font-semibold mt-2">
                                 ⚠️ السبب: {reason}
@@ -417,7 +542,17 @@ export const Orders = () => {
                                 {order.serviceName || order.serviceType || 'خدمة'}
                               </p>
                               <p className="text-xs text-gray-600 mb-1">
-                                المزود: <span className="font-semibold">{order.providerName || 'غير محدد'}</span>
+                                المزود: {order.providerName ? (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => handleProviderClick(order, e)}
+                                    className="font-semibold text-teal-600 hover:text-teal-700 underline decoration-dotted cursor-pointer"
+                                  >
+                                    {order.providerName}
+                                  </button>
+                                ) : (
+                                  <span className="font-semibold">غير محدد</span>
+                                )}
                               </p>
                               <p className="text-xs text-orange-700 font-semibold mt-2">
                                 ⚠️ السبب: {reason}
@@ -538,8 +673,15 @@ export const Orders = () => {
                           </span>
                         </div>
                         {order.providerName && (
-                          <div className="text-xs text-teal-600 font-semibold">
-                            مزود: {order.providerName}
+                          <div className="text-xs">
+                            <span className="text-gray-600">مزود: </span>
+                            <button
+                              type="button"
+                              onClick={(e) => handleProviderClick(order, e)}
+                              className="text-teal-600 hover:text-teal-700 font-semibold underline decoration-dotted cursor-pointer"
+                            >
+                              {order.providerName}
+                            </button>
                           </div>
                         )}
                         {/* Provider Cancellation */}
@@ -615,38 +757,97 @@ export const Orders = () => {
 
       {/* Order Details Modal */}
       {selectedOrder && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-6">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-auto">
-            <div className="p-6 border-b border-gray-200">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4 md:p-6">
+          <div className="bg-white rounded-xl sm:rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-auto">
+            <div className="p-4 sm:p-5 md:p-6 border-b border-gray-200">
               <div className="flex items-center justify-between">
-                <h2 className="text-2xl font-bold text-gray-800">تفاصيل الطلب</h2>
+                <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-800">تفاصيل الطلب</h2>
                 <button
                   onClick={() => setSelectedOrder(null)}
-                  className="text-gray-500 hover:text-gray-700"
+                  className="text-gray-500 hover:text-gray-700 text-xl sm:text-2xl"
                 >
                   ✕
                 </button>
               </div>
             </div>
-            <div className="p-6 space-y-4">
+            <div className="p-4 sm:p-5 md:p-6 space-y-3 sm:space-y-4">
+              {/* تفاصيل العميل */}
+              {loadingCustomer ? (
+                <div className="bg-blue-50 rounded-xl p-4 text-center">
+                  <p className="text-sm text-gray-500">جاري تحميل بيانات العميل...</p>
+                </div>
+              ) : selectedCustomer ? (
+                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 sm:p-5 border border-blue-200 mb-4">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center">
+                      <User className="text-white w-6 h-6" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg sm:text-xl font-bold text-gray-800">
+                        {selectedCustomer.firstName || ''} {selectedCustomer.lastName || ''}
+                      </h3>
+                      <p className="text-sm text-gray-600">العميل</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                    {selectedCustomer.phone && (
+                      <div className="bg-white rounded-lg p-3 border border-blue-100">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Phone className="w-4 h-4 text-gray-600" />
+                          <h4 className="font-semibold text-xs sm:text-sm text-gray-700">رقم الجوال</h4>
+                        </div>
+                        <p className="text-sm text-gray-800">{selectedCustomer.phone}</p>
+                      </div>
+                    )}
+                    {selectedCustomer.email && (
+                      <div className="bg-white rounded-lg p-3 border border-blue-100">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Mail className="w-4 h-4 text-gray-600" />
+                          <h4 className="font-semibold text-xs sm:text-sm text-gray-700">البريد الإلكتروني</h4>
+                        </div>
+                        <p className="text-sm text-gray-800 break-words">{selectedCustomer.email}</p>
+                      </div>
+                    )}
+                    {selectedCustomer.city && (
+                      <div className="bg-white rounded-lg p-3 border border-blue-100">
+                        <div className="flex items-center gap-2 mb-1">
+                          <MapPin className="w-4 h-4 text-gray-600" />
+                          <h4 className="font-semibold text-xs sm:text-sm text-gray-700">المدينة</h4>
+                        </div>
+                        <p className="text-sm text-gray-800">{selectedCustomer.city}</p>
+                      </div>
+                    )}
+                    {selectedCustomer.carModel && (
+                      <div className="bg-white rounded-lg p-3 border border-blue-100">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Package className="w-4 h-4 text-gray-600" />
+                          <h4 className="font-semibold text-xs sm:text-sm text-gray-700">نوع السيارة</h4>
+                        </div>
+                        <p className="text-sm text-gray-800">{selectedCustomer.carModel}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : null}
+
               <div>
-                <h3 className="font-semibold text-gray-700 mb-2">نوع الخدمة</h3>
-                <p className="text-gray-800">{selectedOrder.serviceType}</p>
+                <h3 className="font-semibold text-sm sm:text-base text-gray-700 mb-1 sm:mb-2">نوع الخدمة</h3>
+                <p className="text-sm sm:text-base text-gray-800">{selectedOrder.serviceType}</p>
               </div>
               {selectedOrder.serviceOption && (
                 <div>
-                  <h3 className="font-semibold text-gray-700 mb-2">الخدمة المحددة</h3>
-                  <p className="text-gray-800">{selectedOrder.serviceOption}</p>
+                  <h3 className="font-semibold text-sm sm:text-base text-gray-700 mb-1 sm:mb-2">الخدمة المحددة</h3>
+                  <p className="text-sm sm:text-base text-gray-800">{selectedOrder.serviceOption}</p>
                 </div>
               )}
               <div>
-                <h3 className="font-semibold text-gray-700 mb-2">الموقع</h3>
-                <p className="text-gray-800">{selectedOrder.location || 'غير محدد'}</p>
+                <h3 className="font-semibold text-sm sm:text-base text-gray-700 mb-1 sm:mb-2">الموقع</h3>
+                <p className="text-sm sm:text-base text-gray-800">{selectedOrder.location || 'غير محدد'}</p>
               </div>
               <div>
-                <h3 className="font-semibold text-gray-700 mb-2">الحالة</h3>
+                <h3 className="font-semibold text-sm sm:text-base text-gray-700 mb-1 sm:mb-2">الحالة</h3>
                 <span
-                  className={`inline-block px-3 py-1 rounded-full text-sm font-semibold ${getStatusBadge(selectedOrder.status).color
+                  className={`inline-block px-2 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-semibold ${getStatusBadge(selectedOrder.status).color
                     }`}
                 >
                   {getStatusBadge(selectedOrder.status).text}
@@ -802,32 +1003,169 @@ export const Orders = () => {
                 )}
               </div>
               <div>
-                <h3 className="font-semibold text-gray-700 mb-2">السعر</h3>
-                <p className="text-2xl font-black text-green-600">
+                <h3 className="font-semibold text-sm sm:text-base text-gray-700 mb-1 sm:mb-2">السعر</h3>
+                <p className="text-xl sm:text-2xl font-black text-green-600">
                   {selectedOrder.servicePrice || selectedOrder.price || 0} ر.س
                 </p>
               </div>
-              <div>
-                <h3 className="font-semibold text-gray-700 mb-2">تاريخ الإنشاء</h3>
-                <p className="text-gray-800">
+              {/* Timeline Section */}
+              <div className="bg-gray-50 rounded-xl p-4 sm:p-5 border border-gray-200">
+                <h3 className="font-semibold text-sm sm:text-base text-gray-700 mb-4 flex items-center gap-2">
+                  <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-gray-600" />
+                  <span>الخط الزمني للطلب</span>
+                </h3>
+                <div className="space-y-3 sm:space-y-4">
+                  {/* وقت الإنشاء */}
+                  <div className="flex items-start gap-2 sm:gap-3">
+                    <div className="flex flex-col items-center pt-0.5 sm:pt-1 flex-shrink-0">
+                      <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 bg-blue-500 rounded-full"></div>
+                      <div className="w-0.5 h-full bg-gray-300 mt-1"></div>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-gray-800 text-xs sm:text-sm md:text-base mb-1">وقت الإنشاء</p>
+                      <p className="text-gray-600 text-xs sm:text-sm break-words">
+                        {(() => {
+                          if (!selectedOrder.createdAt) return '-';
+                          
+                          let date;
+                          if (selectedOrder.createdAt?.toMillis) {
+                            date = new Date(selectedOrder.createdAt.toMillis());
+                          } else if (selectedOrder.createdAt?.toDate) {
+                            date = selectedOrder.createdAt.toDate();
+                          } else if (selectedOrder.createdAt?.seconds) {
+                            date = new Date(selectedOrder.createdAt.seconds * 1000);
+                          } else {
+                            date = new Date(selectedOrder.createdAt);
+                          }
+                          
+                          return isNaN(date.getTime()) ? '-' : format(date, 'dd MMM yyyy, HH:mm:ss', { locale: ar });
+                        })()}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* وقت قبول المزود */}
                   {(() => {
-                    if (!selectedOrder.createdAt) return '-';
+                    const assignedAt = selectedOrder.assignedAt || 
+                      (Array.isArray(selectedOrder.history) 
+                        ? selectedOrder.history.find(h => h.status === 'assigned' || h.action === 'assigned')?.timestamp 
+                        : null);
                     
-                    // التعامل مع Firebase Timestamp
-                    let date;
-                    if (selectedOrder.createdAt?.toMillis) {
-                      date = new Date(selectedOrder.createdAt.toMillis());
-                    } else if (selectedOrder.createdAt?.toDate) {
-                      date = selectedOrder.createdAt.toDate();
-                    } else if (selectedOrder.createdAt?.seconds) {
-                      date = new Date(selectedOrder.createdAt.seconds * 1000);
+                    if (!assignedAt) return null;
+                    
+                    let assignedDate;
+                    if (assignedAt?.toMillis) {
+                      assignedDate = new Date(assignedAt.toMillis());
+                    } else if (assignedAt?.toDate) {
+                      assignedDate = assignedAt.toDate();
+                    } else if (assignedAt?.seconds) {
+                      assignedDate = new Date(assignedAt.seconds * 1000);
                     } else {
-                      date = new Date(selectedOrder.createdAt);
+                      assignedDate = new Date(assignedAt);
                     }
                     
-                    return isNaN(date.getTime()) ? '-' : format(date, 'dd MMM yyyy, HH:mm:ss', { locale: ar });
+                    if (isNaN(assignedDate.getTime())) return null;
+                    
+                    return (
+                      <div className="flex items-start gap-2 sm:gap-3">
+                        <div className="flex flex-col items-center pt-0.5 sm:pt-1 flex-shrink-0">
+                          <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 bg-green-500 rounded-full"></div>
+                          <div className="w-0.5 h-full bg-gray-300 mt-1"></div>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-gray-800 text-xs sm:text-sm md:text-base mb-1">وقت قبول المزود</p>
+                          <p className="text-gray-600 text-xs sm:text-sm break-words">
+                            {format(assignedDate, 'dd MMM yyyy, HH:mm:ss', { locale: ar })}
+                          </p>
+                          {selectedOrder.createdAt && (() => {
+                            let createdDate;
+                            if (selectedOrder.createdAt?.toMillis) {
+                              createdDate = new Date(selectedOrder.createdAt.toMillis());
+                            } else if (selectedOrder.createdAt?.toDate) {
+                              createdDate = selectedOrder.createdAt.toDate();
+                            } else if (selectedOrder.createdAt?.seconds) {
+                              createdDate = new Date(selectedOrder.createdAt.seconds * 1000);
+                            } else {
+                              createdDate = new Date(selectedOrder.createdAt);
+                            }
+                            if (!isNaN(createdDate.getTime())) {
+                              const diffMinutes = Math.round((assignedDate - createdDate) / (1000 * 60));
+                              return (
+                                <p className="text-xs text-gray-500 mt-1">
+                                  (بعد {diffMinutes} دقيقة من الإنشاء)
+                                </p>
+                              );
+                            }
+                            return null;
+                          })()}
+                        </div>
+                      </div>
+                    );
                   })()}
-                </p>
+
+                  {/* وقت التنفيذ / الإكمال */}
+                  {(() => {
+                    const completedAt = selectedOrder.completedAt || 
+                      (Array.isArray(selectedOrder.history) 
+                        ? selectedOrder.history.find(h => h.status === 'completed' || h.action === 'completed')?.timestamp 
+                        : null);
+                    
+                    if (!completedAt) return null;
+                    
+                    let completedDate;
+                    if (completedAt?.toMillis) {
+                      completedDate = new Date(completedAt.toMillis());
+                    } else if (completedAt?.toDate) {
+                      completedDate = completedAt.toDate();
+                    } else if (completedAt?.seconds) {
+                      completedDate = new Date(completedAt.seconds * 1000);
+                    } else {
+                      completedDate = new Date(completedAt);
+                    }
+                    
+                    if (isNaN(completedDate.getTime())) return null;
+                    
+                    return (
+                      <div className="flex items-start gap-2 sm:gap-3">
+                        <div className="flex flex-col items-center pt-0.5 sm:pt-1 flex-shrink-0">
+                          <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 bg-teal-500 rounded-full"></div>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-gray-800 text-xs sm:text-sm md:text-base mb-1">وقت التنفيذ</p>
+                          <p className="text-gray-600 text-xs sm:text-sm break-words">
+                            {format(completedDate, 'dd MMM yyyy, HH:mm:ss', { locale: ar })}
+                          </p>
+                          {selectedOrder.createdAt && (() => {
+                            let createdDate;
+                            if (selectedOrder.createdAt?.toMillis) {
+                              createdDate = new Date(selectedOrder.createdAt.toMillis());
+                            } else if (selectedOrder.createdAt?.toDate) {
+                              createdDate = selectedOrder.createdAt.toDate();
+                            } else if (selectedOrder.createdAt?.seconds) {
+                              createdDate = new Date(selectedOrder.createdAt.seconds * 1000);
+                            } else {
+                              createdDate = new Date(selectedOrder.createdAt);
+                            }
+                            if (!isNaN(createdDate.getTime())) {
+                              const diffMinutes = Math.round((completedDate - createdDate) / (1000 * 60));
+                              const diffHours = Math.floor(diffMinutes / 60);
+                              const remainingMinutes = diffMinutes % 60;
+                              const timeText = diffHours > 0 
+                                ? `${diffHours} ساعة و ${remainingMinutes} دقيقة`
+                                : `${diffMinutes} دقيقة`;
+                              return (
+                                <p className="text-xs text-gray-500 mt-1">
+                                  (بعد {timeText} من الإنشاء)
+                                </p>
+                              );
+                            }
+                            return null;
+                          })()}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
               </div>
 
               {/* Rating Section */}
@@ -946,6 +1284,179 @@ export const Orders = () => {
                 <div className="bg-gray-50 rounded-xl p-6 text-center">
                   <p className="text-gray-500 text-sm">لا توجد صور توثيق لهذا الطلب</p>
                 </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Provider Details Modal */}
+      {selectedProvider && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4 md:p-6">
+          <div className="bg-white rounded-xl sm:rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-auto">
+            <div className="p-4 sm:p-5 md:p-6 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-800">تفاصيل المزود</h2>
+                <button
+                  onClick={() => setSelectedProvider(null)}
+                  className="text-gray-500 hover:text-gray-700 text-xl sm:text-2xl"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+            <div className="p-4 sm:p-5 md:p-6 space-y-4">
+              {loadingProvider ? (
+                <div className="text-center py-8">
+                  <p className="text-gray-500">جاري التحميل...</p>
+                </div>
+              ) : (
+                <>
+                  {/* الاسم */}
+                  <div className="bg-gradient-to-r from-teal-50 to-blue-50 rounded-xl p-4 sm:p-5 border border-teal-200">
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="w-12 h-12 bg-teal-500 rounded-full flex items-center justify-center">
+                        <User className="text-white w-6 h-6" />
+                      </div>
+                      <div>
+                        <h3 className="text-lg sm:text-xl font-bold text-gray-800">
+                          {selectedProvider.firstName || ''} {selectedProvider.lastName || ''}
+                        </h3>
+                        <p className="text-sm text-gray-600">المزود</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* معلومات التواصل */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="bg-white rounded-xl p-4 border border-gray-200">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Phone className="w-5 h-5 text-gray-600" />
+                        <h4 className="font-semibold text-sm sm:text-base text-gray-700">رقم الجوال</h4>
+                      </div>
+                      <p className="text-sm sm:text-base text-gray-800">{selectedProvider.phone || 'غير محدد'}</p>
+                    </div>
+
+                    {selectedProvider.email && (
+                      <div className="bg-white rounded-xl p-4 border border-gray-200">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Mail className="w-5 h-5 text-gray-600" />
+                          <h4 className="font-semibold text-sm sm:text-base text-gray-700">البريد الإلكتروني</h4>
+                        </div>
+                        <p className="text-sm sm:text-base text-gray-800 break-words">{selectedProvider.email}</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* الحالة */}
+                  <div className="bg-white rounded-xl p-4 border border-gray-200">
+                    <div className="flex items-center gap-2 mb-2">
+                      <CheckCircle className="w-5 h-5 text-gray-600" />
+                      <h4 className="font-semibold text-sm sm:text-base text-gray-700">حالة الموافقة</h4>
+                    </div>
+                    <span className={`inline-block px-3 py-1 rounded-full text-xs sm:text-sm font-semibold ${
+                      selectedProvider.approvalStatus === 'approved' 
+                        ? 'bg-green-100 text-green-700' 
+                        : selectedProvider.approvalStatus === 'pending'
+                        ? 'bg-yellow-100 text-yellow-700'
+                        : selectedProvider.approvalStatus === 'rejected'
+                        ? 'bg-red-100 text-red-700'
+                        : 'bg-gray-100 text-gray-700'
+                    }`}>
+                      {selectedProvider.approvalStatus === 'approved' ? 'موافق عليه' :
+                       selectedProvider.approvalStatus === 'pending' ? 'قيد الانتظار' :
+                       selectedProvider.approvalStatus === 'rejected' ? 'مرفوض' : 'غير محدد'}
+                    </span>
+                  </div>
+
+                  {/* الخدمات */}
+                  {selectedProvider.services && Object.keys(selectedProvider.services).length > 0 && (
+                    <div className="bg-white rounded-xl p-4 border border-gray-200">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Package className="w-5 h-5 text-gray-600" />
+                        <h4 className="font-semibold text-sm sm:text-base text-gray-700">الخدمات</h4>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {Object.entries(selectedProvider.services).map(([serviceId, serviceData]) => {
+                          const isActive = serviceData === true || (serviceData && serviceData.isActive !== false);
+                          // البحث عن اسم الخدمة من mainServices
+                          const service = mainServices.find(s => 
+                            s.id === serviceId || 
+                            s.serviceId === serviceId ||
+                            s.id?.toLowerCase() === serviceId?.toLowerCase()
+                          );
+                          const serviceName = service?.name || serviceId;
+                          
+                          return (
+                            <div
+                              key={serviceId}
+                              className={`p-3 rounded-lg border ${
+                                isActive 
+                                  ? 'bg-green-50 border-green-200' 
+                                  : 'bg-gray-50 border-gray-200'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="flex-1 min-w-0">
+                                  <span className="text-sm font-medium text-gray-800 block truncate">
+                                    {serviceName}
+                                  </span>
+                                  {service && serviceName !== serviceId && (
+                                    <span className="text-xs text-gray-500 block mt-0.5 truncate">
+                                      {serviceId}
+                                    </span>
+                                  )}
+                                </div>
+                                {isActive ? (
+                                  <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0 mr-2" />
+                                ) : (
+                                  <XCircle className="w-4 h-4 text-gray-400 flex-shrink-0 mr-2" />
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* النوع والمجموعة */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {selectedProvider.type && (
+                      <div className="bg-white rounded-xl p-4 border border-gray-200">
+                        <h4 className="font-semibold text-sm sm:text-base text-gray-700 mb-2">النوع</h4>
+                        <span className={`inline-block px-3 py-1 rounded-full text-xs sm:text-sm font-semibold ${
+                          selectedProvider.type === 'vip' 
+                            ? 'bg-purple-100 text-purple-700' 
+                            : 'bg-gray-100 text-gray-700'
+                        }`}>
+                          {selectedProvider.type === 'vip' ? 'VIP' : 'عام'}
+                        </span>
+                      </div>
+                    )}
+
+                    {selectedProvider.createdAt && (
+                      <div className="bg-white rounded-xl p-4 border border-gray-200">
+                        <h4 className="font-semibold text-sm sm:text-base text-gray-700 mb-2">تاريخ التسجيل</h4>
+                        <p className="text-sm text-gray-600">
+                          {(() => {
+                            let date;
+                            if (selectedProvider.createdAt?.toMillis) {
+                              date = new Date(selectedProvider.createdAt.toMillis());
+                            } else if (selectedProvider.createdAt?.toDate) {
+                              date = selectedProvider.createdAt.toDate();
+                            } else if (selectedProvider.createdAt?.seconds) {
+                              date = new Date(selectedProvider.createdAt.seconds * 1000);
+                            } else {
+                              date = new Date(selectedProvider.createdAt);
+                            }
+                            return isNaN(date.getTime()) ? '-' : format(date, 'dd MMM yyyy', { locale: ar });
+                          })()}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </>
               )}
             </div>
           </div>
