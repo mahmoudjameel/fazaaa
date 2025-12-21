@@ -123,59 +123,59 @@ export default function WithdrawalRequests() {
     };
 
     return (
-        <div className="p-6">
+        <div className="p-3 sm:p-4 md:p-6">
             {/* Header */}
-            <div className="mb-6">
-                <h1 className="text-2xl font-bold text-gray-900">طلبات سحب الرصيد</h1>
-                <p className="text-gray-600 mt-1">إدارة طلبات سحب الرصيد من المزودين</p>
+            <div className="mb-4 sm:mb-6">
+                <h1 className="text-xl sm:text-2xl font-bold text-gray-900">طلبات سحب الرصيد</h1>
+                <p className="text-sm sm:text-base text-gray-600 mt-1">إدارة طلبات سحب الرصيد من المزودين</p>
             </div>
 
             {/* Stats Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
-                <div className="bg-white p-4 rounded-lg shadow">
-                    <div className="text-sm text-gray-600">إجمالي الطلبات</div>
-                    <div className="text-2xl font-bold text-gray-900">{stats.total}</div>
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 mb-4 sm:mb-6">
+                <div className="bg-white p-3 sm:p-4 rounded-lg shadow">
+                    <div className="text-xs sm:text-sm text-gray-600">إجمالي الطلبات</div>
+                    <div className="text-xl sm:text-2xl font-bold text-gray-900">{stats.total}</div>
                 </div>
-                <div className="bg-yellow-50 p-4 rounded-lg shadow">
-                    <div className="text-sm text-yellow-700">قيد المراجعة</div>
-                    <div className="text-2xl font-bold text-yellow-800">{stats.pending}</div>
+                <div className="bg-yellow-50 p-3 sm:p-4 rounded-lg shadow">
+                    <div className="text-xs sm:text-sm text-yellow-700">قيد المراجعة</div>
+                    <div className="text-xl sm:text-2xl font-bold text-yellow-800">{stats.pending}</div>
                 </div>
-                <div className="bg-green-50 p-4 rounded-lg shadow">
-                    <div className="text-sm text-green-700">مكتملة</div>
-                    <div className="text-2xl font-bold text-green-800">{stats.approved}</div>
+                <div className="bg-green-50 p-3 sm:p-4 rounded-lg shadow">
+                    <div className="text-xs sm:text-sm text-green-700">مكتملة</div>
+                    <div className="text-xl sm:text-2xl font-bold text-green-800">{stats.approved}</div>
                 </div>
-                <div className="bg-red-50 p-4 rounded-lg shadow">
-                    <div className="text-sm text-red-700">مرفوضة</div>
-                    <div className="text-2xl font-bold text-red-800">{stats.rejected}</div>
+                <div className="bg-red-50 p-3 sm:p-4 rounded-lg shadow">
+                    <div className="text-xs sm:text-sm text-red-700">مرفوضة</div>
+                    <div className="text-xl sm:text-2xl font-bold text-red-800">{stats.rejected}</div>
                 </div>
-                <div className="bg-teal-50 p-4 rounded-lg shadow">
-                    <div className="text-sm text-teal-700">إجمالي المبالغ</div>
-                    <div className="text-2xl font-bold text-teal-800">{stats.totalAmount} ر.س</div>
+                <div className="bg-teal-50 p-3 sm:p-4 rounded-lg shadow col-span-2 lg:col-span-1">
+                    <div className="text-xs sm:text-sm text-teal-700">إجمالي المبالغ</div>
+                    <div className="text-xl sm:text-2xl font-bold text-teal-800">{stats.totalAmount} ر.س</div>
                 </div>
             </div>
 
             {/* Filters */}
-            <div className="bg-white p-4 rounded-lg shadow mb-6">
-                <div className="flex flex-col md:flex-row gap-4">
+            <div className="bg-white p-3 sm:p-4 rounded-lg shadow mb-4 sm:mb-6">
+                <div className="flex flex-col md:flex-row gap-3 sm:gap-4">
                     <div className="flex-1">
                         <div className="relative">
-                            <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+                            <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
                             <input
                                 type="text"
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
                                 placeholder="بحث بالاسم أو رقم الهاتف..."
-                                className="w-full pr-10 pl-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500"
+                                className="w-full pr-9 sm:pr-10 pl-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 text-sm sm:text-base"
                                 dir="rtl"
                             />
                         </div>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
                         {['all', 'pending', 'approved', 'rejected'].map((status) => (
                             <button
                                 key={status}
                                 onClick={() => setStatusFilter(status)}
-                                className={`px-4 py-2 rounded-lg font-semibold transition ${statusFilter === status
+                                className={`px-3 sm:px-4 py-2 rounded-lg font-semibold transition text-xs sm:text-sm ${statusFilter === status
                                         ? 'bg-teal-600 text-white'
                                         : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                                     }`}
@@ -190,7 +190,7 @@ export default function WithdrawalRequests() {
                 </div>
             </div>
 
-            {/* Requests Table */}
+            {/* Requests - Desktop Table / Mobile Cards */}
             <div className="bg-white rounded-lg shadow overflow-hidden">
                 {loading ? (
                     <div className="flex justify-center items-center h-64">
@@ -199,92 +199,167 @@ export default function WithdrawalRequests() {
                 ) : filteredRequests.length === 0 ? (
                     <div className="text-center py-12 text-gray-500">لا توجد طلبات</div>
                 ) : (
-                    <table className="w-full">
-                        <thead className="bg-gray-50">
-                            <tr>
-                                <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">المزود</th>
-                                <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">المبلغ</th>
-                                <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">الحالة</th>
-                                <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">التاريخ</th>
-                                <th className="px-6 py-3 text-center text-sm font-semibold text-gray-700">إجراءات</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-200">
+                    <>
+                        {/* Desktop Table */}
+                        <div className="hidden md:block overflow-x-auto">
+                            <table className="w-full">
+                                <thead className="bg-gray-50">
+                                    <tr>
+                                        <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">المزود</th>
+                                        <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">المبلغ</th>
+                                        <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">الحالة</th>
+                                        <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">التاريخ</th>
+                                        <th className="px-6 py-3 text-center text-sm font-semibold text-gray-700">إجراءات</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-200">
+                                    {filteredRequests.map((request) => (
+                                        <tr key={request.id} className="hover:bg-gray-50">
+                                            <td className="px-6 py-4">
+                                                <div>
+                                                    <div className="flex items-center gap-2 text-sm font-medium text-gray-900">
+                                                        <User className="w-4 h-4" />
+                                                        {request.providerName || 'غير محدد'}
+                                                    </div>
+                                                    <div className="flex items-center gap-2 text-sm text-gray-500 mt-1">
+                                                        <Phone className="w-4 h-4" />
+                                                        {request.providerPhone || 'لا يوجد'}
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <div className="flex items-center gap-2">
+                                                    <DollarSign className="w-5 h-5 text-teal-600" />
+                                                    <span className="text-lg font-bold text-gray-900">{request.amount} ر.س</span>
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4">{getStatusBadge(request.status)}</td>
+                                            <td className="px-6 py-4 text-sm text-gray-600">
+                                                {format(request.createdAt, 'dd MMM yyyy - HH:mm', { locale: ar })}
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <div className="flex justify-center gap-2">
+                                                    <button
+                                                        onClick={() => setSelectedRequest(request)}
+                                                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                                                    >
+                                                        <Eye size={20} />
+                                                    </button>
+                                                    {request.status === 'pending' && (
+                                                        <>
+                                                            <button
+                                                                onClick={() => setActionModal({ show: true, type: 'approve', request })}
+                                                                className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition"
+                                                            >
+                                                                <CheckCircle size={20} />
+                                                            </button>
+                                                            <button
+                                                                onClick={() => setActionModal({ show: true, type: 'reject', request })}
+                                                                className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition"
+                                                            >
+                                                                <XCircle size={20} />
+                                                            </button>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {/* Mobile Cards */}
+                        <div className="md:hidden divide-y divide-gray-200">
                             {filteredRequests.map((request) => (
-                                <tr key={request.id} className="hover:bg-gray-50">
-                                    <td className="px-6 py-4">
-                                        <div>
-                                            <div className="flex items-center gap-2 text-sm font-medium text-gray-900">
-                                                <User className="w-4 h-4" />
-                                                {request.providerName || 'غير محدد'}
+                                <div key={request.id} className="p-4 hover:bg-gray-50">
+                                    <div className="flex items-start justify-between mb-3">
+                                        <div className="flex-1">
+                                            <div className="flex items-center gap-2 mb-2">
+                                                <User className="w-4 h-4 text-gray-500" />
+                                                <span className="font-semibold text-gray-900">{request.providerName || 'غير محدد'}</span>
                                             </div>
-                                            <div className="flex items-center gap-2 text-sm text-gray-500 mt-1">
+                                            <div className="flex items-center gap-2 text-sm text-gray-500 mb-3">
                                                 <Phone className="w-4 h-4" />
-                                                {request.providerPhone || 'لا يوجد'}
+                                                <span>{request.providerPhone || 'لا يوجد'}</span>
+                                            </div>
+                                            <div className="flex items-center gap-2 mb-2">
+                                                <DollarSign className="w-5 h-5 text-teal-600" />
+                                                <span className="text-lg font-bold text-gray-900">{request.amount} ر.س</span>
+                                            </div>
+                                            <div className="mb-2">{getStatusBadge(request.status)}</div>
+                                            <div className="text-xs text-gray-600">
+                                                {format(request.createdAt, 'dd MMM yyyy - HH:mm', { locale: ar })}
                                             </div>
                                         </div>
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        <div className="flex items-center gap-2">
-                                            <DollarSign className="w-5 h-5 text-teal-600" />
-                                            <span className="text-lg font-bold text-gray-900">{request.amount} ر.س</span>
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4">{getStatusBadge(request.status)}</td>
-                                    <td className="px-6 py-4 text-sm text-gray-600">
-                                        {format(request.createdAt, 'dd MMM yyyy - HH:mm', { locale: ar })}
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        <div className="flex justify-center gap-2">
-                                            <button
-                                                onClick={() => setSelectedRequest(request)}
-                                                className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition"
-                                            >
-                                                <Eye size={20} />
-                                            </button>
-                                            {request.status === 'pending' && (
-                                                <>
-                                                    <button
-                                                        onClick={() => setActionModal({ show: true, type: 'approve', request })}
-                                                        className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition"
-                                                    >
-                                                        <CheckCircle size={20} />
-                                                    </button>
-                                                    <button
-                                                        onClick={() => setActionModal({ show: true, type: 'reject', request })}
-                                                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition"
-                                                    >
-                                                        <XCircle size={20} />
-                                                    </button>
-                                                </>
-                                            )}
-                                        </div>
-                                    </td>
-                                </tr>
+                                    </div>
+                                    <div className="flex gap-2 justify-end">
+                                        <button
+                                            onClick={() => setSelectedRequest(request)}
+                                            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                                        >
+                                            <Eye size={18} />
+                                        </button>
+                                        {request.status === 'pending' && (
+                                            <>
+                                                <button
+                                                    onClick={() => setActionModal({ show: true, type: 'approve', request })}
+                                                    className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition"
+                                                >
+                                                    <CheckCircle size={18} />
+                                                </button>
+                                                <button
+                                                    onClick={() => setActionModal({ show: true, type: 'reject', request })}
+                                                    className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition"
+                                                >
+                                                    <XCircle size={18} />
+                                                </button>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
                             ))}
-                        </tbody>
-                    </table>
+                        </div>
+                    </>
                 )}
             </div>
 
             {/* Details Modal */}
             {selectedRequest && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setSelectedRequest(null)}>
-                    <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4" onClick={(e) => e.stopPropagation()}>
-                        <h3 className="text-xl font-bold mb-4">تفاصيل الطلب</h3>
-                        <div className="space-y-3">
-                            <div><strong>المزود:</strong> {selectedRequest.providerName}</div>
-                            <div><strong>الهاتف:</strong> {selectedRequest.providerPhone}</div>
-                            <div><strong>المبلغ:</strong> {selectedRequest.amount} ر.س</div>
-                            <div><strong>الحالة:</strong> {getStatusBadge(selectedRequest.status)}</div>
-                            <div><strong>تاريخ الإنشاء:</strong> {format(selectedRequest.createdAt, 'dd MMM yyyy - HH:mm', { locale: ar })}</div>
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4" onClick={() => setSelectedRequest(null)}>
+                    <div className="bg-white rounded-lg p-4 sm:p-6 max-w-lg w-full" onClick={(e) => e.stopPropagation()}>
+                        <h3 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4">تفاصيل الطلب</h3>
+                        <div className="space-y-2 sm:space-y-3">
+                            <div className="text-sm sm:text-base">
+                                <strong className="text-gray-700">المزود:</strong> 
+                                <span className="mr-2 text-gray-900">{selectedRequest.providerName}</span>
+                            </div>
+                            <div className="text-sm sm:text-base">
+                                <strong className="text-gray-700">الهاتف:</strong> 
+                                <span className="mr-2 text-gray-900">{selectedRequest.providerPhone}</span>
+                            </div>
+                            <div className="text-sm sm:text-base">
+                                <strong className="text-gray-700">المبلغ:</strong> 
+                                <span className="mr-2 text-gray-900">{selectedRequest.amount} ر.س</span>
+                            </div>
+                            <div className="text-sm sm:text-base">
+                                <strong className="text-gray-700">الحالة:</strong> 
+                                <span className="mr-2">{getStatusBadge(selectedRequest.status)}</span>
+                            </div>
+                            <div className="text-sm sm:text-base">
+                                <strong className="text-gray-700">تاريخ الإنشاء:</strong> 
+                                <span className="mr-2 text-gray-900">{format(selectedRequest.createdAt, 'dd MMM yyyy - HH:mm', { locale: ar })}</span>
+                            </div>
                             {selectedRequest.adminNotes && (
-                                <div><strong>ملاحظات الإدارة:</strong> {selectedRequest.adminNotes}</div>
+                                <div className="text-sm sm:text-base">
+                                    <strong className="text-gray-700">ملاحظات الإدارة:</strong> 
+                                    <span className="mr-2 text-gray-900">{selectedRequest.adminNotes}</span>
+                                </div>
                             )}
                         </div>
                         <button
                             onClick={() => setSelectedRequest(null)}
-                            className="mt-6 w-full bg-gray-200 text-gray-800 py-2 rounded-lg hover:bg-gray-300"
+                            className="mt-4 sm:mt-6 w-full bg-gray-200 text-gray-800 py-2 rounded-lg hover:bg-gray-300 text-sm sm:text-base"
                         >
                             إغلاق
                         </button>
@@ -294,12 +369,12 @@ export default function WithdrawalRequests() {
 
             {/* Action Modal */}
             {actionModal.show && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                    <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-                        <h3 className="text-xl font-bold mb-4">
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
+                    <div className="bg-white rounded-lg p-4 sm:p-6 max-w-md w-full">
+                        <h3 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4">
                             {actionModal.type === 'approve' ? 'تأكيد الموافقة' : 'تأكيد الرفض'}
                         </h3>
-                        <p className="text-gray-600 mb-4">
+                        <p className="text-sm sm:text-base text-gray-600 mb-3 sm:mb-4">
                             {actionModal.type === 'approve'
                                 ? 'هل أنت متأكد من الموافقة على هذا الطلب؟ سيتم خصم المبلغ من رصيد المزود.'
                                 : 'يرجى كتابة سبب رفض الطلب:'}
@@ -308,24 +383,24 @@ export default function WithdrawalRequests() {
                             value={adminNotes}
                             onChange={(e) => setAdminNotes(e.target.value)}
                             placeholder={actionModal.type === 'approve' ? 'ملاحظات (اختياري)' : 'سبب الرفض'}
-                            className="w-full p-3 border rounded-lg mb-4"
+                            className="w-full p-3 border rounded-lg mb-3 sm:mb-4 text-sm sm:text-base"
                             rows="3"
                             dir="rtl"
                         />
-                        <div className="flex gap-3">
+                        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
                             <button
                                 onClick={() => {
                                     setActionModal({ show: false, type: null, request: null });
                                     setAdminNotes('');
                                 }}
-                                className="flex-1 bg-gray-200 text-gray-800 py-2 rounded-lg hover:bg-gray-300"
+                                className="flex-1 bg-gray-200 text-gray-800 py-2 rounded-lg hover:bg-gray-300 text-sm sm:text-base"
                                 disabled={processing}
                             >
                                 إلغاء
                             </button>
                             <button
                                 onClick={actionModal.type === 'approve' ? handleApprove : handleReject}
-                                className={`flex-1 text-white py-2 rounded-lg ${actionModal.type === 'approve'
+                                className={`flex-1 text-white py-2 rounded-lg text-sm sm:text-base ${actionModal.type === 'approve'
                                         ? 'bg-green-600 hover:bg-green-700'
                                         : 'bg-red-600 hover:bg-red-700'
                                     } disabled:opacity-50`}

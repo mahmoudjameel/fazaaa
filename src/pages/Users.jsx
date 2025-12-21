@@ -77,66 +77,66 @@ export const Users = () => {
 
   return (
     <div>
-      <div className="mb-8">
-        <h1 className="text-3xl font-black text-gray-800 mb-2">إدارة المستخدمين</h1>
-        <p className="text-gray-600">عرض ومتابعة جميع المستخدمين المسجلين</p>
+      <div className="mb-4 sm:mb-6 md:mb-8">
+        <h1 className="text-2xl sm:text-3xl font-black text-gray-800 mb-1 sm:mb-2">إدارة المستخدمين</h1>
+        <p className="text-sm sm:text-base text-gray-600">عرض ومتابعة جميع المستخدمين المسجلين</p>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
-        <div className="bg-white rounded-2xl p-6 shadow-lg">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6 mb-4 sm:mb-6">
+        <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-5 md:p-6 shadow-lg">
           <div className="flex items-center justify-between mb-2">
-            <UsersIcon className="text-blue-500" size={24} />
-            <span className="text-sm text-gray-600">إجمالي المستخدمين</span>
+            <UsersIcon className="text-blue-500 w-5 h-5 sm:w-6 sm:h-6" />
+            <span className="text-xs sm:text-sm text-gray-600">إجمالي المستخدمين</span>
           </div>
-          <p className="text-3xl font-black text-gray-800">{usersList.length}</p>
+          <p className="text-2xl sm:text-3xl font-black text-gray-800">{usersList.length}</p>
         </div>
-        <div className="bg-white rounded-2xl p-6 shadow-lg">
+        <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-5 md:p-6 shadow-lg">
           <div className="flex items-center justify-between mb-2">
-            <UsersIcon className="text-green-500" size={24} />
-            <span className="text-sm text-gray-600">نشطون</span>
+            <UsersIcon className="text-green-500 w-5 h-5 sm:w-6 sm:h-6" />
+            <span className="text-xs sm:text-sm text-gray-600">نشطون</span>
           </div>
-          <p className="text-3xl font-black text-gray-800">
+          <p className="text-2xl sm:text-3xl font-black text-gray-800">
             {usersList.filter((u) => u.status === 'active').length}
           </p>
         </div>
-        <div className="bg-white rounded-2xl p-6 shadow-lg">
+        <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-5 md:p-6 shadow-lg">
           <div className="flex items-center justify-between mb-2">
-            <UsersIcon className="text-gray-500" size={24} />
-            <span className="text-sm text-gray-600">غير نشطون</span>
+            <UsersIcon className="text-gray-500 w-5 h-5 sm:w-6 sm:h-6" />
+            <span className="text-xs sm:text-sm text-gray-600">غير نشطون</span>
           </div>
-          <p className="text-3xl font-black text-gray-800">
+          <p className="text-2xl sm:text-3xl font-black text-gray-800">
             {usersList.filter((u) => u.status === 'inactive').length}
           </p>
         </div>
-        <div className="bg-white rounded-2xl p-6 shadow-lg">
+        <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-5 md:p-6 shadow-lg">
           <div className="flex items-center justify-between mb-2">
-            <UsersIcon className="text-red-500" size={24} />
-            <span className="text-sm text-gray-600">محظورون</span>
+            <UsersIcon className="text-red-500 w-5 h-5 sm:w-6 sm:h-6" />
+            <span className="text-xs sm:text-sm text-gray-600">محظورون</span>
           </div>
-          <p className="text-3xl font-black text-gray-800">
+          <p className="text-2xl sm:text-3xl font-black text-gray-800">
             {usersList.filter((u) => u.status === 'banned').length}
           </p>
         </div>
       </div>
 
       {/* Filters */}
-      <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
-        <div className="flex flex-col md:flex-row gap-4">
+      <div className="bg-white rounded-xl sm:rounded-2xl shadow-lg p-4 sm:p-5 md:p-6 mb-4 sm:mb-6">
+        <div className="flex flex-col md:flex-row gap-3 sm:gap-4">
           <div className="flex-1 relative">
-            <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+            <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
             <input
               type="text"
               placeholder="ابحث عن مستخدم..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pr-10 pl-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none"
+              className="w-full pr-9 sm:pr-10 pl-4 py-2.5 sm:py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none text-sm sm:text-base"
             />
           </div>
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none"
+            className="w-full md:w-auto px-4 py-2.5 sm:py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none text-sm sm:text-base"
           >
             <option value="all">جميع الحالات</option>
             <option value="active">نشط</option>
@@ -158,37 +158,37 @@ export const Users = () => {
             return (
               <div
                 key={user.id}
-                className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all"
+                className="bg-white rounded-xl sm:rounded-2xl shadow-lg p-4 sm:p-5 md:p-6 hover:shadow-xl transition-all"
               >
-                <div className="flex items-start justify-between">
-                  <div className="flex items-start gap-4 flex-1">
-                    <div className="bg-gradient-to-r from-green-500 to-green-600 p-3 rounded-full">
-                      <UsersIcon className="text-white" size={24} />
+                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4">
+                  <div className="flex items-start gap-3 sm:gap-4 flex-1">
+                    <div className="bg-gradient-to-r from-green-500 to-green-600 p-2 sm:p-3 rounded-full flex-shrink-0">
+                      <UsersIcon className="text-white w-5 h-5 sm:w-6 sm:h-6" />
                     </div>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        <h3 className="text-xl font-bold text-gray-800">{user.name || 'غير محدد'}</h3>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-2">
+                        <h3 className="text-lg sm:text-xl font-bold text-gray-800 truncate">{user.name || 'غير محدد'}</h3>
                         <span
-                          className={`px-3 py-1 rounded-full text-xs font-semibold ${statusBadge.color}`}
+                          className={`px-2 sm:px-3 py-1 rounded-full text-xs font-semibold ${statusBadge.color} whitespace-nowrap`}
                         >
                           {statusBadge.text}
                         </span>
                       </div>
-                      <div className="space-y-1 text-sm text-gray-600">
+                      <div className="space-y-1 text-xs sm:text-sm text-gray-600">
                         {user.email && (
-                          <div className="flex items-center gap-2">
-                            <Mail size={16} />
-                            <span>{user.email}</span>
+                          <div className="flex items-center gap-2 truncate">
+                            <Mail className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
+                            <span className="truncate">{user.email}</span>
                           </div>
                         )}
                         {user.phone && (
                           <div className="flex items-center gap-2">
-                            <Phone size={16} />
+                            <Phone className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
                             <span>{user.phone}</span>
                           </div>
                         )}
                         <div className="flex items-center gap-2">
-                          <Calendar size={16} />
+                          <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
                           <span>
                             {user.createdAt
                               ? (() => {
@@ -201,12 +201,12 @@ export const Users = () => {
                       </div>
                     </div>
                   </div>
-                  <div className="text-left ml-4">
+                  <div className="text-left sm:text-right sm:ml-4">
                     <button
                       onClick={() => setSelectedUser(user)}
-                      className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-all text-sm font-semibold"
+                      className="flex items-center justify-center sm:justify-start gap-2 px-3 sm:px-4 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-all text-xs sm:text-sm font-semibold w-full sm:w-auto"
                     >
-                      <Filter size={16} />
+                      <Filter className="w-4 h-4" />
                       التفاصيل
                     </button>
                   </div>
@@ -219,36 +219,36 @@ export const Users = () => {
 
       {/* User Details Modal */}
       {selectedUser && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-6">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-auto">
-            <div className="p-6 border-b border-gray-200">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4 md:p-6">
+          <div className="bg-white rounded-xl sm:rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-auto">
+            <div className="p-4 sm:p-5 md:p-6 border-b border-gray-200">
               <div className="flex items-center justify-between">
-                <h2 className="text-2xl font-bold text-gray-800">تفاصيل المستخدم</h2>
+                <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-800">تفاصيل المستخدم</h2>
                 <button
                   onClick={() => setSelectedUser(null)}
-                  className="text-gray-500 hover:text-gray-700"
+                  className="text-gray-500 hover:text-gray-700 text-xl sm:text-2xl"
                 >
                   ✕
                 </button>
               </div>
             </div>
-            <div className="p-6 space-y-4">
+            <div className="p-4 sm:p-5 md:p-6 space-y-3 sm:space-y-4">
               <div>
-                <h3 className="font-semibold text-gray-700 mb-2">الاسم</h3>
-                <p className="text-gray-800">{selectedUser.name || 'غير محدد'}</p>
+                <h3 className="font-semibold text-sm sm:text-base text-gray-700 mb-1 sm:mb-2">الاسم</h3>
+                <p className="text-sm sm:text-base text-gray-800">{selectedUser.name || 'غير محدد'}</p>
               </div>
               <div>
-                <h3 className="font-semibold text-gray-700 mb-2">البريد الإلكتروني</h3>
-                <p className="text-gray-800">{selectedUser.email || 'غير محدد'}</p>
+                <h3 className="font-semibold text-sm sm:text-base text-gray-700 mb-1 sm:mb-2">البريد الإلكتروني</h3>
+                <p className="text-sm sm:text-base text-gray-800 break-all">{selectedUser.email || 'غير محدد'}</p>
               </div>
               <div>
-                <h3 className="font-semibold text-gray-700 mb-2">رقم الهاتف</h3>
-                <p className="text-gray-800">{selectedUser.phone || 'غير محدد'}</p>
+                <h3 className="font-semibold text-sm sm:text-base text-gray-700 mb-1 sm:mb-2">رقم الهاتف</h3>
+                <p className="text-sm sm:text-base text-gray-800">{selectedUser.phone || 'غير محدد'}</p>
               </div>
               <div>
-                <h3 className="font-semibold text-gray-700 mb-2">الحالة</h3>
+                <h3 className="font-semibold text-sm sm:text-base text-gray-700 mb-1 sm:mb-2">الحالة</h3>
                 <span
-                  className={`inline-block px-3 py-1 rounded-full text-sm font-semibold ${
+                  className={`inline-block px-3 py-1 rounded-full text-xs sm:text-sm font-semibold ${
                     getStatusBadge(selectedUser.status).color
                   }`}
                 >
@@ -256,8 +256,8 @@ export const Users = () => {
                 </span>
               </div>
               <div>
-                <h3 className="font-semibold text-gray-700 mb-2">تاريخ التسجيل</h3>
-                <p className="text-gray-800">
+                <h3 className="font-semibold text-sm sm:text-base text-gray-700 mb-1 sm:mb-2">تاريخ التسجيل</h3>
+                <p className="text-sm sm:text-base text-gray-800">
                   {selectedUser.createdAt
                     ? (() => {
                         const date = new Date(selectedUser.createdAt);
@@ -268,8 +268,8 @@ export const Users = () => {
               </div>
               {selectedUser.location && (
                 <div>
-                  <h3 className="font-semibold text-gray-700 mb-2">الموقع</h3>
-                  <p className="text-gray-800">{selectedUser.location}</p>
+                  <h3 className="font-semibold text-sm sm:text-base text-gray-700 mb-1 sm:mb-2">الموقع</h3>
+                  <p className="text-sm sm:text-base text-gray-800">{selectedUser.location}</p>
                 </div>
               )}
             </div>

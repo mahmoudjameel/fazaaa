@@ -24,16 +24,15 @@ import { useState, useEffect } from 'react';
 export const Layout = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
+  const [sidebarOpen, setSidebarOpen] = useState(true); // مفتوح افتراضياً على جميع الأجهزة
 
   useEffect(() => {
     const handleResize = () => {
       const mobile = window.innerWidth < 1024;
       setIsMobile(mobile);
-      if (mobile) {
-        setSidebarOpen(false);
-      } else {
+      // على الديسكتوب: يبقى Sidebar مفتوح دائماً
+      if (!mobile) {
         setSidebarOpen(true);
       }
     };
@@ -64,13 +63,6 @@ export const Layout = () => {
       icon: AlertCircle,
       label: 'إدارة خدمات الطوارئ',
       color: 'from-primary-red to-red-600',
-      category: 'services',
-    },
-    {
-      path: '/services',
-      icon: Package,
-      label: 'الخدمات والأسعار',
-      color: 'from-primary-blue to-blue-600',
       category: 'services',
     },
     {
@@ -166,57 +158,74 @@ export const Layout = () => {
       {/* Mobile Overlay */}
       {isMobile && sidebarOpen && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
+          className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden backdrop-blur-sm"
           onClick={() => setSidebarOpen(false)}
         />
+      )}
+
+      {/* Mobile Menu Button - Fixed at top (يظهر فقط عندما يكون Sidebar مغلق) */}
+      {isMobile && !sidebarOpen && (
+        <button
+          onClick={() => setSidebarOpen(true)}
+          className="fixed top-3 right-3 z-50 lg:hidden p-2.5 sm:p-3 bg-white rounded-lg shadow-lg hover:bg-gray-50 transition-all border border-gray-200"
+          aria-label="Open menu"
+        >
+          <Menu className="w-5 h-5 sm:w-6 sm:h-6 text-gray-700" />
+        </button>
       )}
 
       {/* Sidebar */}
       <aside
         className={`fixed lg:static inset-y-0 right-0 z-50 bg-white shadow-large transition-all duration-300 ease-in-out ${
           sidebarOpen
-            ? 'w-72 translate-x-0'
-            : 'w-20 -translate-x-full lg:translate-x-0'
-        } flex flex-col border-l border-border-light`}
+            ? 'w-64 sm:w-72 translate-x-0'
+            : 'w-0 -translate-x-full lg:w-20 lg:translate-x-0'
+        } flex flex-col border-l border-border-light relative`}
       >
         {/* Header */}
-        <div className="p-6 border-b border-border-light bg-gradient-to-br from-primary-orange to-primary-yellow">
-          <div className="flex items-center justify-between">
-            {sidebarOpen && (
-              <div className="flex items-center gap-3 animate-fadeIn">
-                <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-medium">
-                  <Shield className="text-primary-orange" size={24} />
-                </div>
-                <div>
-                  <h1 className="text-xl font-black text-white">فزّاعين</h1>
-                  <p className="text-xs text-white/90 font-medium">لوحة التحكم</p>
-                </div>
+        <div className="p-3 sm:p-4 md:p-6 border-b border-border-light bg-gradient-to-br from-primary-orange to-primary-yellow flex-shrink-0">
+          {sidebarOpen ? (
+            <div className="flex items-center gap-3 sm:gap-4 w-full">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 bg-white rounded-lg sm:rounded-xl flex items-center justify-center shadow-medium flex-shrink-0">
+                <Shield className="text-primary-orange w-5 h-5 sm:w-6 sm:h-6" />
               </div>
-            )}
-            {!sidebarOpen && (
-              <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-medium mx-auto">
-                <Shield className="text-primary-orange" size={24} />
+              <div className="flex-1 min-w-0 pr-2">
+                <h1 className="text-base sm:text-lg md:text-xl font-black text-white truncate">فزّاعين</h1>
+                <p className="text-xs text-white/90 font-medium hidden sm:block">لوحة التحكم</p>
               </div>
-            )}
-            <button
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="p-2 hover:bg-white/20 rounded-lg transition-all text-white hover:scale-110"
-              aria-label="Toggle sidebar"
-            >
-              {sidebarOpen ? <X size={20} /> : <Menu size={20} />}
-            </button>
-          </div>
+              <button
+                onClick={() => setSidebarOpen(false)}
+                className="p-1.5 sm:p-2 hover:bg-white/20 rounded-lg transition-all text-white hover:scale-110 flex-shrink-0 lg:hidden"
+                aria-label="Close sidebar"
+              >
+                <X className="w-5 h-5 sm:w-6 sm:h-6" />
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center justify-center w-full relative">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 bg-white rounded-lg sm:rounded-xl flex items-center justify-center shadow-medium">
+                <Shield className="text-primary-orange w-5 h-5 sm:w-6 sm:h-6" />
+              </div>
+              <button
+                onClick={() => setSidebarOpen(true)}
+                className="absolute left-3 sm:left-4 p-1.5 sm:p-2 hover:bg-white/20 rounded-lg transition-all text-white hover:scale-110 hidden lg:flex"
+                aria-label="Open sidebar"
+              >
+                <Menu className="w-5 h-5 sm:w-6 sm:h-6" />
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto py-4 px-3">
+        <nav className="flex-1 overflow-y-auto py-3 sm:py-4 px-2 sm:px-3">
           {Object.entries(groupedMenuItems).map(([category, items]) => {
             if (items.length === 0) return null;
             return (
-              <div key={category} className="mb-6">
+              <div key={category} className="mb-4 sm:mb-6">
                 {sidebarOpen && (
-                  <div className="px-4 mb-3">
-                    <h3 className="text-xs font-bold text-text-secondary uppercase tracking-wider">
+                  <div className="px-2 sm:px-4 mb-2 sm:mb-3">
+                    <h3 className="text-[10px] sm:text-xs font-bold text-text-secondary uppercase tracking-wider">
                       {categoryLabels[category]}
                     </h3>
                   </div>
@@ -232,7 +241,7 @@ export const Layout = () => {
                           navigate(item.path);
                           if (isMobile) setSidebarOpen(false);
                         }}
-                        className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group relative ${
+                        className={`w-full flex items-center gap-2 sm:gap-3 px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 rounded-lg sm:rounded-xl transition-all duration-200 group relative ${
                           isActive
                             ? `bg-gradient-to-r ${item.color} text-white shadow-medium`
                             : 'text-text-secondary hover:bg-background-light hover:text-text-primary'
@@ -246,12 +255,12 @@ export const Layout = () => {
                               : 'text-text-secondary group-hover:text-primary-orange'
                           }`}
                         >
-                          <Icon size={20} />
+                          <Icon className="w-4 h-4 sm:w-5 sm:h-5" />
                         </div>
                         {sidebarOpen && (
                           <>
                             <span
-                              className={`flex-1 text-right font-semibold ${
+                              className={`flex-1 text-right font-semibold text-sm sm:text-base truncate ${
                                 isActive ? 'text-white' : 'text-text-primary'
                               }`}
                             >
@@ -259,14 +268,13 @@ export const Layout = () => {
                             </span>
                             {isActive && (
                               <ChevronRight
-                                size={16}
-                                className="text-white opacity-80"
+                                className="w-3 h-3 sm:w-4 sm:h-4 text-white opacity-80 flex-shrink-0"
                               />
                             )}
                           </>
                         )}
                         {isActive && sidebarOpen && (
-                          <div className="absolute left-0 top-0 bottom-0 w-1 bg-white rounded-r-full" />
+                          <div className="absolute left-0 top-0 bottom-0 w-0.5 sm:w-1 bg-white rounded-r-full" />
                         )}
                       </button>
                     );
@@ -278,24 +286,23 @@ export const Layout = () => {
         </nav>
 
         {/* Footer - Logout */}
-        <div className="p-4 border-t border-border-light bg-background-light">
+        <div className="p-2 sm:p-3 md:p-4 border-t border-border-light bg-background-light flex-shrink-0">
           <button
             onClick={handleLogout}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-status-error hover:bg-red-50 transition-all duration-200 group font-semibold"
+            className="w-full flex items-center justify-center sm:justify-start gap-2 sm:gap-3 px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 rounded-lg sm:rounded-xl text-status-error hover:bg-red-50 transition-all duration-200 group font-semibold text-sm sm:text-base"
             title={!sidebarOpen ? 'تسجيل الخروج' : ''}
           >
             <LogOut
-              size={20}
-              className="group-hover:scale-110 transition-transform"
+              className="w-4 h-4 sm:w-5 sm:h-5 group-hover:scale-110 transition-transform flex-shrink-0"
             />
-            {sidebarOpen && <span>تسجيل الخروج</span>}
+            {sidebarOpen && <span className="truncate">تسجيل الخروج</span>}
           </button>
         </div>
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-auto">
-        <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
+      <main className="flex-1 overflow-auto bg-background-light">
+        <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto w-full">
           <Outlet />
         </div>
       </main>

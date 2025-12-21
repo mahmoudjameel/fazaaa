@@ -170,40 +170,40 @@ export const Dashboard = () => {
   return (
     <div className="space-y-6 animate-fadeIn">
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl sm:text-4xl font-black text-text-primary mb-2">
+      <div className="mb-4 sm:mb-6 md:mb-8">
+        <h1 className="text-2xl sm:text-3xl md:text-4xl font-black text-text-primary mb-1 sm:mb-2">
           لوحة التحكم
         </h1>
-        <p className="text-text-secondary font-medium">
+        <p className="text-sm sm:text-base text-text-secondary font-medium">
           نظرة عامة على النظام والإحصائيات
         </p>
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-6">
         {statCards.map((stat, index) => {
           const Icon = stat.icon;
           return (
             <div
               key={index}
-              className="bg-white rounded-2xl p-6 shadow-soft hover:shadow-large transition-all duration-300 card-hover border border-border-light"
+              className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-5 md:p-6 shadow-soft hover:shadow-large transition-all duration-300 card-hover border border-border-light"
             >
-              <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center justify-between mb-3 sm:mb-4">
                 <div
-                  className={`bg-gradient-to-r ${stat.gradient} p-3 rounded-xl shadow-medium`}
+                  className={`bg-gradient-to-r ${stat.gradient} p-2 sm:p-3 rounded-lg sm:rounded-xl shadow-medium`}
                 >
-                  <Icon className="text-white" size={24} />
+                  <Icon className="text-white w-5 h-5 sm:w-6 sm:h-6" />
                 </div>
                 <span
-                  className={`text-sm font-bold px-2 py-1 rounded-lg ${stat.changeColor} ${stat.bgColor}`}
+                  className={`text-xs sm:text-sm font-bold px-2 py-1 rounded-lg ${stat.changeColor} ${stat.bgColor}`}
                 >
                   {stat.change}
                 </span>
               </div>
-              <h3 className="text-text-secondary text-sm font-semibold mb-2">
+              <h3 className="text-text-secondary text-xs sm:text-sm font-semibold mb-2">
                 {stat.title}
               </h3>
-              <p className="text-3xl sm:text-4xl font-black text-text-primary">
+              <p className="text-2xl sm:text-3xl md:text-4xl font-black text-text-primary">
                 {stat.value}
               </p>
             </div>
@@ -232,21 +232,21 @@ export const Dashboard = () => {
 
         if (allRejections.length > 0) {
           return (
-            <div className="bg-gradient-to-br from-red-50 via-orange-50 to-red-50 border-2 border-red-200 rounded-2xl shadow-large p-6">
-              <div className="flex flex-wrap items-center gap-3 mb-6">
+            <div className="bg-gradient-to-br from-red-50 via-orange-50 to-red-50 border-2 border-red-200 rounded-xl sm:rounded-2xl shadow-large p-4 sm:p-5 md:p-6">
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-4 sm:mb-6">
                 <div className="flex items-center gap-2">
                   <div className="p-2 bg-red-100 rounded-lg">
-                    <AlertCircle className="text-status-error" size={24} />
+                    <AlertCircle className="text-status-error w-5 h-5 sm:w-6 sm:h-6" />
                   </div>
-                  <h2 className="text-xl font-black text-red-800">
+                  <h2 className="text-lg sm:text-xl font-black text-red-800">
                     الرفض والإلغاء بعد قبول الطلبات
                   </h2>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="bg-status-error text-white px-4 py-1.5 rounded-full text-sm font-bold shadow-medium">
+                  <span className="bg-status-error text-white px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-xs sm:text-sm font-bold shadow-medium">
                     {providerRejectionsAfterAccept.length} مزود
                   </span>
-                  <span className="bg-primary-orange text-white px-4 py-1.5 rounded-full text-sm font-bold shadow-medium">
+                  <span className="bg-primary-orange text-white px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-xs sm:text-sm font-bold shadow-medium">
                     {clientRejectionsAfterAccept.length} عميل
                   </span>
                 </div>
@@ -255,9 +255,9 @@ export const Dashboard = () => {
               {/* Provider Rejections */}
               {providerRejectionsAfterAccept.length > 0 && (
                 <div className="mb-6">
-                  <div className="flex items-center gap-2 mb-4">
-                    <div className="w-3 h-3 bg-status-error rounded-full shadow-sm"></div>
-                    <h3 className="font-bold text-red-800 text-lg">
+                  <div className="flex items-center gap-2 mb-3 sm:mb-4">
+                    <div className="w-2 h-2 sm:w-3 sm:h-3 bg-status-error rounded-full shadow-sm"></div>
+                    <h3 className="font-bold text-red-800 text-base sm:text-lg">
                       رفض المزودين ({providerRejectionsAfterAccept.length})
                     </h3>
                   </div>
@@ -324,9 +324,9 @@ export const Dashboard = () => {
               {/* Client Rejections */}
               {clientRejectionsAfterAccept.length > 0 && (
                 <div>
-                  <div className="flex items-center gap-2 mb-4">
-                    <div className="w-3 h-3 bg-primary-orange rounded-full shadow-sm"></div>
-                    <h3 className="font-bold text-orange-800 text-lg">
+                  <div className="flex items-center gap-2 mb-3 sm:mb-4">
+                    <div className="w-2 h-2 sm:w-3 sm:h-3 bg-primary-orange rounded-full shadow-sm"></div>
+                    <h3 className="font-bold text-orange-800 text-base sm:text-lg">
                       إلغاء العملاء ({clientRejectionsAfterAccept.length})
                     </h3>
                   </div>
@@ -396,12 +396,12 @@ export const Dashboard = () => {
       })()}
 
       {/* Recent Activity */}
-      <div className="bg-white rounded-2xl shadow-soft p-6 border border-border-light">
-        <div className="flex items-center gap-3 mb-6">
+      <div className="bg-white rounded-xl sm:rounded-2xl shadow-soft p-4 sm:p-5 md:p-6 border border-border-light">
+        <div className="flex items-center gap-2 sm:gap-3 mb-4 sm:mb-6">
           <div className="p-2 bg-primary-orange/10 rounded-lg">
-            <Activity className="text-primary-orange" size={24} />
+            <Activity className="text-primary-orange w-5 h-5 sm:w-6 sm:h-6" />
           </div>
-          <h2 className="text-xl sm:text-2xl font-black text-text-primary">
+          <h2 className="text-lg sm:text-xl md:text-2xl font-black text-text-primary">
             النشاط الأخير
           </h2>
         </div>
@@ -422,20 +422,20 @@ export const Dashboard = () => {
               return (
                 <div
                   key={activity.id}
-                  className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 bg-background-light rounded-xl hover:bg-gray-100 transition-all duration-200 border border-border-light card-hover"
+                  className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 sm:p-4 bg-background-light rounded-xl hover:bg-gray-100 transition-all duration-200 border border-border-light card-hover"
                 >
-                  <div className="flex items-start sm:items-center gap-4 flex-1">
+                  <div className="flex items-start sm:items-center gap-3 sm:gap-4 flex-1">
                     <div
-                      className={`bg-gradient-to-r ${activityColor} p-2.5 rounded-xl shadow-medium flex-shrink-0`}
+                      className={`bg-gradient-to-r ${activityColor} p-2 sm:p-2.5 rounded-lg sm:rounded-xl shadow-medium flex-shrink-0`}
                     >
-                      <ActivityIcon className="text-white" size={20} />
+                      <ActivityIcon className="text-white w-4 h-4 sm:w-5 sm:h-5" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-bold text-text-primary mb-1">
+                      <p className="font-bold text-text-primary text-sm sm:text-base mb-1">
                         {activity.title ||
                           `طلب جديد - ${activity.serviceType || 'خدمة'}`}
                       </p>
-                      <p className="text-sm text-text-secondary mb-1">
+                      <p className="text-xs sm:text-sm text-text-secondary mb-1">
                         {activity.location || 'موقع غير محدد'}
                         {activity.providerName &&
                           ` • المزود: ${activity.providerName}`}
@@ -452,7 +452,7 @@ export const Dashboard = () => {
                       )}
                     </div>
                   </div>
-                  <div className="flex flex-col sm:items-end gap-2 mt-3 sm:mt-0 sm:mr-4">
+                  <div className="flex flex-col sm:items-end gap-2 mt-2 sm:mt-0 sm:mr-4">
                     <span
                       className={`px-3 py-1.5 rounded-lg text-xs font-bold border ${statusBadge.color} inline-block`}
                     >

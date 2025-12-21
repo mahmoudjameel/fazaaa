@@ -114,44 +114,44 @@ export const Orders = () => {
 
   return (
     <div>
-      <div className="mb-8">
-        <h1 className="text-3xl font-black text-gray-800 mb-2">إدارة الطلبات</h1>
-        <p className="text-gray-600">عرض ومتابعة جميع الطلبات</p>
+      <div className="mb-4 sm:mb-6 md:mb-8">
+        <h1 className="text-2xl sm:text-3xl font-black text-gray-800 mb-1 sm:mb-2">إدارة الطلبات</h1>
+        <p className="text-sm sm:text-base text-gray-600">عرض ومتابعة جميع الطلبات</p>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
-        <div className="bg-white rounded-2xl p-6 shadow-lg">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6 mb-4 sm:mb-6">
+        <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-5 md:p-6 shadow-lg">
           <div className="flex items-center justify-between mb-2">
-            <Clock className="text-yellow-500" size={24} />
-            <span className="text-sm text-gray-600">قيد التنفيذ</span>
+            <Clock className="text-yellow-500 w-5 h-5 sm:w-6 sm:h-6" />
+            <span className="text-xs sm:text-sm text-gray-600">قيد التنفيذ</span>
           </div>
-          <p className="text-3xl font-black text-gray-800">
+          <p className="text-2xl sm:text-3xl font-black text-gray-800">
             {orders.filter((o) => ['searching', 'assigned', 'en_route', 'arrived', 'in_progress'].includes(o.status)).length}
           </p>
         </div>
-        <div className="bg-white rounded-2xl p-6 shadow-lg">
+        <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-5 md:p-6 shadow-lg">
           <div className="flex items-center justify-between mb-2">
-            <DollarSign className="text-green-500" size={24} />
-            <span className="text-sm text-gray-600">مكتملة</span>
+            <DollarSign className="text-green-500 w-5 h-5 sm:w-6 sm:h-6" />
+            <span className="text-xs sm:text-sm text-gray-600">مكتملة</span>
           </div>
-          <p className="text-3xl font-black text-gray-800">
+          <p className="text-2xl sm:text-3xl font-black text-gray-800">
             {orders.filter((o) => o.status === 'completed').length}
           </p>
         </div>
-        <div className="bg-white rounded-2xl p-6 shadow-lg">
+        <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-5 md:p-6 shadow-lg">
           <div className="flex items-center justify-between mb-2">
-            <MapPin className="text-blue-500" size={24} />
-            <span className="text-sm text-gray-600">إجمالي الطلبات</span>
+            <MapPin className="text-blue-500 w-5 h-5 sm:w-6 sm:h-6" />
+            <span className="text-xs sm:text-sm text-gray-600">إجمالي الطلبات</span>
           </div>
-          <p className="text-3xl font-black text-gray-800">{orders.length}</p>
+          <p className="text-2xl sm:text-3xl font-black text-gray-800">{orders.length}</p>
         </div>
-        <div className="bg-white rounded-2xl p-6 shadow-lg">
+        <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-5 md:p-6 shadow-lg">
           <div className="flex items-center justify-between mb-2">
-            <DollarSign className="text-teal-500" size={24} />
-            <span className="text-sm text-gray-600">إجمالي الإيرادات</span>
+            <DollarSign className="text-teal-500 w-5 h-5 sm:w-6 sm:h-6" />
+            <span className="text-xs sm:text-sm text-gray-600">إجمالي الإيرادات</span>
           </div>
-          <p className="text-3xl font-black text-gray-800">
+          <p className="text-2xl sm:text-3xl font-black text-gray-800">
             {orders
               .filter((o) => o.status === 'completed')
               .reduce((sum, o) => sum + (o.price || 0), 0)
@@ -199,17 +199,17 @@ export const Orders = () => {
         
         if (noProvidersTimeoutOrders.length > 0) {
           return (
-            <div className="bg-gradient-to-r from-purple-50 to-pink-50 border-2 border-purple-300 rounded-2xl shadow-lg p-6 mb-6">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <XCircle className="text-purple-600" size={24} />
+            <div className="bg-gradient-to-r from-purple-50 to-pink-50 border-2 border-purple-300 rounded-xl sm:rounded-2xl shadow-lg p-4 sm:p-5 md:p-6 mb-4 sm:mb-6">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 mb-3 sm:mb-4">
+                <div className="flex items-center gap-2 sm:gap-3">
+                  <XCircle className="text-purple-600 w-5 h-5 sm:w-6 sm:h-6 flex-shrink-0" />
                   <div>
-                    <h3 className="text-lg font-bold text-purple-800">عدم وجود مزودين وانتهاء المهلة المحددة</h3>
-                    <p className="text-sm text-purple-600">طلبات تم إلغاؤها بسبب عدم وجود مزودين أو انتهاء وقت البحث</p>
+                    <h3 className="text-base sm:text-lg font-bold text-purple-800">عدم وجود مزودين وانتهاء المهلة المحددة</h3>
+                    <p className="text-xs sm:text-sm text-purple-600">طلبات تم إلغاؤها بسبب عدم وجود مزودين أو انتهاء وقت البحث</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="bg-purple-600 text-white px-4 py-2 rounded-full text-lg font-bold">
+                  <span className="bg-purple-600 text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-full text-base sm:text-lg font-bold">
                     {noProvidersTimeoutOrders.length}
                   </span>
                 </div>

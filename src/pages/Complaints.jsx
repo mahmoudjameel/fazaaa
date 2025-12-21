@@ -121,66 +121,66 @@ export const Complaints = () => {
 
   return (
     <div>
-      <div className="mb-8">
-        <h1 className="text-3xl font-black text-gray-800 mb-2">الشكاوي والملاحظات</h1>
-        <p className="text-gray-600">عرض ومتابعة جميع الشكاوي والملاحظات من المستخدمين</p>
+      <div className="mb-4 sm:mb-6 md:mb-8">
+        <h1 className="text-2xl sm:text-3xl font-black text-gray-800 mb-1 sm:mb-2">الشكاوي والملاحظات</h1>
+        <p className="text-sm sm:text-base text-gray-600">عرض ومتابعة جميع الشكاوي والملاحظات من المستخدمين</p>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
-        <div className="bg-white rounded-2xl p-6 shadow-lg">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6 mb-4 sm:mb-6">
+        <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-5 md:p-6 shadow-lg">
           <div className="flex items-center justify-between mb-2">
-            <MessageSquare className="text-blue-500" size={24} />
-            <span className="text-sm text-gray-600">إجمالي الشكاوي</span>
+            <MessageSquare className="text-blue-500 w-5 h-5 sm:w-6 sm:h-6" />
+            <span className="text-xs sm:text-sm text-gray-600">إجمالي الشكاوي</span>
           </div>
-          <p className="text-3xl font-black text-gray-800">{complaintsList.length}</p>
+          <p className="text-2xl sm:text-3xl font-black text-gray-800">{complaintsList.length}</p>
         </div>
-        <div className="bg-white rounded-2xl p-6 shadow-lg">
+        <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-5 md:p-6 shadow-lg">
           <div className="flex items-center justify-between mb-2">
-            <Clock className="text-yellow-500" size={24} />
-            <span className="text-sm text-gray-600">قيد الانتظار</span>
+            <Clock className="text-yellow-500 w-5 h-5 sm:w-6 sm:h-6" />
+            <span className="text-xs sm:text-sm text-gray-600">قيد الانتظار</span>
           </div>
-          <p className="text-3xl font-black text-gray-800">
+          <p className="text-2xl sm:text-3xl font-black text-gray-800">
             {complaintsList.filter((c) => c.status === 'pending').length}
           </p>
         </div>
-        <div className="bg-white rounded-2xl p-6 shadow-lg">
+        <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-5 md:p-6 shadow-lg">
           <div className="flex items-center justify-between mb-2">
-            <AlertTriangle className="text-blue-500" size={24} />
-            <span className="text-sm text-gray-600">قيد المعالجة</span>
+            <AlertTriangle className="text-blue-500 w-5 h-5 sm:w-6 sm:h-6" />
+            <span className="text-xs sm:text-sm text-gray-600">قيد المعالجة</span>
           </div>
-          <p className="text-3xl font-black text-gray-800">
+          <p className="text-2xl sm:text-3xl font-black text-gray-800">
             {complaintsList.filter((c) => c.status === 'in_progress').length}
           </p>
         </div>
-        <div className="bg-white rounded-2xl p-6 shadow-lg">
+        <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-5 md:p-6 shadow-lg">
           <div className="flex items-center justify-between mb-2">
-            <CheckCircle className="text-green-500" size={24} />
-            <span className="text-sm text-gray-600">تم الحل</span>
+            <CheckCircle className="text-green-500 w-5 h-5 sm:w-6 sm:h-6" />
+            <span className="text-xs sm:text-sm text-gray-600">تم الحل</span>
           </div>
-          <p className="text-3xl font-black text-gray-800">
+          <p className="text-2xl sm:text-3xl font-black text-gray-800">
             {complaintsList.filter((c) => c.status === 'resolved').length}
           </p>
         </div>
       </div>
 
       {/* Filters */}
-      <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
-        <div className="flex flex-col md:flex-row gap-4">
+      <div className="bg-white rounded-xl sm:rounded-2xl shadow-lg p-4 sm:p-5 md:p-6 mb-4 sm:mb-6">
+        <div className="flex flex-col md:flex-row gap-3 sm:gap-4">
           <div className="flex-1 relative">
-            <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+            <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
             <input
               type="text"
               placeholder="ابحث عن شكوى..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pr-10 pl-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none"
+              className="w-full pr-9 sm:pr-10 pl-4 py-2.5 sm:py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none text-sm sm:text-base"
             />
           </div>
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none"
+            className="w-full md:w-auto px-4 py-2.5 sm:py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none text-sm sm:text-base"
           >
             <option value="all">جميع الحالات</option>
             <option value="pending">قيد الانتظار</option>
@@ -191,7 +191,7 @@ export const Complaints = () => {
           <select
             value={typeFilter}
             onChange={(e) => setTypeFilter(e.target.value)}
-            className="px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none"
+            className="w-full md:w-auto px-4 py-2.5 sm:py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none text-sm sm:text-base"
           >
             <option value="all">جميع الأنواع</option>
             <option value="complaint">شكوى</option>
@@ -217,46 +217,46 @@ export const Complaints = () => {
             return (
               <div
                 key={complaint.id}
-                className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all"
+                className="bg-white rounded-xl sm:rounded-2xl shadow-lg p-4 sm:p-5 md:p-6 hover:shadow-xl transition-all"
               >
-                <div className="flex items-start justify-between">
-                  <div className="flex items-start gap-4 flex-1">
-                    <div className={`p-3 rounded-full ${
+                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4">
+                  <div className="flex items-start gap-3 sm:gap-4 flex-1">
+                    <div className={`p-2 sm:p-3 rounded-full flex-shrink-0 ${
                       complaint.type === 'complaint' ? 'bg-red-100' :
                       complaint.type === 'suggestion' ? 'bg-blue-100' :
                       complaint.type === 'feedback' ? 'bg-purple-100' :
                       'bg-orange-100'
                     }`}>
-                      <MessageSquare className={
+                      <MessageSquare className={`w-5 h-5 sm:w-6 sm:h-6 ${
                         complaint.type === 'complaint' ? 'text-red-600' :
                         complaint.type === 'suggestion' ? 'text-blue-600' :
                         complaint.type === 'feedback' ? 'text-purple-600' :
                         'text-orange-600'
-                      } size={24} />
+                      }`} />
                     </div>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        <h3 className="text-xl font-bold text-gray-800">{complaint.subject || 'بدون موضوع'}</h3>
-                        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${statusBadge.color}`}>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-2">
+                        <h3 className="text-lg sm:text-xl font-bold text-gray-800">{complaint.subject || 'بدون موضوع'}</h3>
+                        <span className={`px-2 sm:px-3 py-1 rounded-full text-xs font-semibold ${statusBadge.color} whitespace-nowrap`}>
                           {statusBadge.text}
                         </span>
-                        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${typeBadge.color}`}>
+                        <span className={`px-2 sm:px-3 py-1 rounded-full text-xs font-semibold ${typeBadge.color} whitespace-nowrap`}>
                           {typeBadge.text}
                         </span>
-                        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${priorityBadge.color}`}>
+                        <span className={`px-2 sm:px-3 py-1 rounded-full text-xs font-semibold ${priorityBadge.color} whitespace-nowrap`}>
                           {priorityBadge.text}
                         </span>
                       </div>
-                      <p className="text-gray-600 mb-3 line-clamp-2">
+                      <p className="text-xs sm:text-sm text-gray-600 mb-3 line-clamp-2">
                         {complaint.description || 'لا يوجد وصف'}
                       </p>
-                      <div className="space-y-1 text-sm text-gray-600">
+                      <div className="space-y-1 text-xs sm:text-sm text-gray-600">
                         <div className="flex items-center gap-2">
-                          <User size={16} />
+                          <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
                           <span>{complaint.userName || 'مستخدم غير محدد'}</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <Calendar size={16} />
+                          <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
                           <span>
                             {complaint.createdAt
                               ? (() => {
@@ -269,12 +269,12 @@ export const Complaints = () => {
                       </div>
                     </div>
                   </div>
-                  <div className="text-left ml-4">
+                  <div className="text-left sm:text-right sm:ml-4">
                     <button
                       onClick={() => setSelectedComplaint(complaint)}
-                      className="flex items-center gap-2 px-4 py-2 bg-green-50 hover:bg-green-100 rounded-lg transition-all text-sm font-semibold"
+                      className="flex items-center justify-center sm:justify-start gap-2 px-3 sm:px-4 py-2 bg-green-50 hover:bg-green-100 rounded-lg transition-all text-xs sm:text-sm font-semibold w-full sm:w-auto"
                     >
-                      <Filter size={16} />
+                      <Filter className="w-4 h-4" />
                       التفاصيل
                     </button>
                   </div>
@@ -287,61 +287,61 @@ export const Complaints = () => {
 
       {/* Complaint Details Modal */}
       {selectedComplaint && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-6">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-auto">
-            <div className="p-6 border-b border-gray-200">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4 md:p-6">
+          <div className="bg-white rounded-xl sm:rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-auto">
+            <div className="p-4 sm:p-5 md:p-6 border-b border-gray-200">
               <div className="flex items-center justify-between">
-                <h2 className="text-2xl font-bold text-gray-800">تفاصيل الشكوى</h2>
+                <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-800">تفاصيل الشكوى</h2>
                 <button
                   onClick={() => setSelectedComplaint(null)}
-                  className="text-gray-500 hover:text-gray-700"
+                  className="text-gray-500 hover:text-gray-700 text-xl sm:text-2xl"
                 >
                   ✕
                 </button>
               </div>
             </div>
-            <div className="p-6 space-y-4">
+            <div className="p-4 sm:p-5 md:p-6 space-y-3 sm:space-y-4">
               <div>
-                <h3 className="font-semibold text-gray-700 mb-2">الموضوع</h3>
-                <p className="text-gray-800">{selectedComplaint.subject || 'بدون موضوع'}</p>
+                <h3 className="font-semibold text-sm sm:text-base text-gray-700 mb-1 sm:mb-2">الموضوع</h3>
+                <p className="text-sm sm:text-base text-gray-800">{selectedComplaint.subject || 'بدون موضوع'}</p>
               </div>
               <div>
-                <h3 className="font-semibold text-gray-700 mb-2">الوصف</h3>
-                <p className="text-gray-800 whitespace-pre-wrap">{selectedComplaint.description || 'لا يوجد وصف'}</p>
+                <h3 className="font-semibold text-sm sm:text-base text-gray-700 mb-1 sm:mb-2">الوصف</h3>
+                <p className="text-sm sm:text-base text-gray-800 whitespace-pre-wrap">{selectedComplaint.description || 'لا يوجد وصف'}</p>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 <div>
-                  <h3 className="font-semibold text-gray-700 mb-2">اسم المستخدم</h3>
-                  <p className="text-gray-800">{selectedComplaint.userName || 'غير محدد'}</p>
+                  <h3 className="font-semibold text-sm sm:text-base text-gray-700 mb-1 sm:mb-2">اسم المستخدم</h3>
+                  <p className="text-sm sm:text-base text-gray-800">{selectedComplaint.userName || 'غير محدد'}</p>
                 </div>
                 <div>
-                  <h3 className="font-semibold text-gray-700 mb-2">البريد الإلكتروني</h3>
-                  <p className="text-gray-800">{selectedComplaint.userEmail || 'غير محدد'}</p>
+                  <h3 className="font-semibold text-sm sm:text-base text-gray-700 mb-1 sm:mb-2">البريد الإلكتروني</h3>
+                  <p className="text-sm sm:text-base text-gray-800 break-all">{selectedComplaint.userEmail || 'غير محدد'}</p>
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
                 <div>
-                  <h3 className="font-semibold text-gray-700 mb-2">النوع</h3>
-                  <span className={`inline-block px-3 py-1 rounded-full text-sm font-semibold ${getTypeBadge(selectedComplaint.type).color}`}>
+                  <h3 className="font-semibold text-sm sm:text-base text-gray-700 mb-1 sm:mb-2">النوع</h3>
+                  <span className={`inline-block px-3 py-1 rounded-full text-xs sm:text-sm font-semibold ${getTypeBadge(selectedComplaint.type).color}`}>
                     {getTypeBadge(selectedComplaint.type).text}
                   </span>
                 </div>
                 <div>
-                  <h3 className="font-semibold text-gray-700 mb-2">الأولوية</h3>
-                  <span className={`inline-block px-3 py-1 rounded-full text-sm font-semibold ${getPriorityBadge(selectedComplaint.priority).color}`}>
+                  <h3 className="font-semibold text-sm sm:text-base text-gray-700 mb-1 sm:mb-2">الأولوية</h3>
+                  <span className={`inline-block px-3 py-1 rounded-full text-xs sm:text-sm font-semibold ${getPriorityBadge(selectedComplaint.priority).color}`}>
                     {getPriorityBadge(selectedComplaint.priority).text}
                   </span>
                 </div>
                 <div>
-                  <h3 className="font-semibold text-gray-700 mb-2">الحالة</h3>
-                  <span className={`inline-block px-3 py-1 rounded-full text-sm font-semibold ${getStatusBadge(selectedComplaint.status).color}`}>
+                  <h3 className="font-semibold text-sm sm:text-base text-gray-700 mb-1 sm:mb-2">الحالة</h3>
+                  <span className={`inline-block px-3 py-1 rounded-full text-xs sm:text-sm font-semibold ${getStatusBadge(selectedComplaint.status).color}`}>
                     {getStatusBadge(selectedComplaint.status).text}
                   </span>
                 </div>
               </div>
               <div>
-                <h3 className="font-semibold text-gray-700 mb-2">تاريخ الإنشاء</h3>
-                <p className="text-gray-800">
+                <h3 className="font-semibold text-sm sm:text-base text-gray-700 mb-1 sm:mb-2">تاريخ الإنشاء</h3>
+                <p className="text-sm sm:text-base text-gray-800">
                   {selectedComplaint.createdAt
                     ? (() => {
                         const date = new Date(selectedComplaint.createdAt);
@@ -352,11 +352,11 @@ export const Complaints = () => {
               </div>
               
               {/* Action Buttons */}
-              <div className="flex gap-3 pt-4 border-t border-gray-200">
+              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 pt-3 sm:pt-4 border-t border-gray-200">
                 {selectedComplaint.status === 'pending' && (
                   <button
                     onClick={() => updateComplaintStatus(selectedComplaint.id, 'in_progress')}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all"
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all text-sm sm:text-base"
                   >
                     بدء المعالجة
                   </button>
@@ -364,7 +364,7 @@ export const Complaints = () => {
                 {selectedComplaint.status === 'in_progress' && (
                   <button
                     onClick={() => updateComplaintStatus(selectedComplaint.id, 'resolved')}
-                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-all"
+                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-all text-sm sm:text-base"
                   >
                     تم الحل
                   </button>
@@ -372,7 +372,7 @@ export const Complaints = () => {
                 {(selectedComplaint.status === 'pending' || selectedComplaint.status === 'in_progress') && (
                   <button
                     onClick={() => updateComplaintStatus(selectedComplaint.id, 'rejected')}
-                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-all"
+                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-all text-sm sm:text-base"
                   >
                     رفض
                   </button>
