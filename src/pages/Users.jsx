@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Search, Users as UsersIcon, Mail, Phone, Calendar, MapPin, Filter, Loader2, UserCheck, Package, Clock, AlertCircle, CheckCircle, XCircle } from 'lucide-react';
-import { collection, getDocs, query, orderBy, where } from 'firebase/firestore';
-import { db } from '../services/firebase';
+import { Search, Users as UsersIcon, Mail, Phone, Calendar, MapPin, Filter, Loader2, UserCheck, Package, Clock, AlertCircle, CheckCircle, XCircle, Plus } from 'lucide-react';
+import { collection, getDocs, query, orderBy, where, doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { db, secondaryAuth } from '../services/firebase';
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
 
@@ -15,6 +16,14 @@ export const Users = () => {
   const [selectedUser, setSelectedUser] = useState(null);
   const [userOrders, setUserOrders] = useState([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
+  const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
+  const [userFormData, setUserFormData] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    password: ''
+  });
+  const [isAddingUser, setIsAddingUser] = useState(false);
 
   useEffect(() => {
     fetchUsers();
@@ -145,6 +154,51 @@ export const Users = () => {
     return badges[status] || { text: status, color: 'bg-gray-100 text-gray-700' };
   };
 
+  const handleAddUser = async (e) => {
+    e.preventDefault();
+    setIsAddingUser(true);
+
+    try {
+      // 1. Create User in Firebase Auth
+      const userCredential = await createUserWithEmailAndPassword(
+        secondaryAuth,
+        userFormData.email,
+        userFormData.password
+      );
+      const user = userCredential.user;
+
+      // 2. Create User Document in Firestore
+      await setDoc(doc(db, 'users', user.uid), {
+        name: userFormData.name,
+        email: userFormData.email,
+        phone: userFormData.phone,
+        status: 'active',
+        createdAt: serverTimestamp(),
+        role: 'user',
+        uid: user.uid
+      });
+
+      alert('تم إضافة المستخدم بنجاح');
+      fetchUsers();
+      setIsAddUserModalOpen(false);
+      setUserFormData({
+        name: '',
+        email: '',
+        phone: '',
+        password: ''
+      });
+    } catch (error) {
+      console.error('Error adding user:', error);
+      if (error.code === 'auth/email-already-in-use') {
+        alert('البريد الإلكتروني مستخدم بالفعل');
+      } else {
+        alert('حدث خطأ أثناء إضافة المستخدم: ' + error.message);
+      }
+    } finally {
+      setIsAddingUser(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -155,9 +209,18 @@ export const Users = () => {
 
   return (
     <div>
-      <div className="mb-4 sm:mb-6 md:mb-8">
-        <h1 className="text-2xl sm:text-3xl font-black text-gray-800 mb-1 sm:mb-2">إدارة المستخدمين</h1>
-        <p className="text-sm sm:text-base text-gray-600">عرض ومتابعة جميع المستخدمين المسجلين</p>
+      <div className="mb-4 sm:mb-6 md:mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-black text-gray-800 mb-1 sm:mb-2">إدارة المستخدمين</h1>
+          <p className="text-sm sm:text-base text-gray-600">عرض ومتابعة جميع المستخدمين المسجلين</p>
+        </div>
+        <button
+          onClick={() => setIsAddUserModalOpen(true)}
+          className="flex items-center gap-2 px-6 py-3 bg-teal-500 text-white rounded-xl hover:bg-teal-600 transition-all font-bold shadow-lg"
+        >
+          <Plus size={20} />
+          إضافة مستخدم جديد
+        </button>
       </div>
 
       {/* Stats Cards */}
@@ -270,9 +333,9 @@ export const Users = () => {
                           <span>
                             {user.createdAt
                               ? (() => {
-                                  const date = new Date(user.createdAt);
-                                  return isNaN(date.getTime()) ? '-' : format(date, 'dd MMM yyyy, HH:mm', { locale: ar });
-                                })()
+                                const date = new Date(user.createdAt);
+                                return isNaN(date.getTime()) ? '-' : format(date, 'dd MMM yyyy, HH:mm', { locale: ar });
+                              })()
                               : '-'}
                           </span>
                         </div>
@@ -326,9 +389,8 @@ export const Users = () => {
               <div>
                 <h3 className="font-semibold text-sm sm:text-base text-gray-700 mb-1 sm:mb-2">الحالة</h3>
                 <span
-                  className={`inline-block px-3 py-1 rounded-full text-xs sm:text-sm font-semibold ${
-                    getStatusBadge(selectedUser.status).color
-                  }`}
+                  className={`inline-block px-3 py-1 rounded-full text-xs sm:text-sm font-semibold ${getStatusBadge(selectedUser.status).color
+                    }`}
                 >
                   {getStatusBadge(selectedUser.status).text}
                 </span>
@@ -338,9 +400,9 @@ export const Users = () => {
                 <p className="text-sm sm:text-base text-gray-800">
                   {selectedUser.createdAt
                     ? (() => {
-                        const date = new Date(selectedUser.createdAt);
-                        return isNaN(date.getTime()) ? '-' : format(date, 'dd MMM yyyy, HH:mm:ss', { locale: ar });
-                      })()
+                      const date = new Date(selectedUser.createdAt);
+                      return isNaN(date.getTime()) ? '-' : format(date, 'dd MMM yyyy, HH:mm:ss', { locale: ar });
+                    })()
                     : '-'}
                 </p>
               </div>
@@ -376,11 +438,11 @@ export const Users = () => {
                     {userOrders.map((order) => {
                       const orderStatusBadge = getOrderStatusBadge(order.status);
                       const isCanceled = order.status?.includes('canceled');
-                      const cancelReason = order.cancelReason || 
-                        (Array.isArray(order.history) 
-                          ? order.history.find(h => h.cancelReason)?.cancelReason 
+                      const cancelReason = order.cancelReason ||
+                        (Array.isArray(order.history)
+                          ? order.history.find(h => h.cancelReason)?.cancelReason
                           : null);
-                      
+
                       // تحديد تاريخ الإنشاء
                       let createdAt = null;
                       if (order.createdAt) {
@@ -412,13 +474,12 @@ export const Users = () => {
                       return (
                         <div
                           key={order.id}
-                          className={`bg-white rounded-lg p-4 border ${
-                            isCanceled 
-                              ? 'border-red-200 bg-red-50' 
-                              : order.status === 'completed'
+                          className={`bg-white rounded-lg p-4 border ${isCanceled
+                            ? 'border-red-200 bg-red-50'
+                            : order.status === 'completed'
                               ? 'border-green-200 bg-green-50'
                               : 'border-gray-200'
-                          }`}
+                            }`}
                         >
                           <div className="flex items-start justify-between gap-3 mb-2">
                             <div className="flex-1 min-w-0">
@@ -483,6 +544,91 @@ export const Users = () => {
                 )}
               </div>
             </div>
+          </div>
+        </div>
+      )}
+      {/* Add User Modal */}
+      {isAddUserModalOpen && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl animate-fadeIn">
+            <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+              <h2 className="text-xl font-bold text-gray-800">إضافة مستخدم جديد</h2>
+              <button
+                onClick={() => setIsAddUserModalOpen(false)}
+                className="p-2 hover:bg-gray-200 rounded-full transition-colors"
+              >
+                <XCircle size={20} className="text-gray-500" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddUser} className="p-6 space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">الاسم</label>
+                  <input
+                    type="text"
+                    required
+                    value={userFormData.name}
+                    onChange={(e) => setUserFormData({ ...userFormData, name: e.target.value })}
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-500 focus:outline-none"
+                    placeholder="اسم المستخدم"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">رقم الهاتف</label>
+                  <input
+                    type="tel"
+                    required
+                    value={userFormData.phone}
+                    onChange={(e) => setUserFormData({ ...userFormData, phone: e.target.value })}
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-500 focus:outline-none"
+                    placeholder="05XXXXXXXX"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">البريد الإلكتروني</label>
+                <input
+                  type="email"
+                  required
+                  value={userFormData.email}
+                  onChange={(e) => setUserFormData({ ...userFormData, email: e.target.value })}
+                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-500 focus:outline-none"
+                  placeholder="email@example.com"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">كلمة المرور</label>
+                <input
+                  type="password"
+                  required
+                  minLength={6}
+                  value={userFormData.password}
+                  onChange={(e) => setUserFormData({ ...userFormData, password: e.target.value })}
+                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-500 focus:outline-none"
+                  placeholder="******"
+                />
+              </div>
+
+              <div className="flex gap-4 pt-4 border-t border-gray-100">
+                <button
+                  type="submit"
+                  disabled={isAddingUser}
+                  className="flex-1 bg-teal-500 text-white py-3 rounded-xl font-bold hover:bg-teal-600 transition-colors disabled:opacity-50"
+                >
+                  {isAddingUser ? 'جاري الإضافة...' : 'حفظ المستخدم'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsAddUserModalOpen(false)}
+                  className="flex-1 bg-gray-100 text-gray-700 py-3 rounded-xl font-bold hover:bg-gray-200 transition-colors"
+                >
+                  إلغاء
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

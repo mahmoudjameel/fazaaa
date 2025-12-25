@@ -50,8 +50,31 @@ export const Layout = () => {
     }
   };
 
+  useEffect(() => {
+    // التحقق من الصلاحيات
+    const checkPermissions = () => {
+      const role = localStorage.getItem('admin_role');
+      const permissionsStr = localStorage.getItem('admin_permissions');
+
+      // إذا كان super_admin يرى كل شيء
+      if (role === 'super_admin') return;
+
+      if (permissionsStr) {
+        try {
+          const permissions = JSON.parse(permissionsStr);
+          // سنقوم بتصفية العناصر لاحقاً بناءً على هذه القائمة
+          // لكن هنا فقط نتأكد من تحميلها
+        } catch (e) {
+          console.error('Error parsing permissions', e);
+        }
+      }
+    };
+    checkPermissions();
+  }, []);
+
   const menuItems = [
     {
+      id: 'dashboard',
       path: '/',
       icon: LayoutDashboard,
       label: 'لوحة التحكم',
@@ -59,6 +82,7 @@ export const Layout = () => {
       category: 'main',
     },
     {
+      id: 'emergency_services',
       path: '/emergency-services',
       icon: AlertCircle,
       label: 'إدارة خدمات الطوارئ',
@@ -66,6 +90,7 @@ export const Layout = () => {
       category: 'services',
     },
     {
+      id: 'providers',
       path: '/providers',
       icon: Users,
       label: 'إدارة المزودين',
@@ -73,6 +98,7 @@ export const Layout = () => {
       category: 'management',
     },
     {
+      id: 'orders',
       path: '/orders',
       icon: ShoppingBag,
       label: 'إدارة الطلبات',
@@ -80,6 +106,7 @@ export const Layout = () => {
       category: 'management',
     },
     {
+      id: 'users',
       path: '/users',
       icon: UserCheck,
       label: 'العملاء',
@@ -87,6 +114,7 @@ export const Layout = () => {
       category: 'management',
     },
     {
+      id: 'cities',
       path: '/cities',
       icon: MapPin,
       label: 'إدارة المدن',
@@ -94,6 +122,7 @@ export const Layout = () => {
       category: 'settings',
     },
     {
+      id: 'city_managers',
       path: '/city-managers',
       icon: UserCog,
       label: 'بيانات مديري المدن',
@@ -101,6 +130,7 @@ export const Layout = () => {
       category: 'settings',
     },
     {
+      id: 'complaints',
       path: '/complaints',
       icon: MessageSquare,
       label: 'الشكاوي والملاحظات',
@@ -108,6 +138,7 @@ export const Layout = () => {
       category: 'management',
     },
     {
+      id: 'withdrawal_requests',
       path: '/withdrawal-requests',
       icon: Banknote,
       label: 'طلبات سحب الرصيد',
@@ -115,6 +146,7 @@ export const Layout = () => {
       category: 'financial',
     },
     {
+      id: 'distribution',
       path: '/distribution',
       icon: Settings,
       label: 'إعدادات التوزيع',
@@ -122,6 +154,7 @@ export const Layout = () => {
       category: 'settings',
     },
     {
+      id: 'bank_settings',
       path: '/bank-settings',
       icon: CreditCard,
       label: 'إعدادات البنك',
@@ -129,20 +162,59 @@ export const Layout = () => {
       category: 'settings',
     },
     {
-      path: '/terms-settings',
-      icon: FileText,
-      label: 'الشروط والأحكام',
+      id: 'app_settings',
+      path: '/app-settings',
+      icon: Settings,
+      label: 'إعدادات التطبيق',
       color: 'from-gray-500 to-gray-600',
       category: 'settings',
     },
+    {
+      id: 'admins',
+      path: '/admins',
+      icon: Shield,
+      label: 'إدارة المديرين',
+      color: 'from-red-500 to-red-600',
+      category: 'settings',
+      restricted: true // Only super_admin can see this by default
+    }
   ];
 
+  // تصفية القائمة بناءً على الصلاحيات
+  const getFilteredItems = () => {
+    const role = localStorage.getItem('admin_role');
+    const permissionsStr = localStorage.getItem('admin_permissions');
+
+    // السوبر أدمن يرى كل شيء
+    if (role === 'super_admin') return menuItems;
+
+    let permissions = [];
+    if (permissionsStr) {
+      try {
+        permissions = JSON.parse(permissionsStr);
+      } catch (e) {
+        console.error('Error parsing permissions', e);
+      }
+    }
+
+    return menuItems.filter(item => {
+      // إذا كان العنصر مقيد بـ super_admin فقط
+      if (item.restricted && role !== 'super_admin') return false;
+
+      // إذا كانت الصلاحيات تحتوي على معرف العنصر
+      // أو إذا كانت الصلاحيات تحتوي على الفئة (management, settings...)
+      return permissions.includes(item.id) || permissions.includes(item.category) || permissions.includes('all');
+    });
+  };
+
+  const filteredMenuItems = getFilteredItems();
+
   const groupedMenuItems = {
-    main: menuItems.filter((item) => item.category === 'main'),
-    services: menuItems.filter((item) => item.category === 'services'),
-    management: menuItems.filter((item) => item.category === 'management'),
-    financial: menuItems.filter((item) => item.category === 'financial'),
-    settings: menuItems.filter((item) => item.category === 'settings'),
+    main: filteredMenuItems.filter((item) => item.category === 'main'),
+    services: filteredMenuItems.filter((item) => item.category === 'services'),
+    management: filteredMenuItems.filter((item) => item.category === 'management'),
+    financial: filteredMenuItems.filter((item) => item.category === 'financial'),
+    settings: filteredMenuItems.filter((item) => item.category === 'settings'),
   };
 
   const categoryLabels = {
@@ -176,11 +248,10 @@ export const Layout = () => {
 
       {/* Sidebar */}
       <aside
-        className={`fixed lg:static inset-y-0 right-0 z-50 bg-white shadow-large transition-all duration-300 ease-in-out ${
-          sidebarOpen
-            ? 'w-64 sm:w-72 translate-x-0'
-            : 'w-0 -translate-x-full lg:w-20 lg:translate-x-0'
-        } flex flex-col border-l border-border-light relative`}
+        className={`fixed lg:static inset-y-0 right-0 z-50 bg-white shadow-large transition-all duration-300 ease-in-out ${sidebarOpen
+          ? 'w-64 sm:w-72 translate-x-0'
+          : 'w-0 -translate-x-full lg:w-20 lg:translate-x-0'
+          } flex flex-col border-l border-border-light relative`}
       >
         {/* Header */}
         <div className="p-3 sm:p-4 md:p-6 border-b border-border-light bg-gradient-to-br from-primary-orange to-primary-yellow flex-shrink-0">
@@ -241,28 +312,25 @@ export const Layout = () => {
                           navigate(item.path);
                           if (isMobile) setSidebarOpen(false);
                         }}
-                        className={`w-full flex items-center gap-2 sm:gap-3 px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 rounded-lg sm:rounded-xl transition-all duration-200 group relative ${
-                          isActive
-                            ? `bg-gradient-to-r ${item.color} text-white shadow-medium`
-                            : 'text-text-secondary hover:bg-background-light hover:text-text-primary'
-                        }`}
+                        className={`w-full flex items-center gap-2 sm:gap-3 px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 rounded-lg sm:rounded-xl transition-all duration-200 group relative ${isActive
+                          ? `bg-gradient-to-r ${item.color} text-white shadow-medium`
+                          : 'text-text-secondary hover:bg-background-light hover:text-text-primary'
+                          }`}
                         title={!sidebarOpen ? item.label : ''}
                       >
                         <div
-                          className={`flex-shrink-0 ${
-                            isActive
-                              ? 'text-white'
-                              : 'text-text-secondary group-hover:text-primary-orange'
-                          }`}
+                          className={`flex-shrink-0 ${isActive
+                            ? 'text-white'
+                            : 'text-text-secondary group-hover:text-primary-orange'
+                            }`}
                         >
                           <Icon className="w-4 h-4 sm:w-5 sm:h-5" />
                         </div>
                         {sidebarOpen && (
                           <>
                             <span
-                              className={`flex-1 text-right font-semibold text-sm sm:text-base truncate ${
-                                isActive ? 'text-white' : 'text-text-primary'
-                              }`}
+                              className={`flex-1 text-right font-semibold text-sm sm:text-base truncate ${isActive ? 'text-white' : 'text-text-primary'
+                                }`}
                             >
                               {item.label}
                             </span>

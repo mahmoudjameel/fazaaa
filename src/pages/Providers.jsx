@@ -13,11 +13,32 @@ import {
   assignProvidersToGroup,
   removeProviderFromGroup,
   updateProviderServiceStatus,
+  createManualProvider,
 } from '../services/adminService';
 import { doc, updateDoc, collection, getDocs } from 'firebase/firestore';
-import { db } from '../services/firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { db, storage } from '../services/firebase';
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
+
+export const NATIONALITIES = [
+  { value: 'sa', label: 'السعودية' },
+  { value: 'ae', label: 'الإمارات' },
+  { value: 'kw', label: 'الكويت' },
+  { value: 'bh', label: 'البحرين' },
+  { value: 'om', label: 'عُمان' },
+  { value: 'qa', label: 'قطر' },
+  { value: 'jo', label: 'الأردن' },
+  { value: 'eg', label: 'مصر' },
+  { value: 'ye', label: 'اليمن' },
+  { value: 'ma', label: 'المغرب' },
+  { value: 'dz', label: 'الجزائر' },
+  { value: 'tn', label: 'تونس' },
+  { value: 'lb', label: 'لبنان' },
+  { value: 'sy', label: 'سوريا' },
+  { value: 'sd', label: 'السودان' },
+  { value: 'other', label: 'جنسية أخرى' },
+];
 
 export const Providers = () => {
   const [providers, setProviders] = useState([]);
@@ -45,6 +66,17 @@ export const Providers = () => {
     isVip: false,
     priority: 0,
   });
+  const [isAddProviderModalOpen, setIsAddProviderModalOpen] = useState(false);
+  const [providerFormData, setProviderFormData] = useState({
+    firstName: '',
+    lastName: '',
+    phone: '',
+    email: '',
+    nationality: '',
+    services: [],
+  });
+  const [idImageFile, setIdImageFile] = useState(null);
+  const [isUploading, setIsUploading] = useState(false);
 
   useEffect(() => {
     fetchProviders();
@@ -280,6 +312,61 @@ export const Providers = () => {
     }
   };
 
+  const handleAddProvider = async () => {
+    try {
+      if (!providerFormData.firstName.trim() || !providerFormData.lastName.trim() || !providerFormData.phone.trim()) {
+        alert('يرجى إكمال جميع الحقول المطلوبة (الاسم والرقم)');
+        return;
+      }
+
+      if (providerFormData.services.length === 0) {
+        alert('يرجى اختيار خدمة واحدة على الأقل');
+        return;
+      }
+
+      if (!providerFormData.nationality) {
+        alert('يرجى اختيار الجنسية');
+        return;
+      }
+
+      setIsUploading(true);
+      let idImageUrl = '';
+
+      if (idImageFile) {
+        try {
+          const storageRef = ref(storage, `providers/${Date.now()}_${idImageFile.name}`);
+          await uploadBytes(storageRef, idImageFile);
+          idImageUrl = await getDownloadURL(storageRef);
+        } catch (uploadError) {
+          console.error('Image upload failed:', uploadError);
+          alert('فشل رفع الصورة، سيتم إضافة المزود بدون صورة');
+        }
+      }
+
+      await createManualProvider({
+        ...providerFormData,
+        idImage: idImageUrl
+      });
+
+      await fetchProviders();
+      setIsAddProviderModalOpen(false);
+      setProviderFormData({
+        firstName: '',
+        lastName: '',
+        phone: '',
+        email: '',
+        nationality: '',
+        services: [],
+      });
+      setIdImageFile(null);
+      setIsUploading(false);
+      alert('تم إضافة المزود بنجاح');
+    } catch (error) {
+      console.error('Error adding provider:', error);
+      alert('فشل إضافة المزود');
+    }
+  };
+
   const openGroupModal = (group = null) => {
     if (group) {
       setSelectedGroup(group);
@@ -347,13 +434,22 @@ export const Providers = () => {
           <h1 className="text-3xl font-black text-gray-800 mb-2">إدارة المزودين</h1>
           <p className="text-gray-600">عرض وإدارة جميع مزودي الخدمة</p>
         </div>
-        <button
-          onClick={() => setShowGroupsSection(!showGroupsSection)}
-          className="flex items-center gap-2 px-6 py-3 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-all font-semibold"
-        >
-          <Users size={20} />
-          {showGroupsSection ? 'إخفاء المجموعات' : 'إدارة المجموعات'}
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={() => setIsAddProviderModalOpen(true)}
+            className="flex items-center gap-2 px-6 py-3 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition-all font-semibold shadow-md"
+          >
+            <Plus size={20} />
+            إضافة مزود يدوياً
+          </button>
+          <button
+            onClick={() => setShowGroupsSection(!showGroupsSection)}
+            className="flex items-center gap-2 px-6 py-3 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-all font-semibold shadow-md"
+          >
+            <Users size={20} />
+            {showGroupsSection ? 'إخفاء المجموعات' : 'إدارة المجموعات'}
+          </button>
+        </div>
       </div>
 
       {/* Groups Management Section */}
@@ -549,17 +645,30 @@ export const Providers = () => {
                     <tr key={provider.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4">
                         <div>
-                          <p className="font-semibold text-gray-800">
-                            {provider.firstName} {provider.lastName}
-                          </p>
+                          <div className="flex items-center gap-2">
+                            <p className="font-semibold text-gray-800">
+                              {provider.firstName} {provider.lastName}
+                            </p>
+                            {provider.registrationMethod === 'phone_otp' && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                                <Phone size={10} className="ml-1" />
+                                OTP
+                              </span>
+                            )}
+                          </div>
                           <div className="flex items-center gap-2 mt-1 text-sm text-gray-500">
                             <Phone size={14} />
-                            <span>{provider.phone}</span>
+                            <span className="font-medium">{provider.phone}</span>
                           </div>
-                          {provider.email && (
+                          {provider.email ? (
                             <div className="flex items-center gap-2 mt-1 text-sm text-gray-500">
                               <Mail size={14} />
                               <span>{provider.email}</span>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2 mt-1 text-xs text-gray-400 italic">
+                              <Mail size={12} />
+                              <span>لا يوجد بريد إلكتروني</span>
                             </div>
                           )}
                         </div>
@@ -570,12 +679,12 @@ export const Providers = () => {
                             // دعم البنية القديمة (array) والجديدة (object)
                             const services = provider.services || {};
                             let serviceList = [];
-                            
+
                             if (Array.isArray(services)) {
                               // البنية القديمة
-                              serviceList = services.map(s => ({ 
-                                id: typeof s === 'string' ? s : String(s), 
-                                status: 'approved' 
+                              serviceList = services.map(s => ({
+                                id: typeof s === 'string' ? s : String(s),
+                                status: 'approved'
                               }));
                             } else if (typeof services === 'object' && services !== null) {
                               // البنية الجديدة
@@ -589,17 +698,17 @@ export const Providers = () => {
                                   status: data?.status || 'pending',
                                 }));
                             }
-                            
+
                             return serviceList.map((service) => {
                               // البحث عن اسم الخدمة من mainServices أو استخدام serviceNames القديم
                               const serviceId = String(service.id || '');
                               let serviceName = serviceId;
-                              
+
                               // البحث في الخدمات الرئيسية (emergency-services)
-                              const mainService = mainServices.find(s => 
+                              const mainService = mainServices.find(s =>
                                 s.id === serviceId || s.serviceId === serviceId
                               );
-                              
+
                               if (mainService) {
                                 serviceName = mainService.name;
                               } else {
@@ -612,13 +721,13 @@ export const Providers = () => {
                                 };
                                 serviceName = oldServiceNames[serviceId] || serviceId;
                               }
-                              
+
                               const statusColors = {
                                 approved: 'bg-green-100 text-green-700',
                                 pending: 'bg-yellow-100 text-yellow-700',
                                 rejected: 'bg-red-100 text-red-700',
                               };
-                              
+
                               return (
                                 <span
                                   key={serviceId}
@@ -775,6 +884,171 @@ export const Providers = () => {
           </table>
         </div>
       </div>
+
+      {/* Add Provider Modal */}
+      {isAddProviderModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-6">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <h2 className="text-2xl font-bold text-gray-800">إضافة مزود جديد يدوياً</h2>
+                <button
+                  onClick={() => setIsAddProviderModalOpen(false)}
+                  className="text-gray-500 hover:text-gray-700"
+                >
+                  <X size={24} />
+                </button>
+              </div>
+            </div>
+            <div className="p-6 space-y-4 text-right" dir="rtl">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">الاسم الأول *</label>
+                  <input
+                    type="text"
+                    value={providerFormData.firstName}
+                    onChange={(e) => setProviderFormData({ ...providerFormData, firstName: e.target.value })}
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none"
+                    placeholder="الاسم الأول"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">الاسم الأخير *</label>
+                  <input
+                    type="text"
+                    value={providerFormData.lastName}
+                    onChange={(e) => setProviderFormData({ ...providerFormData, lastName: e.target.value })}
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none"
+                    placeholder="الاسم الأخير"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">الجنسية *</label>
+                <select
+                  value={providerFormData.nationality}
+                  onChange={(e) => setProviderFormData({ ...providerFormData, nationality: e.target.value })}
+                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none"
+                >
+                  <option value="">اختر الجنسية</option>
+                  {NATIONALITIES.map((nat) => (
+                    <option key={nat.value} value={nat.value}>
+                      {nat.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">صورة الإقامة/الهوية (اختياري)</label>
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 bg-gray-50 hover:bg-gray-100 transition-all text-center">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => setIdImageFile(e.target.files[0])}
+                    className="hidden"
+                    id="id-image-upload"
+                  />
+                  <label htmlFor="id-image-upload" className="cursor-pointer flex flex-col items-center justify-center">
+                    {idImageFile ? (
+                      <div className="flex items-center gap-2 text-teal-600">
+                        <CheckCircle size={24} />
+                        <span className="font-semibold">{idImageFile.name}</span>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="w-12 h-12 rounded-full bg-teal-100 flex items-center justify-center mb-2">
+                          <span className="text-2xl">📷</span>
+                        </div>
+                        <span className="text-gray-600 font-medium">اضغط لرفع صورة الإقامة</span>
+                        <span className="text-gray-400 text-xs mt-1">PNG, JPG up to 5MB</span>
+                      </>
+                    )}
+                  </label>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">رقم الهاتف * (966XXXXXXXXX)</label>
+                <div className="relative">
+                  <input
+                    type="tel"
+                    value={providerFormData.phone}
+                    onChange={(e) => setProviderFormData({ ...providerFormData, phone: e.target.value })}
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none"
+                    placeholder="5XXXXXXXX"
+                  />
+                  <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 border-r pr-2 ltr" dir="ltr">
+                    +966
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">البريد الإلكتروني (اختياري)</label>
+                <input
+                  type="email"
+                  value={providerFormData.email}
+                  onChange={(e) => setProviderFormData({ ...providerFormData, email: e.target.value })}
+                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none"
+                  placeholder="example@email.com"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-4">الخدمات المتاحة للمزود *</label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-60 overflow-y-auto p-2 border-2 border-gray-100 rounded-xl">
+                  {mainServices.map((service) => (
+                    <label
+                      key={service.id}
+                      className={`flex items-center p-3 rounded-lg border-2 cursor-pointer transition-all ${providerFormData.services.includes(service.id)
+                        ? 'border-teal-500 bg-teal-50'
+                        : 'border-gray-100 bg-white hover:border-gray-300'
+                        }`}
+                    >
+                      <input
+                        type="checkbox"
+                        className="hidden"
+                        checked={providerFormData.services.includes(service.id)}
+                        onChange={(e) => {
+                          const updatedServices = e.target.checked
+                            ? [...providerFormData.services, service.id]
+                            : providerFormData.services.filter(id => id !== service.id);
+                          setProviderFormData({ ...providerFormData, services: updatedServices });
+                        }}
+                      />
+                      <div className={`w-5 h-5 rounded border-2 ml-3 flex items-center justify-center ${providerFormData.services.includes(service.id)
+                        ? 'bg-teal-500 border-teal-500'
+                        : 'border-gray-300'
+                        }`}>
+                        {providerFormData.services.includes(service.id) && <CheckCircle size={14} className="text-white" />}
+                      </div>
+                      <span className="font-semibold text-gray-700">{service.name}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-4 sticky bottom-0 bg-white">
+                <button
+                  onClick={handleAddProvider}
+                  disabled={isUploading}
+                  className={`flex-1 px-6 py-4 bg-teal-500 text-white rounded-xl hover:bg-teal-600 transition-all font-bold text-lg shadow-lg ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  {isUploading ? 'جاري الإضافة...' : 'إضافة المزود الآن'}
+                </button>
+                <button
+                  onClick={() => setIsAddProviderModalOpen(false)}
+                  className="flex-1 px-6 py-4 bg-gray-200 text-gray-700 rounded-xl hover:bg-gray-300 transition-all font-bold text-lg"
+                >
+                  إلغاء
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Group Modal */}
       {isGroupModalOpen && (
@@ -939,14 +1213,24 @@ export const Providers = () => {
               </div>
               <div>
                 <h3 className="font-semibold text-gray-700 mb-2">رقم الهاتف</h3>
-                <p className="text-gray-800">{selectedProvider.phone}</p>
-              </div>
-              {selectedProvider.email && (
-                <div>
-                  <h3 className="font-semibold text-gray-700 mb-2">البريد الإلكتروني</h3>
-                  <p className="text-gray-800">{selectedProvider.email}</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-gray-800 font-medium">{selectedProvider.phone}</p>
+                  {selectedProvider.registrationMethod === 'phone_otp' && (
+                    <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                      <Phone size={12} className="ml-1" />
+                      تسجيل OTP
+                    </span>
+                  )}
                 </div>
-              )}
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-700 mb-2">البريد الإلكتروني</h3>
+                {selectedProvider.email ? (
+                  <p className="text-gray-800">{selectedProvider.email}</p>
+                ) : (
+                  <p className="text-gray-400 italic text-sm">لا يوجد بريد إلكتروني (تسجيل برقم الهاتف)</p>
+                )}
+              </div>
               {selectedProvider.groupId && (
                 <div>
                   <h3 className="font-semibold text-gray-700 mb-2">المجموعة</h3>
@@ -973,12 +1257,12 @@ export const Providers = () => {
                     // دعم البنية القديمة (array) والجديدة (object)
                     const services = selectedProvider.services || {};
                     let serviceList = [];
-                    
+
                     if (Array.isArray(services)) {
                       // البنية القديمة: تحويل إلى object
-                      serviceList = services.map(s => ({ 
-                        id: typeof s === 'string' ? s : String(s), 
-                        status: 'approved' 
+                      serviceList = services.map(s => ({
+                        id: typeof s === 'string' ? s : String(s),
+                        status: 'approved'
                       }));
                     } else if (typeof services === 'object' && services !== null) {
                       // البنية الجديدة
@@ -994,17 +1278,17 @@ export const Providers = () => {
                           updatedAt: data?.updatedAt,
                         }));
                     }
-                    
+
                     return serviceList.length > 0 ? (
                       serviceList.map((service) => {
                         const serviceId = String(service.id || '');
-                        
+
                         // البحث عن اسم الخدمة من mainServices أو استخدام serviceNames القديم
                         let serviceName = serviceId;
-                        const mainService = mainServices.find(s => 
+                        const mainService = mainServices.find(s =>
                           s.id === serviceId || s.serviceId === serviceId
                         );
-                        
+
                         if (mainService) {
                           serviceName = mainService.name;
                         } else {
@@ -1017,7 +1301,7 @@ export const Providers = () => {
                           };
                           serviceName = oldServiceNames[serviceId] || serviceId;
                         }
-                        
+
                         const handleServiceStatusChange = async (newStatus) => {
                           try {
                             await updateProviderServiceStatus(selectedProvider.id, serviceId, newStatus);
@@ -1041,7 +1325,7 @@ export const Providers = () => {
                             alert('فشل تحديث حالة الخدمة');
                           }
                         };
-                        
+
                         return (
                           <div
                             key={serviceId}

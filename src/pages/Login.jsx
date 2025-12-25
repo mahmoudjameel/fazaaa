@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Lock, Mail, Shield, Eye, EyeOff } from 'lucide-react';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { auth, db } from '../services/firebase';
 
 export const Login = ({ onLogin }) => {
   const [email, setEmail] = useState('');
@@ -15,19 +18,110 @@ export const Login = ({ onLogin }) => {
     setError('');
     setIsLoading(true);
 
-    // Simulate API call
-    setTimeout(() => {
-      if (email === 'admin@fazaaa.com' && password === 'admin123') {
+    try {
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
+
+      // التحقق من صلاحيات المدير من مجموعة app_admins
+      const adminDocRef = doc(db, 'app_admins', user.uid);
+      const adminDoc = await getDoc(adminDocRef);
+
+      if (adminDoc.exists()) {
+        const adminData = adminDoc.data();
+
+        // حفظ بيانات الجلسة والصلاحيات
         localStorage.setItem('admin_authenticated', 'true');
+        localStorage.setItem('admin_role', adminData.role || 'viewer');
+        localStorage.setItem('admin_permissions', JSON.stringify(adminData.permissions || []));
+        localStorage.setItem('admin_email', user.email);
+        localStorage.setItem('admin_name', adminData.name || 'Admin');
+
         if (onLogin) {
           onLogin();
         }
         navigate('/');
       } else {
-        setError('البريد الإلكتروني أو كلمة المرور غير صحيحة');
+        // BOOTSTRAP: إذا كان هذا هو البريد "admin@fazaaa.com" أو المستخدم يحاول الدخول كمدير رئيسي
+        // سنقوم بإنشاء السجل تلقائياً لتسهيل الدخول الأول
+        const BOOTSTRAP_EMAILS = ['admin@fazaaa.com', 'ma7moudos@gmail.com'];
+
+        if (BOOTSTRAP_EMAILS.includes(email.toLowerCase()) || email.startsWith('admin')) {
+          await setDoc(adminDocRef, {
+            name: 'Main Admin',
+            email: user.email,
+            role: 'super_admin',
+            permissions: [],
+            isActive: true,
+            createdAt: serverTimestamp()
+          });
+
+          // Proceed as Super Admin
+          localStorage.setItem('admin_authenticated', 'true');
+          localStorage.setItem('admin_role', 'super_admin');
+          localStorage.setItem('admin_permissions', JSON.stringify([]));
+          localStorage.setItem('admin_email', user.email);
+          localStorage.setItem('admin_name', 'Main Admin');
+
+          if (onLogin) onLogin();
+          navigate('/');
+          return;
+        }
+
+        // إذا لم يكن لديه سجل في app_admins (حتى لو كان مسجل في Auth)
+        setError('ليس لديك صلاحية الوصول للوحة التحكم');
+        await auth.signOut();
       }
+    } catch (err) {
+      console.error('Login error:', err);
+      if (err.code === 'auth/invalid-login-credentials' || err.code === 'auth/invalid-email' || err.code === 'auth/wrong-password') {
+        setError('البريد الإلكتروني أو كلمة المرور غير صحيحة');
+      } else if (err.code === 'auth/too-many-requests') {
+        setError('تم حظر المحاولات مؤقتاً، يرجى المحاولة لاحقاً');
+      } else {
+        setError('حدث خطأ في تسجيل الدخول');
+      }
+    } finally {
       setIsLoading(false);
-    }, 500);
+    }
+  };
+
+  const createDefaultAdmin = async () => {
+    if (!window.confirm('هل تريد إنشاء حساب المدير الافتراضي (admin@fazaaa.com)؟')) return;
+    setIsLoading(true);
+    try {
+      // 1. Create Auth User
+
+      try {
+        await createUserWithEmailAndPassword(auth, 'admin@fazaaa.com', '123456');
+      } catch (authError) {
+        if (authError.code !== 'auth/email-already-in-use') {
+          throw authError;
+        }
+        // If already exists, we proceed to update permissions
+        console.log('User already exists, updating permissions...');
+      }
+
+      // 2. Create Admin Doc
+      const adminDocRef = doc(db, 'app_admins', auth.currentUser?.uid || (await signInWithEmailAndPassword(auth, 'admin@fazaaa.com', '123456')).user.uid);
+
+      await setDoc(adminDocRef, {
+        name: 'Main Admin',
+        email: 'admin@fazaaa.com',
+        role: 'super_admin',
+        permissions: [],
+        isActive: true,
+        createdAt: serverTimestamp()
+      });
+
+      alert('تم إنشاء حساب المدير الافتراضي بنجاح! يمكنك الآن تسجيل الدخول.');
+      setEmail('admin@fazaaa.com');
+      setPassword('123456');
+    } catch (error) {
+      console.error('Error creating default admin:', error);
+      alert('حدث خطأ: ' + error.message);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -121,26 +215,22 @@ export const Login = ({ onLogin }) => {
             </button>
           </form>
 
-          {/* Info Section */}
-          <div className="mt-4 sm:mt-6 pt-4 sm:pt-6 border-t border-border-light">
-            <div className="bg-blue-50 border-2 border-blue-200 rounded-lg sm:rounded-xl p-3 sm:p-4">
-              <p className="text-xs text-blue-800 font-semibold text-center">
-                البيانات الافتراضية للدخول:
-              </p>
-              <div className="mt-2 text-center space-y-1">
-                <p className="text-xs sm:text-sm font-bold text-blue-900">
-                  admin@fazaaa.com
-                </p>
-                <p className="text-xs sm:text-sm font-bold text-blue-900">admin123</p>
-              </div>
-            </div>
+          {/* Dev Helper - Default Admin Setup */}
+          <div className="mt-4 text-center">
+            <button
+              type="button"
+              onClick={createDefaultAdmin}
+              className="text-xs text-blue-600 hover:underline"
+            >
+              (Dev) إعداد حساب المدير الافتراضي
+            </button>
           </div>
-        </div>
 
-        {/* Footer */}
-        <p className="text-center text-white/90 text-xs sm:text-sm mt-4 sm:mt-6 font-medium">
-          © 2024 فزّاعين - جميع الحقوق محفوظة
-        </p>
+          {/* Footer */}
+          <p className="text-center text-white/90 text-xs sm:text-sm mt-4 sm:mt-6 font-medium">
+            © 2024 فزّاعين - جميع الحقوق محفوظة
+          </p>
+        </div>
       </div>
     </div>
   );

@@ -33,16 +33,86 @@ export const getAllProviders = async () => {
   }
 };
 
+export const createManualProvider = async (providerData) => {
+  try {
+    const providersRef = collection(db, 'providers');
+
+    // تنسيق رقم الهاتف (يجب أن يكون 9665XXXXXXXX)
+    let phone = providerData.phone.replace(/[^0-9]/g, '');
+    if (phone.startsWith('05')) {
+      phone = '966' + phone.substring(1);
+    } else if (phone.startsWith('5')) {
+      phone = '966' + phone;
+    } else if (!phone.startsWith('966')) {
+      phone = '966' + phone;
+    }
+
+    // تجهيز الخدمات
+    const services = {};
+    if (providerData.services && Array.isArray(providerData.services)) {
+      providerData.services.forEach(serviceId => {
+        services[serviceId] = {
+          status: 'approved',
+          requestedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+      });
+    }
+
+    const newProvider = {
+      firstName: providerData.firstName,
+      lastName: providerData.lastName,
+      phone: phone,
+      email: providerData.email || null,
+      nationality: providerData.nationality || '',
+      services: services,
+      status: 'approved',
+      approvalStatus: 'approved',
+      isActive: true,
+      isOnline: false,
+      registrationMethod: 'manual',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      stats: {
+        totalOrders: 0,
+        rating: 0,
+        earnings: 0,
+      },
+    };
+
+    // إضافة الوثائق
+    newProvider.documents = {
+      id_photo: providerData.idImage || '',
+      equipment_photo: '',
+      driver_license: '',
+      car_registration: '',
+      car_front: '',
+      car_side: ''
+    };
+
+    const docRef = await addDoc(providersRef, newProvider);
+    // تحديث المستند بـ uid ليتوافق مع هيكلة التطبيق
+    await updateDoc(doc(db, 'providers', docRef.id), {
+      uid: docRef.id
+    });
+
+    return { success: true, id: docRef.id };
+  } catch (error) {
+    console.error('Create manual provider error:', error);
+    throw error;
+  }
+};
+
 // جلب بيانات مزود محدد
 export const getProviderById = async (providerId) => {
   try {
     const providerRef = doc(db, 'providers', providerId);
     const providerSnap = await getDoc(providerRef);
-    
+
     if (!providerSnap.exists()) {
       return { success: false, error: 'المزود غير موجود' };
     }
-    
+
     return { success: true, provider: { id: providerSnap.id, ...providerSnap.data() } };
   } catch (error) {
     console.error('Get provider by ID error:', error);
@@ -53,10 +123,12 @@ export const getProviderById = async (providerId) => {
 export const updateProviderStatus = async (providerId, status) => {
   try {
     const providerRef = doc(db, 'providers', providerId);
-    // تحديث approvalStatus (حالة الموافقة) وليس status (حالة الاتصال)
-    // status قد يحتوي على "online"/"offline" لذلك نستخدم approvalStatus
+    // تحديث كلاً من approvalStatus و status للتوافق
+    // approvalStatus: حالة الموافقة (pending, approved, rejected)
+    // status: نحدثها أيضاً لضمان التوافق مع الكود القديم
     await updateDoc(providerRef, {
-      approvalStatus: status, // حالة الموافقة: pending, approved, rejected
+      approvalStatus: status, // حالة الموافقة
+      status: status, // تحديث status أيضاً للتوافق
       updatedAt: new Date().toISOString(),
     });
     return { success: true };
@@ -71,14 +143,14 @@ export const updateProviderServiceStatus = async (providerId, serviceId, status)
   try {
     const providerRef = doc(db, 'providers', providerId);
     const providerSnap = await getDoc(providerRef);
-    
+
     if (!providerSnap.exists()) {
       throw new Error('المزود غير موجود');
     }
-    
+
     const providerData = providerSnap.data();
     const services = providerData.services || {};
-    
+
     // تحديث حالة الخدمة
     if (services[serviceId]) {
       services[serviceId] = {
@@ -94,12 +166,12 @@ export const updateProviderServiceStatus = async (providerId, serviceId, status)
         updatedAt: new Date().toISOString(),
       };
     }
-    
+
     await updateDoc(providerRef, {
       services,
       updatedAt: new Date().toISOString(),
     });
-    
+
     return { success: true };
   } catch (error) {
     console.error('Update provider service status error:', error);
@@ -313,8 +385,15 @@ export const getDashboardStats = async () => {
 
     const stats = {
       totalProviders: providers.length,
-      activeProviders: providers.filter((p) => p.status === 'approved' && p.isOnline).length,
-      pendingProviders: providers.filter((p) => p.status === 'pending').length,
+      // استخدام approvalStatus بدلاً من status (دعم التسجيل بالهاتف)
+      activeProviders: providers.filter((p) => {
+        const approvalStatus = p.approvalStatus || p.status;
+        return approvalStatus === 'approved' && p.isOnline;
+      }).length,
+      pendingProviders: providers.filter((p) => {
+        const approvalStatus = p.approvalStatus || p.status;
+        return approvalStatus === 'pending';
+      }).length,
       totalOrders: orders.length,
       completedOrders: orders.filter((o) => o.status === 'completed').length,
       activeOrders: orders.filter((o) => ['searching', 'accepted', 'arriving'].includes(o.status)).length,
@@ -343,35 +422,35 @@ export const getRecentActivity = async () => {
     const q = query(requestsRef, orderBy('updatedAt', 'desc'), limit(20));
     const querySnapshot = await getDocs(q);
     const activities = [];
-    
+
     querySnapshot.forEach((doc) => {
       const data = doc.data();
       const history = Array.isArray(data.history) ? data.history : [];
-      
+
       // البحث عن أحداث الرفض والإلغاء في history
-      const rejectionEvents = history.filter(h => 
-        h.action === 'provider_rejection' || 
+      const rejectionEvents = history.filter(h =>
+        h.action === 'provider_rejection' ||
         h.action === 'provider_cancellation' ||
         ['canceled_by_provider', 'canceled_by_provider_with_reason', 'canceled_by_client', 'canceled_by_client_with_reason'].includes(h.status)
       );
-      
+
       // إضافة نشاط لكل حدث رفض أو إلغاء
       rejectionEvents.forEach((event, index) => {
         let activityType = 'order';
         let activityTitle = '';
-        
+
         if (event.action === 'provider_rejection') {
           activityType = 'rejection';
           activityTitle = `رفض من المزود - ${data.serviceName || 'خدمة'}`;
         } else if (event.action === 'provider_cancellation' || ['canceled_by_provider', 'canceled_by_provider_with_reason'].includes(event.status)) {
           // التحقق من أن المزود قبل الطلب أولاً
-          const wasAccepted = data.status === 'assigned' || 
-                             data.status === 'en_route' || 
-                             data.status === 'arrived' || 
-                             data.status === 'in_progress' ||
-                             data.assignedAt ||
-                             history.some(h => h.status === 'assigned' && h.updatedBy === 'provider');
-          
+          const wasAccepted = data.status === 'assigned' ||
+            data.status === 'en_route' ||
+            data.status === 'arrived' ||
+            data.status === 'in_progress' ||
+            data.assignedAt ||
+            history.some(h => h.status === 'assigned' && h.updatedBy === 'provider');
+
           if (wasAccepted) {
             activityType = 'provider_cancel_after_accept';
             activityTitle = `رفض المزود بعد قبول الطلب - ${data.serviceName || 'خدمة'}`;
@@ -381,13 +460,13 @@ export const getRecentActivity = async () => {
           }
         } else if (['canceled_by_client', 'canceled_by_client_with_reason'].includes(event.status)) {
           // التحقق من أن العميل ألغى بعد القبول
-          const wasAccepted = data.status === 'assigned' || 
-                             data.status === 'en_route' || 
-                             data.status === 'arrived' || 
-                             data.status === 'in_progress' ||
-                             data.assignedAt ||
-                             history.some(h => h.status === 'assigned');
-          
+          const wasAccepted = data.status === 'assigned' ||
+            data.status === 'en_route' ||
+            data.status === 'arrived' ||
+            data.status === 'in_progress' ||
+            data.assignedAt ||
+            history.some(h => h.status === 'assigned');
+
           if (wasAccepted) {
             activityType = 'client_cancel_after_accept';
             activityTitle = `إلغاء العميل بعد قبول الطلب - ${data.serviceName || 'خدمة'}`;
@@ -396,16 +475,16 @@ export const getRecentActivity = async () => {
             activityTitle = `إلغاء من العميل - ${data.serviceName || 'خدمة'}`;
           }
         }
-        
+
         if (activityType !== 'order') {
           // تحديد ما إذا كان الرفض/الإلغاء بعد القبول
-          const wasAccepted = data.status === 'assigned' || 
-                             data.status === 'en_route' || 
-                             data.status === 'arrived' || 
-                             data.status === 'in_progress' ||
-                             data.assignedAt ||
-                             history.some(h => h.status === 'assigned');
-          
+          const wasAccepted = data.status === 'assigned' ||
+            data.status === 'en_route' ||
+            data.status === 'arrived' ||
+            data.status === 'in_progress' ||
+            data.assignedAt ||
+            history.some(h => h.status === 'assigned');
+
           activities.push({
             id: `${doc.id}-${index}`,
             requestId: doc.id,
@@ -419,7 +498,7 @@ export const getRecentActivity = async () => {
             timestamp: event.timestamp || data.updatedAt,
             createdAt: event.timestamp || data.updatedAt,
             wasAcceptedAfter: wasAccepted && (
-              activityType === 'provider_cancel' || 
+              activityType === 'provider_cancel' ||
               activityType === 'provider_cancel_after_accept' ||
               activityType === 'client_cancel' ||
               activityType === 'client_cancel_after_accept'
@@ -428,7 +507,7 @@ export const getRecentActivity = async () => {
           });
         }
       });
-      
+
       // إضافة الطلب نفسه كأنشطة عادية
       if (data.status && !rejectionEvents.length) {
         activities.push({
@@ -442,14 +521,14 @@ export const getRecentActivity = async () => {
         });
       }
     });
-    
+
     // ترتيب حسب التاريخ
     activities.sort((a, b) => {
       const timeA = a.timestamp?.toMillis?.() ?? (a.timestamp ? new Date(a.timestamp).getTime() : 0);
       const timeB = b.timestamp?.toMillis?.() ?? (b.timestamp ? new Date(b.timestamp).getTime() : 0);
       return timeB - timeA;
     });
-    
+
     return { success: true, activities: activities.slice(0, 10) };
   } catch (error) {
     console.error('Get recent activity error:', error);

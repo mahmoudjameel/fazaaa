@@ -13,7 +13,8 @@ import { Users } from './pages/Users';
 import { Complaints } from './pages/Complaints';
 import BankSettings from './pages/BankSettings';
 import WithdrawalRequests from './pages/WithdrawalRequests';
-import TermsSettings from './pages/TermsSettings';
+import AppSettings from './pages/AppSettings';
+import Admins from './pages/Admins';
 import { Login } from './pages/Login';
 
 function App() {
@@ -76,7 +77,8 @@ function App() {
           <Route path="complaints" element={<Complaints />} />
           <Route path="bank-settings" element={<BankSettings />} />
           <Route path="withdrawal-requests" element={<WithdrawalRequests />} />
-          <Route path="terms-settings" element={<TermsSettings />} />
+          <Route path="app-settings" element={<AppSettings />} />
+          <Route path="admins" element={<Admins />} />
         </Route>
       </Routes>
     </Router>
