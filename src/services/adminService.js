@@ -13,6 +13,7 @@ import {
   setDoc,
   serverTimestamp,
   onSnapshot,
+  runTransaction,
 } from 'firebase/firestore';
 import { db } from './firebase';
 
@@ -45,6 +46,13 @@ export const createManualProvider = async (providerData) => {
       phone = '966' + phone;
     } else if (!phone.startsWith('966')) {
       phone = '966' + phone;
+    }
+
+    // التحقق من تكرار رقم الجوال
+    const q = query(collection(db, 'providers'), where('phone', '==', phone));
+    const querySnapshot = await getDocs(q);
+    if (!querySnapshot.empty) {
+      return { success: false, error: 'duplicate_phone' };
     }
 
     // تجهيز الخدمات
@@ -400,6 +408,9 @@ export const getDashboardStats = async () => {
       totalRevenue: orders
         .filter((o) => o.status === 'completed')
         .reduce((sum, o) => sum + (o.price || 0), 0),
+      totalCommission: orders
+        .filter((o) => o.status === 'completed')
+        .reduce((sum, o) => sum + (o.commission || 0), 0),
       todayOrders: orders.filter((o) => {
         const today = new Date();
         const orderDate = new Date(o.createdAt);
@@ -632,3 +643,218 @@ export const listenToAllProviders = (callback) => {
 };
 
 
+
+// ✅ Manual Order Management
+
+/**
+ * البحث عن مستخدمين بالاسم أو الهاتف
+ * @param {string} term - كلمة البحث
+ * @returns {Promise<Array>}
+ */
+export const getUsersBySearch = async (term) => {
+  try {
+    const usersRef = collection(db, 'users');
+    const searchLower = term.toLowerCase().trim();
+
+    // في Firestore، البحث النصي المباشر محدود، لذا سنجلب الكل ونفلتر في البداية
+    // أو نستخدم رقم الهاتف كبحث دقيق
+    const q = query(usersRef, limit(50));
+    const querySnapshot = await getDocs(q);
+
+    const users = [];
+    querySnapshot.forEach((doc) => {
+      const data = doc.data();
+      if (
+        data.name?.toLowerCase().includes(searchLower) ||
+        data.firstName?.toLowerCase().includes(searchLower) ||
+        data.lastName?.toLowerCase().includes(searchLower) ||
+        data.phone?.includes(term) ||
+        data.email?.toLowerCase().includes(searchLower)
+      ) {
+        users.push({ id: doc.id, ...data });
+      }
+    });
+
+    return { success: true, users };
+  } catch (error) {
+    console.error('Search users error:', error);
+    throw error;
+  }
+};
+
+/**
+ * إنشاء طلب يدوي جديد
+ * @param {Object} orderData - بيانات الطلب
+ * @returns {Promise<Object>}
+ */
+export const createManualOrder = async (orderData) => {
+  try {
+    const requestsRef = collection(db, 'requests');
+
+    const newRequest = {
+      ...orderData,
+      status: 'searching',
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      source: 'admin_panel',
+      history: [
+        {
+          status: 'searching',
+          timestamp: new Date().toISOString(),
+          message: 'تم إنشاء الطلب يدوياً عن طريق الإدارة',
+          updatedBy: 'admin'
+        }
+      ]
+    };
+
+    const docRef = await addDoc(requestsRef, newRequest);
+    return { success: true, id: docRef.id };
+  } catch (error) {
+    console.error('Create manual order error:', error);
+    throw error;
+  }
+};
+
+/**
+ * تحديث تفاصيل طلب موجود
+ * @param {string} orderId - معرف الطلب
+ * @param {Object} updateData - البيانات المراد تحديثها
+ * @returns {Promise<Object>}
+ */
+export const updateOrderDetails = async (orderId, updateData) => {
+  try {
+    const orderRef = doc(db, 'requests', orderId);
+
+    const updatePayload = {
+      ...updateData,
+      updatedAt: serverTimestamp(),
+    };
+
+    // إضافة سجل للتغيير في history إذا أردنا
+    // سنقوم بجلب المستند أولاً لإضافة التاريخ
+    const snap = await getDoc(orderRef);
+    if (snap.exists()) {
+      const currentData = snap.data();
+      const history = Array.isArray(currentData.history) ? currentData.history : [];
+      history.push({
+        action: 'admin_update',
+        timestamp: new Date().toISOString(),
+        message: 'تم تحديث تفاصيل الطلب عن طريق الإدارة',
+        updatedBy: 'admin',
+        changes: updateData
+      });
+      updatePayload.history = history;
+    }
+
+    await updateDoc(orderRef, updatePayload);
+    return { success: true };
+  } catch (error) {
+    console.error('Update order details error:', error);
+    throw error;
+  }
+};
+/**
+ * الحصول على سجل محفظة المزود
+ * @param {string} providerId - معرف المزود
+ * @returns {Promise<Array>}
+ */
+export const getProviderWalletHistory = async (providerId) => {
+  try {
+    const transactionsRef = collection(db, 'providers', providerId, 'transactions');
+    const q = query(transactionsRef, orderBy('timestamp', 'desc'), limit(100));
+    const querySnapshot = await getDocs(q);
+
+    const history = [];
+    querySnapshot.forEach((doc) => {
+      history.push({ id: doc.id, ...doc.data() });
+    });
+
+    return { success: true, history };
+  } catch (error) {
+    console.error('Get provider wallet history error:', error);
+    throw error;
+  }
+};
+
+/**
+ * تعديل رصيد محفظة المزود
+ * @param {string} providerId - معرف المزود
+ * @param {number} amount - المبلغ
+ * @param {string} type - نوع الحركة (addition, deduction, compensation)
+ * @param {string} reason - السبب
+ * @returns {Promise<Object>}
+ */
+export const adjustProviderWallet = async (providerId, amount, type, reason) => {
+  try {
+    const providerRef = doc(db, 'providers', providerId);
+
+    const result = await runTransaction(db, async (transaction) => {
+      const providerDoc = await transaction.get(providerRef);
+      if (!providerDoc.exists()) {
+        throw new Error('المزود غير موجود');
+      }
+
+      const currentBalance = providerDoc.data().wallet?.balance || 0;
+      let newBalance = currentBalance;
+
+      if (type === 'addition' || type === 'compensation') {
+        newBalance += Number(amount);
+      } else if (type === 'deduction') {
+        newBalance -= Number(amount);
+      }
+
+      transaction.update(providerRef, {
+        'wallet.balance': newBalance,
+        'wallet.lastUpdated': serverTimestamp()
+      });
+
+      return { newBalance };
+    });
+
+    // إضافة سجل المعاملة
+    const transactionsRef = collection(db, 'providers', providerId, 'transactions');
+    await addDoc(transactionsRef, {
+      type,
+      amount: Number(amount),
+      balance: result.newBalance,
+      reason,
+      timestamp: serverTimestamp(),
+      createdAt: new Date().toISOString(),
+      source: 'admin_panel'
+    });
+
+    return { success: true, newBalance: result.newBalance };
+  } catch (error) {
+    console.error('Adjust provider wallet error:', error);
+    throw error;
+  }
+};
+
+/**
+ * الحصول على إحصائيات طلبات المزود
+ * @param {string} providerId - معرف المزود
+ * @returns {Promise<Object>}
+ */
+export const getProviderOrderStats = async (providerId) => {
+  try {
+    const requestsRef = collection(db, 'requests');
+    const q = query(requestsRef, where('providerId', '==', providerId));
+    const querySnapshot = await getDocs(q);
+
+    let completed = 0;
+    let cancelled = 0;
+    const orders = [];
+
+    querySnapshot.forEach((doc) => {
+      const data = doc.data();
+      if (data.status === 'completed') completed++;
+      if (data.status?.includes('canceled')) cancelled++;
+      orders.push({ id: doc.id, ...data });
+    });
+
+    return { success: true, completed, cancelled, total: orders.length, orders };
+  } catch (error) {
+    console.error('Get provider order stats error:', error);
+    throw error;
+  }
+};

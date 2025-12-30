@@ -6,7 +6,7 @@ import { getStorage } from 'firebase/storage';
 // TODO: استبدل هذه القيم بقيم Firebase الخاصة بك
 const firebaseConfig = {
   apiKey: 'AIzaSyD1x1E3dfHvqYtlBcZEl8GC5g6rRQwuAV8',
-  authDomain: 'njik.sa',
+  authDomain: 'njik-app.firebaseapp.com',
   projectId: 'njik-app',
   storageBucket: 'njik-app.appspot.com',
   messagingSenderId: '731458785436',

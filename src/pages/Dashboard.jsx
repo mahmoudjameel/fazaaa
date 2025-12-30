@@ -7,14 +7,17 @@ import {
   Clock,
   CheckCircle,
   AlertCircle,
+  XCircle,
   Activity,
   Loader2,
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { getDashboardStats, getRecentActivity } from '../services/adminService';
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
 
 export const Dashboard = () => {
+  const navigate = useNavigate();
   const [stats, setStats] = useState(null);
   const [activities, setActivities] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -58,6 +61,7 @@ export const Dashboard = () => {
       bgColor: 'bg-green-50',
       change: '+12%',
       changeColor: 'text-status-success',
+      link: '/providers'
     },
     {
       title: 'المزودون النشطون',
@@ -67,6 +71,7 @@ export const Dashboard = () => {
       bgColor: 'bg-teal-50',
       change: '+5%',
       changeColor: 'text-status-success',
+      link: '/providers?status=active'
     },
     {
       title: 'إجمالي الطلبات',
@@ -76,6 +81,37 @@ export const Dashboard = () => {
       bgColor: 'bg-blue-50',
       change: '+23%',
       changeColor: 'text-status-success',
+      link: '/orders'
+    },
+    {
+      title: 'طلبات مكتملة',
+      value: stats?.completedOrders || 0,
+      icon: CheckCircle,
+      gradient: 'from-green-500 to-green-600',
+      bgColor: 'bg-green-50',
+      change: '+15%',
+      changeColor: 'text-status-success',
+      link: '/orders?status=completed'
+    },
+    {
+      title: 'طلبات ملغاة',
+      value: (stats?.totalOrders || 0) - (stats?.completedOrders || 0) - (stats?.activeOrders || 0),
+      icon: XCircle,
+      gradient: 'from-red-500 to-red-600',
+      bgColor: 'bg-red-50',
+      change: '+5%',
+      changeColor: 'text-status-error',
+      link: '/orders?status=cancelled'
+    },
+    {
+      title: 'طلبات قيد التنفيذ',
+      value: stats?.activeOrders || 0,
+      icon: TrendingUp,
+      gradient: 'from-purple-500 to-purple-600',
+      bgColor: 'bg-purple-50',
+      change: '+3%',
+      changeColor: 'text-status-success',
+      link: '/orders?status=active'
     },
     {
       title: 'الإيرادات',
@@ -87,21 +123,12 @@ export const Dashboard = () => {
       changeColor: 'text-status-success',
     },
     {
-      title: 'طلبات اليوم',
-      value: stats?.todayOrders || 0,
-      icon: Clock,
-      gradient: 'from-primary-orange to-orange-600',
-      bgColor: 'bg-orange-50',
-      change: '+8%',
-      changeColor: 'text-status-success',
-    },
-    {
-      title: 'طلبات قيد التنفيذ',
-      value: stats?.activeOrders || 0,
+      title: 'إجمالي العمولات',
+      value: `${(stats?.totalCommission || 0).toLocaleString()} ر.س`,
       icon: TrendingUp,
-      gradient: 'from-purple-500 to-purple-600',
-      bgColor: 'bg-purple-50',
-      change: '+3%',
+      gradient: 'from-primary-orange to-red-600',
+      bgColor: 'bg-orange-50',
+      change: '+12%',
       changeColor: 'text-status-success',
     },
   ];
@@ -186,7 +213,8 @@ export const Dashboard = () => {
           return (
             <div
               key={index}
-              className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-5 md:p-6 shadow-soft hover:shadow-large transition-all duration-300 card-hover border border-border-light"
+              onClick={() => stat.link && navigate(stat.link)}
+              className={`bg-white rounded-xl sm:rounded-2xl p-4 sm:p-5 md:p-6 shadow-soft hover:shadow-large transition-all duration-300 card-hover border border-border-light ${stat.link ? 'cursor-pointer' : ''}`}
             >
               <div className="flex items-center justify-between mb-3 sm:mb-4">
                 <div
@@ -295,17 +323,17 @@ export const Dashboard = () => {
                             <p className="text-xs text-text-secondary font-medium">
                               {activity.timestamp || activity.createdAt
                                 ? (() => {
-                                    const timestamp =
-                                      activity.timestamp || activity.createdAt;
-                                    const date = timestamp?.toMillis
-                                      ? new Date(timestamp.toMillis())
-                                      : new Date(timestamp);
-                                    return isNaN(date.getTime())
-                                      ? '-'
-                                      : format(date, 'dd MMM, HH:mm', {
-                                          locale: ar,
-                                        });
-                                  })()
+                                  const timestamp =
+                                    activity.timestamp || activity.createdAt;
+                                  const date = timestamp?.toMillis
+                                    ? new Date(timestamp.toMillis())
+                                    : new Date(timestamp);
+                                  return isNaN(date.getTime())
+                                    ? '-'
+                                    : format(date, 'dd MMM, HH:mm', {
+                                      locale: ar,
+                                    });
+                                })()
                                 : '-'}
                             </p>
                           </div>
@@ -364,17 +392,17 @@ export const Dashboard = () => {
                             <p className="text-xs text-text-secondary font-medium">
                               {activity.timestamp || activity.createdAt
                                 ? (() => {
-                                    const timestamp =
-                                      activity.timestamp || activity.createdAt;
-                                    const date = timestamp?.toMillis
-                                      ? new Date(timestamp.toMillis())
-                                      : new Date(timestamp);
-                                    return isNaN(date.getTime())
-                                      ? '-'
-                                      : format(date, 'dd MMM, HH:mm', {
-                                          locale: ar,
-                                        });
-                                  })()
+                                  const timestamp =
+                                    activity.timestamp || activity.createdAt;
+                                  const date = timestamp?.toMillis
+                                    ? new Date(timestamp.toMillis())
+                                    : new Date(timestamp);
+                                  return isNaN(date.getTime())
+                                    ? '-'
+                                    : format(date, 'dd MMM, HH:mm', {
+                                      locale: ar,
+                                    });
+                                })()
                                 : '-'}
                             </p>
                           </div>
@@ -461,17 +489,17 @@ export const Dashboard = () => {
                     <p className="text-xs text-text-secondary font-medium">
                       {activity.timestamp || activity.createdAt
                         ? (() => {
-                            const timestamp =
-                              activity.timestamp || activity.createdAt;
-                            const date = timestamp?.toMillis
-                              ? new Date(timestamp.toMillis())
-                              : new Date(timestamp);
-                            return isNaN(date.getTime())
-                              ? '-'
-                              : format(date, 'dd MMM yyyy, HH:mm', {
-                                  locale: ar,
-                                });
-                          })()
+                          const timestamp =
+                            activity.timestamp || activity.createdAt;
+                          const date = timestamp?.toMillis
+                            ? new Date(timestamp.toMillis())
+                            : new Date(timestamp);
+                          return isNaN(date.getTime())
+                            ? '-'
+                            : format(date, 'dd MMM yyyy, HH:mm', {
+                              locale: ar,
+                            });
+                        })()
                         : '-'}
                     </p>
                   </div>
