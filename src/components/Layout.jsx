@@ -18,6 +18,8 @@ import {
   AlertCircle,
   Shield,
   ChevronRight,
+  UserPlus,
+  Bell,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 
@@ -98,6 +100,14 @@ export const Layout = () => {
       category: 'management',
     },
     {
+      id: 'add_provider',
+      path: '/add-provider',
+      icon: UserPlus,
+      label: 'إضافة مزود يدوي',
+      color: 'from-blue-400 to-blue-600',
+      category: 'management',
+    },
+    {
       id: 'orders',
       path: '/orders',
       icon: ShoppingBag,
@@ -111,6 +121,14 @@ export const Layout = () => {
       icon: UserCheck,
       label: 'العملاء',
       color: 'from-purple-500 to-purple-600',
+      category: 'management',
+    },
+    {
+      id: 'notifications',
+      path: '/notifications',
+      icon: Bell,
+      label: 'إدارة الإشعارات',
+      color: 'from-orange-400 to-orange-600',
       category: 'management',
     },
     {

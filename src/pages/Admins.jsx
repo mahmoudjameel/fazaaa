@@ -39,6 +39,7 @@ export const Admins = () => {
         { id: 'dashboard', label: 'لوحة التحكم' },
         { id: 'emergency_services', label: 'إدارة خدمات الطوارئ' },
         { id: 'providers', label: 'إدارة المزودين' },
+        { id: 'add_provider', label: 'إضافة مزود يدوي' },
         { id: 'orders', label: 'إدارة الطلبات' },
         { id: 'users', label: 'العملاء' },
         { id: 'cities', label: 'إدارة المدن' },
@@ -207,8 +208,8 @@ export const Admins = () => {
                                         <td className="px-6 py-4 text-gray-600">{admin.email}</td>
                                         <td className="px-6 py-4">
                                             <span className={`px-3 py-1 rounded-full text-xs font-bold ${admin.role === 'super_admin'
-                                                    ? 'bg-purple-100 text-purple-600'
-                                                    : 'bg-blue-100 text-blue-600'
+                                                ? 'bg-purple-100 text-purple-600'
+                                                : 'bg-blue-100 text-blue-600'
                                                 }`}>
                                                 {admin.role === 'super_admin' ? 'مدير عام' : 'مدير محدد'}
                                             </span>
@@ -322,13 +323,13 @@ export const Admins = () => {
                                             <label
                                                 key={perm.id}
                                                 className={`flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all ${formData.permissions.includes(perm.id)
-                                                        ? 'border-red-500 bg-red-50'
-                                                        : 'border-gray-200 hover:border-red-200'
+                                                    ? 'border-red-500 bg-red-50'
+                                                    : 'border-gray-200 hover:border-red-200'
                                                     }`}
                                             >
                                                 <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${formData.permissions.includes(perm.id)
-                                                        ? 'bg-red-500 border-red-500'
-                                                        : 'border-gray-300 bg-white'
+                                                    ? 'bg-red-500 border-red-500'
+                                                    : 'border-gray-300 bg-white'
                                                     }`}>
                                                     {formData.permissions.includes(perm.id) && <Check size={12} className="text-white" />}
                                                 </div>

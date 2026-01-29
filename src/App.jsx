@@ -10,11 +10,13 @@ import { Orders } from './pages/Orders';
 import { DistributionSettings } from './pages/DistributionSettings';
 import { CityManagers } from './pages/CityManagers';
 import { Users } from './pages/Users';
+import { Notifications } from './pages/Notifications';
 import { Complaints } from './pages/Complaints';
 import BankSettings from './pages/BankSettings';
 import WithdrawalRequests from './pages/WithdrawalRequests';
 import AppSettings from './pages/AppSettings';
 import Admins from './pages/Admins';
+import { AddProvider } from './pages/AddProvider';
 import { Login } from './pages/Login';
 
 function App() {
@@ -69,11 +71,13 @@ function App() {
           <Route path="services" element={<Services />} />
           <Route path="emergency-services" element={<EmergencyServices />} />
           <Route path="providers" element={<Providers />} />
+          <Route path="add-provider" element={<AddProvider />} />
           <Route path="cities" element={<Cities />} />
           <Route path="orders" element={<Orders />} />
           <Route path="distribution" element={<DistributionSettings />} />
           <Route path="city-managers" element={<CityManagers />} />
           <Route path="users" element={<Users />} />
+          <Route path="notifications" element={<Notifications />} />
           <Route path="complaints" element={<Complaints />} />
           <Route path="bank-settings" element={<BankSettings />} />
           <Route path="withdrawal-requests" element={<WithdrawalRequests />} />

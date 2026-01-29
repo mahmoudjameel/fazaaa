@@ -5,13 +5,14 @@ import { getStorage } from 'firebase/storage';
 
 // TODO: استبدل هذه القيم بقيم Firebase الخاصة بك
 const firebaseConfig = {
-  apiKey: 'AIzaSyD1x1E3dfHvqYtlBcZEl8GC5g6rRQwuAV8',
-  authDomain: 'njik-app.firebaseapp.com',
-  projectId: 'njik-app',
-  storageBucket: 'njik-app.appspot.com',
-  messagingSenderId: '731458785436',
-  appId: '1:731458785436:web:8e015a514202067b7e9d59',
-  measurementId: 'G-R1FXBEC64G',
+  apiKey: "AIzaSyBLzVh55r-BaJ5cfUwm4q-c0XZKvOkyGOI",
+  authDomain: "fazaproject-c5059.firebaseapp.com",
+  databaseURL: "https://fazaproject-c5059-default-rtdb.firebaseio.com",
+  projectId: "fazaproject-c5059",
+  storageBucket: "fazaproject-c5059.firebasestorage.app",
+  messagingSenderId: "939604805877",
+  appId: "1:939604805877:web:63efb92f1a5f450c6a9dbc",
+  measurementId: "G-229FL5SZVW",
 };
 
 // Initialize Firebase

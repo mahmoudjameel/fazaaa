@@ -86,6 +86,12 @@ export const createManualProvider = async (providerData) => {
         rating: 0,
         earnings: 0,
       },
+      wallet: {
+        balance: 50.0,
+        lastUpdated: new Date().toISOString(),
+        initialBalance: 50.0,
+      },
+      hasSeenWelcomeAlert: false,
     };
 
     // إضافة الوثائق
@@ -102,6 +108,17 @@ export const createManualProvider = async (providerData) => {
     // تحديث المستند بـ uid ليتوافق مع هيكلة التطبيق
     await updateDoc(doc(db, 'providers', docRef.id), {
       uid: docRef.id
+    });
+
+    // إضافة سجل المعاملة الأولية
+    const transactionsRef = collection(db, 'providers', docRef.id, 'transactions');
+    await addDoc(transactionsRef, {
+      type: 'initial',
+      amount: 50.0,
+      balance: 50.0,
+      reason: 'رصيد ابتدائي عند التسجيل (يدوي)',
+      timestamp: serverTimestamp(),
+      createdAt: new Date().toISOString()
     });
 
     return { success: true, id: docRef.id };
@@ -855,6 +872,26 @@ export const getProviderOrderStats = async (providerId) => {
     return { success: true, completed, cancelled, total: orders.length, orders };
   } catch (error) {
     console.error('Get provider order stats error:', error);
+    throw error;
+  }
+};
+
+/**
+ * تبديل حالة VIP للمزود
+ * @param {string} providerId - معرف المزود
+ * @param {boolean} isVIP - الحالة الجديدة
+ * @returns {Promise<Object>}
+ */
+export const toggleProviderVIP = async (providerId, isVIP) => {
+  try {
+    const providerRef = doc(db, 'providers', providerId);
+    await updateDoc(providerRef, {
+      isVIP: isVIP,
+      updatedAt: serverTimestamp()
+    });
+    return { success: true };
+  } catch (error) {
+    console.error('Toggle provider VIP error:', error);
     throw error;
   }
 };

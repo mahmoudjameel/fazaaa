@@ -1,0 +1,102 @@
+[
+    {
+        "id": "riyadh",
+        "name": "الرياض",
+        "nameEn": "Riyadh"
+    },
+    {
+        "id": "jeddah",
+        "name": "جدة",
+        "nameEn": "Jeddah"
+    },
+    {
+        "id": "mecca",
+        "name": "مكة المكرمة",
+        "nameEn": "Mecca"
+    },
+    {
+        "id": "medina",
+        "name": "المدينة المنورة",
+        "nameEn": "Medina"
+    },
+    {
+        "id": "dammam",
+        "name": "الدمام",
+        "nameEn": "Dammam"
+    },
+    {
+        "id": "khobar",
+        "name": "الخبر",
+        "nameEn": "Khobar"
+    },
+    {
+        "id": "abha",
+        "name": "أبها",
+        "nameEn": "Abha"
+    },
+    {
+        "id": "tabuk",
+        "name": "تبوك",
+        "nameEn": "Tabuk"
+    },
+    {
+        "id": "buraidah",
+        "name": "بريدة",
+        "nameEn": "Buraidah"
+    },
+    {
+        "id": "khamis-mushait",
+        "name": "خميس مشيط",
+        "nameEn": "Khamis Mushait"
+    },
+    {
+        "id": "hofuf",
+        "name": "الهفوف",
+        "nameEn": "Hofuf"
+    },
+    {
+        "id": "jubail",
+        "name": "الجبيل",
+        "nameEn": "Jubail"
+    },
+    {
+        "id": "hail",
+        "name": "حائل",
+        "nameEn": "Hail"
+    },
+    {
+        "id": "najran",
+        "name": "نجران",
+        "nameEn": "Najran"
+    },
+    {
+        "id": "yanbu",
+        "name": "ينبع",
+        "nameEn": "Yanbu"
+    },
+    {
+        "id": "qatif",
+        "name": "القطيف",
+        "nameEn": "Qatif"
+    },
+    {
+        "id": "arar",
+        "name": "عرعر",
+        "nameEn": "Arar"
+    },
+    {
+        "id": "sakaka",
+        "name": "سكاكا",
+        "nameEn": "Sakaka"
+    },
+    {
+        "id": "jazan",
+        "name": "جيزان",
+        "nameEn": "Jazan"
+    },
+    {
+        "id": "al-bahah",
+        "name": "الباحة",
+        "nameEn": "Al-Bahah"
+    }
+]

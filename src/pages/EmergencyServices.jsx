@@ -14,18 +14,22 @@ export const EmergencyServices = () => {
   const [selectedSubService, setSelectedSubService] = useState(null);
   const [formData, setFormData] = useState({
     name: '',
+    nameEn: '',
     description: '',
     imageUrl: '',
     isActive: true,
+    requiresLegalVerification: false,
   });
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState('');
   const [uploadingImage, setUploadingImage] = useState(false);
   const [subServiceFormData, setSubServiceFormData] = useState({
     name: '',
+    nameEn: '',
     price: '',
     description: '',
     imageUrl: '',
+    requiresLegalVerification: false,
   });
   const [subServiceImageFile, setSubServiceImageFile] = useState(null);
   const [subServiceImagePreview, setSubServiceImagePreview] = useState('');
@@ -39,40 +43,41 @@ export const EmergencyServices = () => {
       const servicesRef = collection(db, 'emergency-services');
       const querySnapshot = await getDocs(servicesRef);
       const servicesList = [];
+
       querySnapshot.forEach((docSnap) => {
         const data = docSnap.data();
-        // Use Firebase document ID as the main id
         const firebaseDocId = docSnap.id;
-        // Service ID from data or generate one
         const serviceId = data.id || `service-${firebaseDocId}`;
-        
-        // Ensure subServices have proper structure - DO NOT generate new IDs for existing services
+
         const subServices = (data.subServices || []).map((sub, subIndex) => {
-          // Use existing ID if available, otherwise create a stable ID based on parent and index
-          // This ensures IDs don't change on every page refresh
           const subId = sub.id || `sub-${firebaseDocId}-${subIndex}`;
           return {
             id: subId,
             name: sub.name || '',
+            nameEn: sub.nameEn || '',
             price: sub.price || 0,
             description: sub.description || '',
             imageUrl: sub.imageUrl || '',
+            requiresLegalVerification: sub.requiresLegalVerification === true,
             parentServiceId: sub.parentServiceId || firebaseDocId
           };
         });
-        
+
         servicesList.push({
-          id: firebaseDocId, // Firebase document ID - used for all operations
-          serviceId: serviceId, // Service ID for reference
+          id: firebaseDocId,
+          serviceId: serviceId,
           name: data.name || '',
+          nameEn: data.nameEn || '',
           description: data.description || '',
           imageUrl: data.imageUrl || '',
           isActive: data.isActive !== false,
+          requiresLegalVerification: data.requiresLegalVerification === true,
           createdAt: data.createdAt,
           updatedAt: data.updatedAt,
           subServices: subServices
         });
       });
+
       setMainServices(servicesList);
     } catch (error) {
       console.error('Error fetching main services:', error);
@@ -133,9 +138,11 @@ export const EmergencyServices = () => {
 
       const serviceData = {
         name: formData.name,
+        nameEn: formData.nameEn || '',
         description: formData.description || '',
         imageUrl: imageUrl || formData.imageUrl || '',
         isActive: formData.isActive !== false,
+        requiresLegalVerification: formData.requiresLegalVerification === true,
         updatedAt: serverTimestamp(),
       };
 
@@ -143,30 +150,31 @@ export const EmergencyServices = () => {
         // Update existing service - use Firebase document ID
         const firebaseDocId = selectedService.id; // This is the Firebase document ID
         const serviceRef = doc(db, 'emergency-services', firebaseDocId);
-        
+
         // Preserve existing serviceId and subServices
         const existingService = mainServices.find(s => s.id === firebaseDocId);
         const serviceId = existingService?.serviceId || selectedService.serviceId || `service-${firebaseDocId}`;
-        
+
         // Get current data from Firebase to preserve subServices
         const currentDoc = await getDoc(serviceRef);
         const currentData = currentDoc.data() || {};
-        
+
         const updateData = {
           ...serviceData,
           id: serviceId, // Keep the service ID
           // Preserve subServices from Firebase (most up-to-date)
           subServices: currentData.subServices || existingService?.subServices || selectedService.subServices || [],
         };
-        
+
         await updateDoc(serviceRef, updateData);
         setMainServices(mainServices.map(s =>
-          s.id === firebaseDocId ? { 
-            ...s, 
+          s.id === firebaseDocId ? {
+            ...s,
             name: updateData.name,
             description: updateData.description,
             imageUrl: updateData.imageUrl,
             isActive: updateData.isActive,
+            requiresLegalVerification: updateData.requiresLegalVerification,
             updatedAt: updateData.updatedAt,
             // Keep existing subServices
             subServices: s.subServices || []
@@ -185,13 +193,14 @@ export const EmergencyServices = () => {
         // Use Firebase document ID as the main id, and serviceId for the generated ID
         // IMPORTANT: Don't spread serviceDataWithTimestamp as it contains id: autoId
         // Instead, explicitly set id to Firebase document ID
-        setMainServices([...mainServices, { 
+        setMainServices([...mainServices, {
           id: docRef.id, // Firebase document ID - this is the primary identifier
           serviceId: autoId, // Service ID for reference
           name: serviceData.name,
           description: serviceData.description || '',
           imageUrl: serviceData.imageUrl || '',
           isActive: serviceData.isActive !== false,
+          requiresLegalVerification: serviceData.requiresLegalVerification === true,
           subServices: [],
           createdAt: serviceDataWithTimestamp.createdAt,
           updatedAt: serviceDataWithTimestamp.updatedAt
@@ -242,7 +251,7 @@ export const EmergencyServices = () => {
       // If it's not, find the service by serviceId and use its Firebase document ID
       let firebaseDocId = selectedService.id;
       let service = mainServices.find(s => s.id === firebaseDocId);
-      
+
       // If not found by id, try to find by serviceId (for backward compatibility)
       if (!service && selectedService.serviceId) {
         service = mainServices.find(s => s.serviceId === selectedService.serviceId);
@@ -250,33 +259,35 @@ export const EmergencyServices = () => {
           firebaseDocId = service.id; // Use Firebase document ID
         }
       }
-      
+
       if (!service) {
         alert('الخدمة الرئيسية غير موجودة');
         return;
       }
-      
+
       // Generate stable ID for new sub-service
       // Use only Firebase document ID (not serviceId) to avoid duplication
       const existingSubServices = service.subServices || [];
-      const newSubServiceId = selectedSubService 
-        ? selectedSubService.id 
+      const newSubServiceId = selectedSubService
+        ? selectedSubService.id
         : `sub-${firebaseDocId}-${existingSubServices.length}-${Date.now()}`;
-      
+
       const subService = {
         id: newSubServiceId,
         name: subServiceFormData.name,
+        nameEn: subServiceFormData.nameEn || '',
         price: parseFloat(subServiceFormData.price),
         description: subServiceFormData.description || '',
         imageUrl: imageUrl || subServiceFormData.imageUrl || '',
+        requiresLegalVerification: subServiceFormData.requiresLegalVerification === true,
         parentServiceId: firebaseDocId, // Link to parent service using Firebase document ID
       };
-      
+
       if (!service) {
         alert('الخدمة الرئيسية غير موجودة');
         return;
       }
-      
+
       let updatedSubServices = [...(service.subServices || [])];
 
       if (selectedSubService) {
@@ -291,7 +302,7 @@ export const EmergencyServices = () => {
 
       // Update service in Firebase - استخدام Firebase document ID
       const serviceRef = doc(db, 'emergency-services', firebaseDocId);
-      
+
       // Use updateDoc instead of setDoc to ensure we only update subServices
       // This preserves all other fields automatically
       await updateDoc(serviceRef, {
@@ -301,8 +312,8 @@ export const EmergencyServices = () => {
 
       // Update local state - preserve all existing data
       setMainServices(mainServices.map(s =>
-        s.id === firebaseDocId ? { 
-          ...s, 
+        s.id === firebaseDocId ? {
+          ...s,
           subServices: updatedSubServices,
           updatedAt: new Date().toISOString()
         } : s
@@ -402,13 +413,84 @@ export const EmergencyServices = () => {
     }
   };
 
+  const handleSeedStandardServices = async () => {
+    if (!confirm('هل تريد إضافة حزمة الخدمات القياسية (بناشر، بطاريات، وقود، سطحات)؟')) return;
+
+    try {
+      setLoading(true);
+      const standardServices = [
+        {
+          id: 'tires',
+          name: 'بناشر متنقلة',
+          nameEn: 'Mobile Tires',
+          icon: '🛞',
+          gradient: ['#FF9A8B', '#FF6A88'],
+          isActive: true,
+          requiresLegalVerification: true,
+          subServices: [
+            { id: 'tire_patch', name: 'رقعة مسمار', nameEn: 'Tire Patch', price: 50 },
+            { id: 'tire_replacement', name: 'تغيير إطار بالكامل', nameEn: 'Full Tire Replacement', price: 150 },
+            { id: 'tire_air', name: 'تعبئة هواء', nameEn: 'Air Refill', price: 30 }
+          ]
+        },
+        {
+          id: 'battery',
+          name: 'خدمة البطاريات',
+          nameEn: 'Battery Service',
+          icon: '🔋',
+          gradient: ['#FAD961', '#F76B1C'],
+          isActive: true,
+          requiresLegalVerification: false,
+          subServices: [
+            { id: 'battery_jumpstart', name: 'اشتراك بطارية', nameEn: 'Battery Jumpstart', price: 40 },
+            { id: 'battery_test', name: 'فحص البطارية والدينامو', nameEn: 'Battery & Alternator Test', price: 60 },
+            { id: 'battery_replacement', name: 'تغيير بطارية جديدة', nameEn: 'New Battery Replacement', price: 200 }
+          ]
+        },
+        {
+          id: 'fuel',
+          name: 'توصيل وقود',
+          nameEn: 'Fuel Delivery',
+          icon: '⛽',
+          gradient: ['#00DBDE', '#FC00FF'],
+          isActive: true,
+          requiresLegalVerification: false,
+          subServices: [
+            { id: 'fuel_91', name: 'توصيل وقود 91', nameEn: 'Fuel 91 Delivery', price: 20 },
+            { id: 'fuel_95', name: 'توصيل وقود 95', nameEn: 'Fuel 95 Delivery', price: 25 },
+            { id: 'fuel_diesel', name: 'توصيل ديزل', nameEn: 'Diesel Delivery', price: 30 }
+          ]
+        }
+      ];
+
+      for (const service of standardServices) {
+        const serviceRef = doc(db, 'emergency-services', service.id);
+        await setDoc(serviceRef, {
+          ...service,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        });
+      }
+
+      await fetchMainServices();
+      alert('تم إضافة الخدمات القياسية بنجاح!');
+    } catch (error) {
+      console.error('Error seeding services:', error);
+      alert('حدث خطأ أثناء إضافة الخدمات');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const openEditModal = (service) => {
     setSelectedService(service);
     setFormData({
       name: service.name || '',
+      nameEn: service.nameEn || '',
       description: service.description || '',
       imageUrl: service.imageUrl || '',
       isActive: service.isActive !== false,
+      requiresLegalVerification: service.requiresLegalVerification === true,
     });
     setImagePreview(service.imageUrl || '');
     setIsModalOpen(true);
@@ -420,9 +502,11 @@ export const EmergencyServices = () => {
     if (subService) {
       setSubServiceFormData({
         name: subService.name || '',
+        nameEn: subService.nameEn || '',
         price: subService.price || '',
         description: subService.description || '',
         imageUrl: subService.imageUrl || '',
+        requiresLegalVerification: subService.requiresLegalVerification === true,
       });
       setSubServiceImagePreview(subService.imageUrl || '');
     } else {
@@ -437,9 +521,11 @@ export const EmergencyServices = () => {
     setSelectedService(null);
     setFormData({
       name: '',
+      nameEn: '',
       description: '',
       imageUrl: '',
       isActive: true,
+      requiresLegalVerification: false,
     });
     setImageFile(null);
     setImagePreview('');
@@ -461,9 +547,11 @@ export const EmergencyServices = () => {
     setSelectedSubService(null);
     setSubServiceFormData({
       name: '',
+      nameEn: '',
       price: '',
       description: '',
       imageUrl: '',
+      requiresLegalVerification: false,
     });
   };
 
@@ -495,6 +583,15 @@ export const EmergencyServices = () => {
           <p className="text-gray-600">إضافة وتعديل الخدمات الرئيسية والخدمات الفرعية</p>
         </div>
         <div className="flex gap-3">
+          {mainServices.length === 0 && (
+            <button
+              onClick={handleSeedStandardServices}
+              className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:shadow-lg transition-all font-semibold"
+            >
+              <Package size={20} />
+              إضافة الخدمات القياسية
+            </button>
+          )}
           {mainServices.length > 0 && (
             <button
               onClick={handleDeleteAll}
@@ -561,7 +658,7 @@ export const EmergencyServices = () => {
               className="bg-white rounded-2xl shadow-lg overflow-hidden border-2 border-gray-100 hover:border-gray-300 transition-all"
             >
               {/* Main Service Header */}
-              <div 
+              <div
                 className="p-6 relative bg-gray-50 border-r-4 border-blue-500"
               >
                 <div className="flex items-center justify-between">
@@ -588,11 +685,14 @@ export const EmergencyServices = () => {
                         {service.icon || '📦'}
                       </div>
                     </div>
-                    
+
                     {/* Service Info */}
                     <div className="flex-1">
                       <div className="flex items-center gap-3 mb-2">
-                        <h3 className="text-2xl font-black text-gray-800">{service.name}</h3>
+                        <h3 className="text-2xl font-black text-gray-800">
+                          {service.name}
+                          {service.nameEn && <span className="text-sm font-normal text-gray-400 ml-2">({service.nameEn})</span>}
+                        </h3>
                         <span className={`px-3 py-1 rounded-full text-xs font-bold ${service.isActive !== false
                           ? 'bg-green-500 text-white'
                           : 'bg-red-500 text-white'
@@ -617,7 +717,7 @@ export const EmergencyServices = () => {
                       </div>
                     </div>
                   </div>
-                  
+
                   {/* Action Buttons */}
                   <div className="flex items-center gap-2">
                     <button
@@ -675,7 +775,7 @@ export const EmergencyServices = () => {
                       إضافة خدمة فرعية جديدة
                     </button>
                   </div>
-                  
+
                   {service.subServices?.length === 0 ? (
                     <div className="bg-white rounded-xl p-12 text-center border-2 border-dashed border-gray-300">
                       <Package className="mx-auto text-gray-400 mb-3" size={48} />
@@ -689,10 +789,10 @@ export const EmergencyServices = () => {
                           key={`${service.id}-${subService.id}-${index}`}
                           className="bg-white rounded-xl p-5 shadow-md border-2 border-gray-200 hover:border-blue-400 hover:shadow-lg transition-all relative group"
                         >
-                          
+
                           {/* Connection Line Visual */}
                           <div className="absolute top-0 right-0 w-8 h-8 border-t-2 border-r-2 border-blue-400 rounded-bl-full opacity-20"></div>
-                          
+
                           <div className="flex items-start justify-between gap-3">
                             <div className="flex items-start gap-3 flex-1">
                               {/* Sub Service Image/Icon */}
@@ -707,11 +807,12 @@ export const EmergencyServices = () => {
                                   <ImageIcon size={24} className="text-gray-400" />
                                 </div>
                               )}
-                              
+
                               {/* Sub Service Info */}
                               <div className="flex-1 min-w-0">
                                 <h5 className="font-bold text-gray-800 text-lg mb-1 truncate">
                                   {subService.name}
+                                  {subService.nameEn && <span className="text-[10px] font-normal text-gray-400 block mt-0.5">{subService.nameEn}</span>}
                                 </h5>
                                 {subService.description && (
                                   <p className="text-xs text-gray-500 mb-2 line-clamp-2">
@@ -741,8 +842,14 @@ export const EmergencyServices = () => {
                                   </span>
                                 </div>
                               </div>
+                              {subService.requiresLegalVerification && (
+                                <div className="flex items-center gap-2 mt-1 px-2 py-1 bg-blue-50 border border-blue-200 rounded-lg w-fit">
+                                  <AlertTriangle size={12} className="text-blue-600" />
+                                  <span className="text-[10px] font-bold text-blue-700">يتطلب سند قانوني</span>
+                                </div>
+                              )}
                             </div>
-                            
+
                             {/* Action Buttons */}
                             <div className="flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                               <button
@@ -790,16 +897,28 @@ export const EmergencyServices = () => {
               </div>
             </div>
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">اسم الخدمة الرئيسية</label>
-                <input
-                  type="text"
-                  required
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-green-400 focus:ring-green-500 outline-none"
-                  placeholder="مثال: خدمات الكفرات"
-                />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">اسم الخدمة (بالعربية)</label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-green-400 focus:ring-green-500 outline-none"
+                    placeholder="مثال: خدمات الكفرات"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">اسم الخدمة (بالانجليزية)</label>
+                  <input
+                    type="text"
+                    value={formData.nameEn}
+                    onChange={(e) => setFormData({ ...formData, nameEn: e.target.value })}
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-green-400 focus:ring-green-500 outline-none"
+                    placeholder="Example: Tire Services"
+                  />
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">الوصف</label>
@@ -859,6 +978,19 @@ export const EmergencyServices = () => {
               <div className="flex items-center gap-2">
                 <input
                   type="checkbox"
+                  id="requiresLegalVerification"
+                  checked={formData.requiresLegalVerification}
+                  onChange={(e) => setFormData({ ...formData, requiresLegalVerification: e.target.checked })}
+                  className="w-5 h-5 text-blue-600 border-2 border-gray-300 rounded focus:ring-blue-500"
+                />
+                <label htmlFor="requiresLegalVerification" className="text-sm font-semibold text-gray-700">
+                  يتطلب السند القانوني (تحقق الهوية، إثبات الملكية، نموذج إخلاء المسؤولية)
+                </label>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
                   id="isActive"
                   checked={formData.isActive}
                   onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
@@ -868,6 +1000,7 @@ export const EmergencyServices = () => {
                   الخدمة نشطة
                 </label>
               </div>
+
               <div className="flex gap-3 pt-4">
                 <button
                   type="submit"
@@ -885,123 +1018,150 @@ export const EmergencyServices = () => {
               </div>
             </form>
           </div>
-        </div>
+        </div >
       )}
 
       {/* Sub Service Modal */}
-      {isSubServiceModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-6">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-xl w-full">
-            <div className="p-6 border-b border-gray-200">
-              <div className="flex items-center justify-between">
-                <h2 className="text-2xl font-bold text-gray-800">
-                  {selectedSubService ? 'تعديل الخدمة الفرعية' : 'إضافة خدمة فرعية جديدة'}
-                </h2>
-                <button
-                  onClick={() => setIsSubServiceModalOpen(false)}
-                  className="text-gray-500 hover:text-gray-700 text-2xl"
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
-            <form onSubmit={handleSubServiceSubmit} className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">اسم الخدمة الفرعية</label>
-                <input
-                  type="text"
-                  required
-                  value={subServiceFormData.name}
-                  onChange={(e) => setSubServiceFormData({ ...subServiceFormData, name: e.target.value })}
-                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-green-400 focus:ring-green-500 outline-none"
-                  placeholder="مثال: تبديل إطار فوري"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">الوصف</label>
-                <textarea
-                  value={subServiceFormData.description}
-                  onChange={(e) => setSubServiceFormData({ ...subServiceFormData, description: e.target.value })}
-                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-green-400 focus:ring-green-500 outline-none"
-                  rows={3}
-                  placeholder="مثال: خدمة تبديل الإطارات بسرعة في موقعك"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">السعر (ر.س)</label>
-                <input
-                  type="number"
-                  required
-                  min="0"
-                  step="0.01"
-                  value={subServiceFormData.price}
-                  onChange={(e) => setSubServiceFormData({ ...subServiceFormData, price: e.target.value })}
-                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-green-400 focus:ring-green-500 outline-none"
-                  placeholder="80"
-                />
-              </div>
-              
-              {/* Sub Service Image Upload */}
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">صورة الخدمة الفرعية</label>
-                <div className="space-y-3">
-                  {(subServiceImagePreview || subServiceFormData.imageUrl) && (
-                    <div className="relative">
-                      <img
-                        src={subServiceImagePreview || subServiceFormData.imageUrl}
-                        alt="Preview"
-                        className="w-32 h-32 rounded-lg object-cover border-2 border-gray-200"
-                      />
-                      {subServiceFormData.imageUrl && !subServiceImageFile && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSubServiceImagePreview('');
-                            setSubServiceFormData({ ...subServiceFormData, imageUrl: '' });
-                          }}
-                          className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
-                        >
-                          ✕
-                        </button>
-                      )}
-                    </div>
-                  )}
-                  <label className="flex items-center gap-2 px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-green-400 transition-all">
-                    <Upload size={20} className="text-gray-500" />
-                    <span className="text-sm text-gray-600">
-                      {subServiceImageFile ? subServiceImageFile.name : 'اختر صورة للخدمة الفرعية'}
-                    </span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleSubServiceImageChange}
-                      className="hidden"
-                    />
-                  </label>
-                  {uploadingImage && (
-                    <div className="text-sm text-blue-600">جاري رفع الصورة...</div>
-                  )}
+      {
+        isSubServiceModalOpen && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-6">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-xl w-full">
+              <div className="p-6 border-b border-gray-200">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-2xl font-bold text-gray-800">
+                    {selectedSubService ? 'تعديل الخدمة الفرعية' : 'إضافة خدمة فرعية جديدة'}
+                  </h2>
+                  <button
+                    onClick={() => setIsSubServiceModalOpen(false)}
+                    className="text-gray-500 hover:text-gray-700 text-2xl"
+                  >
+                    ✕
+                  </button>
                 </div>
               </div>
-              <div className="flex gap-3 pt-4">
-                <button
-                  type="submit"
-                  className="flex-1 px-6 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:shadow-lg transition-all font-semibold"
-                >
-                  {selectedSubService ? 'تحديث الخدمة' : 'إضافة الخدمة'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsSubServiceModalOpen(false)}
-                  className="px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-all font-semibold"
-                >
-                  إلغاء
-                </button>
-              </div>
-            </form>
+              <form onSubmit={handleSubServiceSubmit} className="p-6 space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">اسم الخدمة الفرعية (بالعربية)</label>
+                    <input
+                      type="text"
+                      required
+                      value={subServiceFormData.name}
+                      onChange={(e) => setSubServiceFormData({ ...subServiceFormData, name: e.target.value })}
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-green-400 focus:ring-green-500 outline-none"
+                      placeholder="مثال: تبديل إطار فوري"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">اسم الخدمة الفرعية (بالانجليزية)</label>
+                    <input
+                      type="text"
+                      value={subServiceFormData.nameEn}
+                      onChange={(e) => setSubServiceFormData({ ...subServiceFormData, nameEn: e.target.value })}
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-green-400 focus:ring-green-500 outline-none"
+                      placeholder="Example: Quick Tire Change"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">الوصف</label>
+                  <textarea
+                    value={subServiceFormData.description}
+                    onChange={(e) => setSubServiceFormData({ ...subServiceFormData, description: e.target.value })}
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-green-400 focus:ring-green-500 outline-none"
+                    rows={3}
+                    placeholder="مثال: خدمة تبديل الإطارات بسرعة في موقعك"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">السعر (ر.س)</label>
+                  <input
+                    type="number"
+                    required
+                    min="0"
+                    step="0.01"
+                    value={subServiceFormData.price}
+                    onChange={(e) => setSubServiceFormData({ ...subServiceFormData, price: e.target.value })}
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-green-400 focus:ring-green-500 outline-none"
+                    placeholder="80"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="subRequiresLegalVerification"
+                    checked={subServiceFormData.requiresLegalVerification}
+                    onChange={(e) => setSubServiceFormData({ ...subServiceFormData, requiresLegalVerification: e.target.checked })}
+                    className="w-5 h-5 text-blue-600 border-2 border-gray-300 rounded focus:ring-blue-500"
+                  />
+                  <label htmlFor="subRequiresLegalVerification" className="text-sm font-semibold text-gray-700">
+                    يتطلب السند القانوني لهذه الخدمة الفرعية
+                  </label>
+                </div>
+
+                {/* Sub Service Image Upload */}
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">صورة الخدمة الفرعية</label>
+                  <div className="space-y-3">
+                    {(subServiceImagePreview || subServiceFormData.imageUrl) && (
+                      <div className="relative">
+                        <img
+                          src={subServiceImagePreview || subServiceFormData.imageUrl}
+                          alt="Preview"
+                          className="w-32 h-32 rounded-lg object-cover border-2 border-gray-200"
+                        />
+                        {subServiceFormData.imageUrl && !subServiceImageFile && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSubServiceImagePreview('');
+                              setSubServiceFormData({ ...subServiceFormData, imageUrl: '' });
+                            }}
+                            className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    <label className="flex items-center gap-2 px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-green-400 transition-all">
+                      <Upload size={20} className="text-gray-500" />
+                      <span className="text-sm text-gray-600">
+                        {subServiceImageFile ? subServiceImageFile.name : 'اختر صورة للخدمة الفرعية'}
+                      </span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleSubServiceImageChange}
+                        className="hidden"
+                      />
+                    </label>
+                    {uploadingImage && (
+                      <div className="text-sm text-blue-600">جاري رفع الصورة...</div>
+                    )}
+                  </div>
+                </div>
+                <div className="flex gap-3 pt-4">
+                  <button
+                    type="submit"
+                    className="flex-1 px-6 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:shadow-lg transition-all font-semibold"
+                  >
+                    {selectedSubService ? 'تحديث الخدمة' : 'إضافة الخدمة'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsSubServiceModalOpen(false)}
+                    className="px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-all font-semibold"
+                  >
+                    إلغاء
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
-        </div>
-      )}
-    </div>
+        )
+      }
+    </div >
   );
 };

@@ -417,6 +417,7 @@ export const Orders = () => {
       in_progress: { text: 'قيد التنفيذ', color: 'bg-orange-100 text-orange-700' },
       pending_client_confirmation: { text: 'بانتظار العميل', color: 'bg-yellow-100 text-yellow-700' },
       completed: { text: 'مكتمل', color: 'bg-green-100 text-green-700' },
+      pending_legal_docs: { text: 'بانتظار السند', color: 'bg-orange-100 text-orange-700' },
       canceled_by_client: { text: 'ملغي من العميل', color: 'bg-red-100 text-red-700' },
       canceled_by_provider: { text: 'ملغي من المزود', color: 'bg-red-100 text-red-700' },
       canceled_by_client_with_reason: { text: 'ملغي', color: 'bg-red-100 text-red-700' },
@@ -466,7 +467,7 @@ export const Orders = () => {
             <span className="text-xs sm:text-sm text-gray-600">قيد التنفيذ</span>
           </div>
           <p className="text-2xl sm:text-3xl font-black text-gray-800">
-            {requests.filter((o) => ['searching', 'assigned', 'en_route', 'arrived', 'in_progress'].includes(o.status)).length}
+            {requests.filter((o) => ['searching', 'assigned', 'en_route', 'arrived', 'in_progress', 'pending_legal_docs'].includes(o.status)).length}
           </p>
         </div>
         <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-5 md:p-6 shadow-lg">
@@ -931,30 +932,28 @@ export const Orders = () => {
                             </button>
                           </div>
                         )}
-                        {/* Provider Cancellation */}
-                        {(order.status === 'canceled_by_provider' || order.status === 'canceled_by_provider_with_reason') && (order.cancelReason || order.history) && (
-                          (() => {
-                            const cancelEvent = Array.isArray(order.history)
-                              ? order.history.find(h => h.action === 'provider_cancellation' || h.status === 'canceled_by_provider' || h.status === 'canceled_by_provider_with_reason')
-                              : null;
-                            const reason = order.cancelReason || cancelEvent?.cancelReason;
-                            const wasAccepted = order.assignedAt || (Array.isArray(order.history) && order.history.some(h => h.status === 'assigned'));
+                        {/* Provider Cancellation / Rejection */}
+                        {(() => {
+                          const cancelEvent = Array.isArray(order.history)
+                            ? [...order.history].reverse().find(h => h.action === 'provider_cancellation' || h.status === 'canceled_by_provider' || h.status === 'canceled_by_provider_with_reason')
+                            : null;
+                          const reason = order.cancelReason || cancelEvent?.cancelReason || cancelEvent?.message?.split('السبب: ')[1];
+                          const wasAccepted = order.assignedAt || (Array.isArray(order.history) && order.history.some(h => h.status === 'assigned'));
 
-                            if (reason && wasAccepted) {
-                              return (
-                                <div className="mt-2 p-2 bg-red-50 border-r-4 border-red-500 rounded">
-                                  <p className="text-xs text-red-700 font-semibold">
-                                    ⚠️ رفض المزود بعد القبول
-                                  </p>
-                                  <p className="text-xs text-red-600 mt-1">
-                                    السبب: {reason}
-                                  </p>
-                                </div>
-                              );
-                            }
-                            return null;
-                          })()
-                        )}
+                          if (reason && wasAccepted) {
+                            return (
+                              <div className="mt-2 p-2 bg-red-50 border-r-4 border-red-500 rounded">
+                                <p className="text-xs text-red-700 font-semibold">
+                                  ⚠️ رفض المزود بعد القبول
+                                </p>
+                                <p className="text-xs text-red-600 mt-1">
+                                  السبب: {reason}
+                                </p>
+                              </div>
+                            );
+                          }
+                          return null;
+                        })()}
 
                         {/* Client Cancellation */}
                         {(order.status === 'canceled_by_client' || order.status === 'canceled_by_client_with_reason') && (order.cancelReason || order.history) && (
@@ -1127,47 +1126,58 @@ export const Orders = () => {
                   >
                     {getStatusBadge(selectedRequest.status).text}
                   </span>
-                  {/* Provider Cancellation */}
-                  {(selectedRequest.status === 'canceled_by_provider' || selectedRequest.status === 'canceled_by_provider_with_reason') && (
-                    (() => {
-                      const cancelEvent = Array.isArray(selectedRequest.history)
-                        ? selectedRequest.history.find(h => h.action === 'provider_cancellation' || h.status === 'canceled_by_provider' || h.status === 'canceled_by_provider_with_reason')
-                        : null;
-                      const reason = selectedRequest.cancelReason || cancelEvent?.cancelReason;
-                      const wasAccepted = selectedRequest.assignedAt || (Array.isArray(selectedRequest.history) && selectedRequest.history.some(h => h.status === 'assigned'));
+                  {/* Provider Cancellation / Rejection */}
+                  {(() => {
+                    const cancelEvents = Array.isArray(selectedRequest.history)
+                      ? selectedRequest.history.filter(h => h.action === 'provider_cancellation' || h.status === 'canceled_by_provider' || h.status === 'canceled_by_provider_with_reason')
+                      : [];
 
-                      if (wasAccepted) {
-                        return (
-                          <div className="mt-3 p-3 bg-red-50 border-r-4 border-red-500 rounded-lg">
-                            <p className="text-sm font-semibold text-red-800 mb-2">
-                              ⚠️ رفض المزود بعد قبول الطلب
+                    if (cancelEvents.length === 0) return null;
+
+                    const latestCancel = cancelEvents[cancelEvents.length - 1];
+                    const reason = latestCancel.cancelReason || latestCancel.reason || latestCancel.message?.split('السبب: ')[1];
+                    const wasAccepted = selectedRequest.assignedAt || (Array.isArray(selectedRequest.history) && selectedRequest.history.some(h => h.status === 'assigned'));
+
+                    if (!wasAccepted && !reason) return null;
+
+                    return (
+                      <div className="space-y-3">
+                        <div className="mt-3 p-3 bg-red-50 border-r-4 border-red-500 rounded-lg">
+                          <p className="text-sm font-semibold text-red-800 mb-2">
+                            ⚠️ {wasAccepted ? 'رفض المزود بعد قبول الطلب' : 'رفض الطلب من المزود'}
+                          </p>
+                          {reason && (
+                            <p className="text-sm text-red-700">
+                              <span className="font-semibold">آخر سبب:</span> {reason}
                             </p>
-                            {reason && (
-                              <p className="text-sm text-red-700">
-                                <span className="font-semibold">السبب:</span> {reason}
-                              </p>
-                            )}
-                            {selectedRequest.cancelledBy && (
-                              <p className="text-xs text-red-600 mt-2">
-                                معرف المزود: {selectedRequest.cancelledBy}
-                              </p>
-                            )}
-                            {selectedRequest.cancelledAt && (
-                              <p className="text-xs text-red-600 mt-1">
-                                وقت الإلغاء: {(() => {
-                                  const date = selectedRequest.cancelledAt?.toMillis
-                                    ? new Date(selectedRequest.cancelledAt.toMillis())
-                                    : new Date(selectedRequest.cancelledAt);
-                                  return isNaN(date.getTime()) ? '-' : format(date, 'dd MMM yyyy, HH:mm', { locale: ar });
-                                })()}
-                              </p>
-                            )}
+                          )}
+                          {latestCancel.providerId && (
+                            <p className="text-xs text-red-600 mt-2">
+                              معرف المزود: {latestCancel.providerId}
+                            </p>
+                          )}
+                        </div>
+
+                        {cancelEvents.length > 1 && (
+                          <div className="mt-2 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                            <h4 className="text-xs font-bold text-gray-700 mb-2 uppercase tracking-wider">سجل الرفض المتكرر ({cancelEvents.length})</h4>
+                            <div className="space-y-2">
+                              {cancelEvents.slice(0, -1).reverse().map((event, idx) => (
+                                <div key={idx} className="text-xs border-b border-gray-100 pb-1 last:border-0">
+                                  <p className="font-semibold text-gray-600">
+                                    {event.message || 'تم رفض الطلب'}
+                                  </p>
+                                  <p className="text-gray-400 mt-0.5 text-[10px]">
+                                    {event.timestamp && format(new Date(event.timestamp), 'dd MMM, HH:mm', { locale: ar })}
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
                           </div>
-                        );
-                      }
-                      return null;
-                    })()
-                  )}
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   {/* Client Cancellation */}
                   {(selectedRequest.status === 'canceled_by_client' || selectedRequest.status === 'canceled_by_client_with_reason') && (
@@ -1554,12 +1564,74 @@ export const Orders = () => {
                   </div>
                 )}
 
-                {/* No Images Message */}
-                {!selectedRequest.carPlateImage && !selectedRequest.serviceDocumentationBefore && !selectedRequest.serviceDocumentationAfter && (
-                  <div className="bg-gray-50 rounded-xl p-6 text-center">
-                    <p className="text-gray-500 text-sm">لا توجد صور توثيق لهذا الطلب</p>
+                {/* Legal Documents (Ownership Proof / Disclaimer Form) */}
+                {(selectedRequest.legalOwnershipProof || selectedRequest.legalDisclaimerForm) && (
+                  <div>
+                    <h3 className="font-semibold text-gray-700 mb-3">المستندات القانونية</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Ownership Proof */}
+                      {selectedRequest.legalOwnershipProof && (
+                        <div>
+                          <div className="mb-2 flex items-center gap-2">
+                            <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs font-semibold rounded">إثبات الملكية</span>
+                          </div>
+                          <div className="relative group overflow-hidden rounded-xl border-2 border-gray-200 hover:border-purple-400 transition-all">
+                            <img
+                              src={selectedRequest.legalOwnershipProof}
+                              alt="إثبات الملكية"
+                              className="w-full h-48 object-cover cursor-pointer"
+                              onClick={() => window.open(selectedRequest.legalOwnershipProof, '_blank')}
+                            />
+                            <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all flex items-center justify-center">
+                              <Eye className="text-white opacity-0 group-hover:opacity-100 transition-opacity" size={28} />
+                            </div>
+                          </div>
+                          {selectedRequest.legalOwnershipProofTimestamp && (
+                            <p className="text-xs text-gray-500 mt-1">
+                              {format(new Date(selectedRequest.legalOwnershipProofTimestamp), 'dd MMM yyyy, HH:mm', { locale: ar })}
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Disclaimer Form */}
+                      {selectedRequest.legalDisclaimerForm && (
+                        <div>
+                          <div className="mb-2 flex items-center gap-2">
+                            <span className="px-2 py-1 bg-yellow-100 text-yellow-700 text-xs font-semibold rounded">السند القانوني (إخلاء المسؤولية)</span>
+                          </div>
+                          <div className="relative group overflow-hidden rounded-xl border-2 border-gray-200 hover:border-yellow-400 transition-all">
+                            <img
+                              src={selectedRequest.legalDisclaimerForm}
+                              alt="السند القانوني"
+                              className="w-full h-48 object-cover cursor-pointer"
+                              onClick={() => window.open(selectedRequest.legalDisclaimerForm, '_blank')}
+                            />
+                            <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all flex items-center justify-center">
+                              <Eye className="text-white opacity-0 group-hover:opacity-100 transition-opacity" size={28} />
+                            </div>
+                          </div>
+                          {selectedRequest.legalDisclaimerFormTimestamp && (
+                            <p className="text-xs text-gray-500 mt-1">
+                              {format(new Date(selectedRequest.legalDisclaimerFormTimestamp), 'dd MMM yyyy, HH:mm', { locale: ar })}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
+
+                {/* No Images Message */}
+                {!selectedRequest.carPlateImage &&
+                  !selectedRequest.serviceDocumentationBefore &&
+                  !selectedRequest.serviceDocumentationAfter &&
+                  !selectedRequest.legalOwnershipProof &&
+                  !selectedRequest.legalDisclaimerForm && (
+                    <div className="bg-gray-50 rounded-xl p-6 text-center">
+                      <p className="text-gray-500 text-sm">لا توجد صور توثيق لهذا الطلب</p>
+                    </div>
+                  )}
               </div>
             </div>
           </div>
@@ -1694,6 +1766,95 @@ export const Orders = () => {
                         </div>
                       </div>
                     )}
+
+                    {/* سجل الطلبات والإحصائيات */}
+                    <div className="bg-white rounded-xl p-4 border border-gray-200">
+                      <div className="flex items-center gap-2 mb-4">
+                        <ShoppingBag className="w-5 h-5 text-gray-600" />
+                        <h4 className="font-semibold text-sm sm:text-base text-gray-700">سجل نشاط المزود</h4>
+                      </div>
+
+                      {(() => {
+                        const providerOrders = requests.filter(req =>
+                          req.providerId === selectedProvider.id ||
+                          (Array.isArray(req.history) && req.history.some(h => h.providerId === selectedProvider.id))
+                        );
+
+                        const completed = providerOrders.filter(req =>
+                          req.status === 'completed' && req.providerId === selectedProvider.id
+                        ).length;
+
+                        const canceledByProvider = providerOrders.filter(req =>
+                        (Array.isArray(req.history) && req.history.some(h =>
+                          h.providerId === selectedProvider.id &&
+                          (h.action === 'provider_cancellation' || h.status === 'canceled_by_provider' || h.status === 'canceled_by_provider_with_reason')
+                        ))
+                        ).length;
+
+                        return (
+                          <div className="space-y-4">
+                            {/* بطاقات الإحصائيات المصغرة */}
+                            <div className="grid grid-cols-3 gap-2 sm:gap-3">
+                              <div className="bg-blue-50 p-2 sm:p-3 rounded-lg text-center">
+                                <p className="text-[10px] sm:text-xs text-blue-600 font-bold mb-1">إجمالي التفاعل</p>
+                                <p className="text-lg sm:text-xl font-black text-blue-800">{providerOrders.length}</p>
+                              </div>
+                              <div className="bg-green-50 p-2 sm:p-3 rounded-lg text-center">
+                                <p className="text-[10px] sm:text-xs text-green-600 font-bold mb-1">مكتملة</p>
+                                <p className="text-lg sm:text-xl font-black text-green-800">{completed}</p>
+                              </div>
+                              <div className="bg-red-50 p-2 sm:p-3 rounded-lg text-center">
+                                <p className="text-[10px] sm:text-xs text-red-600 font-bold mb-1">اعتذار/إلغاء</p>
+                                <p className="text-lg sm:text-xl font-black text-red-800">{canceledByProvider}</p>
+                              </div>
+                            </div>
+
+                            {/* قائمة آخر الطلبات */}
+                            <div className="space-y-2">
+                              <h5 className="text-[10px] sm:text-xs font-bold text-gray-400 uppercase tracking-wider">آخر النشاطات ({Math.min(providerOrders.length, 5)})</h5>
+                              {providerOrders.length > 0 ? (
+                                providerOrders.slice(0, 5).map((order, idx) => {
+                                  let statusText = getStatusBadge(order.status).text;
+                                  let statusColor = getStatusBadge(order.status).color;
+
+                                  const didCancelThis = Array.isArray(order.history) && order.history.some(h =>
+                                    h.providerId === selectedProvider.id &&
+                                    (h.action === 'provider_cancellation' || h.status === 'canceled_by_provider' || h.status === 'canceled_by_provider_with_reason')
+                                  );
+
+                                  if (didCancelThis && order.status !== 'canceled_by_provider' && order.status !== 'canceled_by_provider_with_reason') {
+                                    statusText = "تم الاعتذار عنه";
+                                    statusColor = "bg-red-100 text-red-700";
+                                  }
+
+                                  return (
+                                    <div key={idx} className="flex items-center justify-between p-2 hover:bg-gray-50 rounded-lg border border-gray-50 transition-colors">
+                                      <div className="flex-1 min-w-0 pr-2">
+                                        <p className="text-xs sm:text-sm font-bold text-gray-800 truncate">{order.serviceName || order.serviceType}</p>
+                                        <div className="flex items-center gap-2 mt-1">
+                                          <span className="text-[10px] text-gray-500">
+                                            {order.createdAt && format(
+                                              order.createdAt?.toMillis ? new Date(order.createdAt.toMillis()) : new Date(order.createdAt),
+                                              'dd MMM, HH:mm',
+                                              { locale: ar }
+                                            )}
+                                          </span>
+                                        </div>
+                                      </div>
+                                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${statusColor}`}>
+                                        {statusText}
+                                      </span>
+                                    </div>
+                                  );
+                                })
+                              ) : (
+                                <p className="text-center py-4 text-xs text-gray-400 italic">لا يوجد سجل طلبات متاح</p>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
 
                     {/* النوع والمجموعة */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

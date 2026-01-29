@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import {
   Search, CheckCircle, XCircle, Clock, Eye, Phone, Mail, Star, Power,
-  UserCheck, Users, Plus, Edit2, Trash2, Tag, X
+  UserCheck, Users, Plus, Edit2, Trash2, Tag, X, FileText
 } from 'lucide-react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   getAllProviders,
   updateProviderStatus,
@@ -14,10 +14,10 @@ import {
   assignProvidersToGroup,
   removeProviderFromGroup,
   updateProviderServiceStatus,
-  createManualProvider,
   getProviderWalletHistory,
   adjustProviderWallet,
   getProviderOrderStats,
+  toggleProviderVIP,
 } from '../services/adminService';
 import { doc, updateDoc, collection, getDocs } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -58,6 +58,8 @@ export const Providers = () => {
   const [selectedProvider, setSelectedProvider] = useState(null);
   const [selectedProvidersForGroup, setSelectedProvidersForGroup] = useState([]);
   const [lowBalanceFilter, setLowBalanceFilter] = useState(false);
+  const [hasAddPermission, setHasAddPermission] = useState(false);
+  const navigate = useNavigate();
 
   // Groups Management
   const [showGroupsSection, setShowGroupsSection] = useState(false);
@@ -72,16 +74,6 @@ export const Providers = () => {
     isVip: false,
     priority: 0,
   });
-  const [isAddProviderModalOpen, setIsAddProviderModalOpen] = useState(false);
-  const [providerFormData, setProviderFormData] = useState({
-    firstName: '',
-    lastName: '',
-    phone: '',
-    email: '',
-    nationality: '',
-    services: [],
-  });
-  const [idImageFile, setIdImageFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
 
   // Provider Detail Modal State
@@ -97,6 +89,20 @@ export const Providers = () => {
     fetchProviders();
     fetchGroups();
     fetchMainServices();
+
+    // التحقق من الصلاحيات
+    const role = localStorage.getItem('admin_role');
+    const permissionsStr = localStorage.getItem('admin_permissions');
+    if (role === 'super_admin') {
+      setHasAddPermission(true);
+    } else if (permissionsStr) {
+      try {
+        const permissions = JSON.parse(permissionsStr);
+        setHasAddPermission(permissions.includes('add_provider') || permissions.includes('all'));
+      } catch (e) {
+        console.error('Error parsing permissions', e);
+      }
+    }
 
     // Parse query params for dashboard deep links
     const params = new URLSearchParams(location.search);
@@ -301,11 +307,20 @@ export const Providers = () => {
       const provider = providers.find(p => p.id === providerId);
       const newType = provider.type === 'vip' ? 'general' : 'vip';
       const providerRef = doc(db, 'providers', providerId);
+      const now = new Date().toISOString();
       await updateDoc(providerRef, {
         type: newType,
-        updatedAt: new Date().toISOString()
+        updatedAt: now
       });
-      setProviders(providers.map(p => p.id === providerId ? { ...p, type: newType, updatedAt: new Date().toISOString() } : p));
+
+      const updatedProviders = providers.map(p =>
+        p.id === providerId ? { ...p, type: newType, updatedAt: now } : p
+      );
+      setProviders(updatedProviders);
+
+      if (selectedProvider && selectedProvider.id === providerId) {
+        setSelectedProvider(prev => ({ ...prev, type: newType, updatedAt: now }));
+      }
     } catch (error) {
       console.error('Error updating provider type:', error);
       alert('فشل تحديث نوع المزود');
@@ -424,66 +439,6 @@ export const Providers = () => {
     }
   };
 
-  const handleAddProvider = async () => {
-    try {
-      if (!providerFormData.firstName.trim() || !providerFormData.lastName.trim() || !providerFormData.phone.trim()) {
-        alert('يرجى إكمال جميع الحقول المطلوبة (الاسم والرقم)');
-        return;
-      }
-
-      if (providerFormData.services.length === 0) {
-        alert('يرجى اختيار خدمة واحدة على الأقل');
-        return;
-      }
-
-      if (!providerFormData.nationality) {
-        alert('يرجى اختيار الجنسية');
-        return;
-      }
-
-      setIsUploading(true);
-      let idImageUrl = '';
-
-      if (idImageFile) {
-        try {
-          const storageRef = ref(storage, `providers/${Date.now()}_${idImageFile.name}`);
-          await uploadBytes(storageRef, idImageFile);
-          idImageUrl = await getDownloadURL(storageRef);
-        } catch (uploadError) {
-          console.error('Image upload failed:', uploadError);
-          alert('فشل رفع الصورة، سيتم إضافة المزود بدون صورة');
-        }
-      }
-
-      const result = await createManualProvider({
-        ...providerFormData,
-        idImage: idImageUrl
-      });
-
-      if (!result.success && result.error === 'duplicate_phone') {
-        setIsUploading(false);
-        alert('رقم الجوال هذا مستخدم بالفعل لمزود آخر');
-        return;
-      }
-
-      await fetchProviders();
-      setIsAddProviderModalOpen(false);
-      setProviderFormData({
-        firstName: '',
-        lastName: '',
-        phone: '',
-        email: '',
-        nationality: '',
-        services: [],
-      });
-      setIdImageFile(null);
-      setIsUploading(false);
-      alert('تم إضافة المزود بنجاح');
-    } catch (error) {
-      console.error('Error adding provider:', error);
-      alert('فشل إضافة المزود');
-    }
-  };
 
   const openGroupModal = (group = null) => {
     if (group) {
@@ -553,13 +508,15 @@ export const Providers = () => {
           <p className="text-gray-600">عرض وإدارة جميع مزودي الخدمة</p>
         </div>
         <div className="flex gap-3">
-          <button
-            onClick={() => setIsAddProviderModalOpen(true)}
-            className="flex items-center gap-2 px-6 py-3 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition-all font-semibold shadow-md"
-          >
-            <Plus size={20} />
-            إضافة مزود يدوياً
-          </button>
+          {hasAddPermission && (
+            <button
+              onClick={() => navigate('/add-provider')}
+              className="flex items-center gap-2 px-6 py-3 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition-all font-semibold shadow-md"
+            >
+              <Plus size={20} />
+              إضافة مزود يدوياً
+            </button>
+          )}
           <button
             onClick={() => setShowGroupsSection(!showGroupsSection)}
             className="flex items-center gap-2 px-6 py-3 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-all font-semibold shadow-md"
@@ -886,12 +843,17 @@ export const Providers = () => {
                         )}
                       </td>
                       <td className="px-6 py-4">
-                        <span
-                          className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold ${typeBadge.color}`}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleProviderType(provider.id);
+                          }}
+                          className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold transition-all hover:opacity-80 ${typeBadge.color}`}
+                          title="تبديل النوع (VIP / عام)"
                         >
                           <TypeIcon size={14} />
                           {typeBadge.text}
-                        </span>
+                        </button>
                       </td>
                       <td className="px-6 py-4">
                         <span
@@ -1017,169 +979,7 @@ export const Providers = () => {
       </div>
 
       {/* Add Provider Modal */}
-      {isAddProviderModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-6">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b border-gray-200">
-              <div className="flex items-center justify-between">
-                <h2 className="text-2xl font-bold text-gray-800">إضافة مزود جديد يدوياً</h2>
-                <button
-                  onClick={() => setIsAddProviderModalOpen(false)}
-                  className="text-gray-500 hover:text-gray-700"
-                >
-                  <X size={24} />
-                </button>
-              </div>
-            </div>
-            <div className="p-6 space-y-4 text-right" dir="rtl">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">الاسم الأول *</label>
-                  <input
-                    type="text"
-                    value={providerFormData.firstName}
-                    onChange={(e) => setProviderFormData({ ...providerFormData, firstName: e.target.value })}
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none"
-                    placeholder="الاسم الأول"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">الاسم الأخير *</label>
-                  <input
-                    type="text"
-                    value={providerFormData.lastName}
-                    onChange={(e) => setProviderFormData({ ...providerFormData, lastName: e.target.value })}
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none"
-                    placeholder="الاسم الأخير"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">الجنسية *</label>
-                <select
-                  value={providerFormData.nationality}
-                  onChange={(e) => setProviderFormData({ ...providerFormData, nationality: e.target.value })}
-                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none"
-                >
-                  <option value="">اختر الجنسية</option>
-                  {NATIONALITIES.map((nat) => (
-                    <option key={nat.value} value={nat.value}>
-                      {nat.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">صورة الإقامة/الهوية (اختياري)</label>
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 bg-gray-50 hover:bg-gray-100 transition-all text-center">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => setIdImageFile(e.target.files[0])}
-                    className="hidden"
-                    id="id-image-upload"
-                  />
-                  <label htmlFor="id-image-upload" className="cursor-pointer flex flex-col items-center justify-center">
-                    {idImageFile ? (
-                      <div className="flex items-center gap-2 text-teal-600">
-                        <CheckCircle size={24} />
-                        <span className="font-semibold">{idImageFile.name}</span>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="w-12 h-12 rounded-full bg-teal-100 flex items-center justify-center mb-2">
-                          <span className="text-2xl">📷</span>
-                        </div>
-                        <span className="text-gray-600 font-medium">اضغط لرفع صورة الإقامة</span>
-                        <span className="text-gray-400 text-xs mt-1">PNG, JPG up to 5MB</span>
-                      </>
-                    )}
-                  </label>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">رقم الهاتف * (966XXXXXXXXX)</label>
-                <div className="relative">
-                  <input
-                    type="tel"
-                    value={providerFormData.phone}
-                    onChange={(e) => setProviderFormData({ ...providerFormData, phone: e.target.value })}
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none"
-                    placeholder="5XXXXXXXX"
-                  />
-                  <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 border-r pr-2 ltr" dir="ltr">
-                    +966
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">البريد الإلكتروني (اختياري)</label>
-                <input
-                  type="email"
-                  value={providerFormData.email}
-                  onChange={(e) => setProviderFormData({ ...providerFormData, email: e.target.value })}
-                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none"
-                  placeholder="example@email.com"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-4">الخدمات المتاحة للمزود *</label>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-60 overflow-y-auto p-2 border-2 border-gray-100 rounded-xl">
-                  {mainServices.map((service) => (
-                    <label
-                      key={service.id}
-                      className={`flex items-center p-3 rounded-lg border-2 cursor-pointer transition-all ${providerFormData.services.includes(service.id)
-                        ? 'border-teal-500 bg-teal-50'
-                        : 'border-gray-100 bg-white hover:border-gray-300'
-                        }`}
-                    >
-                      <input
-                        type="checkbox"
-                        className="hidden"
-                        checked={providerFormData.services.includes(service.id)}
-                        onChange={(e) => {
-                          const updatedServices = e.target.checked
-                            ? [...providerFormData.services, service.id]
-                            : providerFormData.services.filter(id => id !== service.id);
-                          setProviderFormData({ ...providerFormData, services: updatedServices });
-                        }}
-                      />
-                      <div className={`w-5 h-5 rounded border-2 ml-3 flex items-center justify-center ${providerFormData.services.includes(service.id)
-                        ? 'bg-teal-500 border-teal-500'
-                        : 'border-gray-300'
-                        }`}>
-                        {providerFormData.services.includes(service.id) && <CheckCircle size={14} className="text-white" />}
-                      </div>
-                      <span className="font-semibold text-gray-700">{service.name}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              <div className="flex gap-3 pt-4 sticky bottom-0 bg-white">
-                <button
-                  onClick={handleAddProvider}
-                  disabled={isUploading}
-                  className={`flex-1 px-6 py-4 bg-teal-500 text-white rounded-xl hover:bg-teal-600 transition-all font-bold text-lg shadow-lg ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}
-                >
-                  {isUploading ? 'جاري الإضافة...' : 'إضافة المزود الآن'}
-                </button>
-                <button
-                  onClick={() => setIsAddProviderModalOpen(false)}
-                  className="flex-1 px-6 py-4 bg-gray-200 text-gray-700 rounded-xl hover:bg-gray-300 transition-all font-bold text-lg"
-                >
-                  إلغاء
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Modal removed - moved to AddProvider.jsx */}
 
       {/* Group Modal */}
       {isGroupModalOpen && (
@@ -1392,6 +1192,22 @@ export const Providers = () => {
                       <h3 className="font-semibold text-gray-700 mb-2">الجنسية</h3>
                       <p className="text-gray-800">{NATIONALITIES.find(n => n.value === selectedProvider.nationality)?.label || selectedProvider.nationality || 'غير محدد'}</p>
                     </div>
+                    <div>
+                      <h3 className="font-semibold text-gray-700 mb-2">نوع المزود</h3>
+                      <div className="flex items-center gap-3">
+                        <span
+                          className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold ${getTypeBadge(selectedProvider.type).color}`}
+                        >
+                          {getTypeBadge(selectedProvider.type).text}
+                        </span>
+                        <button
+                          onClick={() => toggleProviderType(selectedProvider.id)}
+                          className="text-xs px-3 py-1 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-colors"
+                        >
+                          تعديل إلى {selectedProvider.type === 'vip' ? 'عام' : 'VIP'}
+                        </button>
+                      </div>
+                    </div>
                   </div>
 
                   <div>
@@ -1442,26 +1258,41 @@ export const Providers = () => {
                     </div>
                   </div>
 
-                  {/* Documents */}
+                  {/* Documents - صور أو PDF أو Word */}
                   {selectedProvider.documents && (
                     <div>
                       <h3 className="font-semibold text-gray-700 mb-4">المستندات والصور</h3>
                       <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                        {Object.entries(selectedProvider.documents).map(([key, url]) => (
-                          url && typeof url === 'string' && (
-                            <div key={key} className="relative group rounded-xl overflow-hidden border-2 border-gray-100 hover:border-teal-400 transition-all">
-                              <img src={url} alt={key} className="w-full h-32 object-cover" />
-                              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all">
-                                <button onClick={() => window.open(url, '_blank')} className="p-2 bg-white rounded-full shadow-lg">
-                                  <Eye size={18} className="text-gray-700" />
-                                </button>
-                              </div>
+                        {Object.entries(selectedProvider.documents).map(([key, value]) => {
+                          const url = typeof value === 'string' ? value : value?.url;
+                          const type = (typeof value === 'object' && value ? value.type : null) || 'image';
+                          const docLabel = key === 'idImage' ? 'الهوية' : key === 'carPhotoFront' ? 'السيارة - أمام' : key === 'licensePhoto' ? 'الرخصة' : key === 'registrationPhoto' ? 'استمارة السيارة' : key === 'equipmentPhoto' ? 'صورة العدة' : key === 'carPhotoSide' ? 'السيارة - جانبي' : key;
+                          if (!url) return null;
+                          const isImage = type === 'image';
+                          return (
+                            <div key={key} className="relative group rounded-xl overflow-hidden border-2 border-gray-100 hover:border-teal-400 transition-all bg-gray-50">
+                              {isImage ? (
+                                <>
+                                  <img src={url} alt={docLabel} className="w-full h-32 object-cover" />
+                                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all">
+                                    <button onClick={() => window.open(url, '_blank')} className="p-2 bg-white rounded-full shadow-lg" title="عرض">
+                                      <Eye size={18} className="text-gray-700" />
+                                    </button>
+                                  </div>
+                                </>
+                              ) : (
+                                <a href={url} target="_blank" rel="noopener noreferrer" className="flex flex-col items-center justify-center h-32 p-3 hover:bg-teal-50 transition-colors">
+                                  <FileText size={36} className="text-teal-600 mb-2" />
+                                  <span className="text-xs font-semibold text-gray-600">{type === 'pdf' ? 'PDF' : 'Word'}</span>
+                                  <span className="text-[10px] text-gray-500 mt-1">اضغط للتحميل/العرض</span>
+                                </a>
+                              )}
                               <p className="absolute bottom-0 inset-x-0 bg-black/60 text-white text-[10px] py-1 text-center truncate px-1">
-                                {key === 'idImage' ? 'الهوية' : key === 'carPhotoFront' ? 'السيارة - أمام' : key === 'licensePhoto' ? 'الرخصة' : key}
+                                {docLabel}
                               </p>
                             </div>
-                          )
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   )}
