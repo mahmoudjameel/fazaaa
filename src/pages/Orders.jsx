@@ -637,10 +637,9 @@ export const Orders = () => {
       {(() => {
         const providerRejectionsAfterAccept = requests.filter(
           o => {
-            if (o.status !== 'canceled_by_provider' && o.status !== 'canceled_by_provider_with_reason') {
-              return false;
-            }
-            // التحقق من أن الطلب تم قبوله أولاً
+            const hadProviderCancel = o.status === 'canceled_by_provider' || o.status === 'canceled_by_provider_with_reason' ||
+              (Array.isArray(o.history) && o.history.some(h => h.action === 'provider_cancellation' || h.status === 'canceled_by_provider' || h.status === 'canceled_by_provider_with_reason'));
+            if (!hadProviderCancel) return false;
             const wasAccepted = o.assignedAt ||
               (Array.isArray(o.history) && o.history.some(h => h.status === 'assigned'));
             return wasAccepted;
@@ -694,19 +693,19 @@ export const Orders = () => {
                       const cancelEvent = Array.isArray(order.history)
                         ? order.history.find(h => h.action === 'provider_cancellation' || h.status === 'canceled_by_provider' || h.status === 'canceled_by_provider_with_reason')
                         : null;
-                      const reason = order.cancelReason || cancelEvent?.cancelReason || 'لم يتم تحديد السبب';
+                      const reason = order.cancelReason || cancelEvent?.cancelReason || cancelEvent?.reason || (cancelEvent?.message?.split('السبب: ')[1]) || 'لم يتم تحديد السبب';
 
                       return (
                         <div
                           key={order.id}
-                          className="bg-white rounded-lg p-4 border-l-4 border-red-500"
+                          className="bg-white rounded-xl p-4 border border-red-200 border-r-4 border-r-red-500 shadow-sm"
                         >
-                          <div className="flex items-start justify-between">
-                            <div className="flex-1">
-                              <p className="font-semibold text-gray-800 mb-1">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <p className="font-bold text-gray-800 mb-1">
                                 {order.serviceName || order.serviceType || 'خدمة'}
                               </p>
-                              <p className="text-xs text-gray-600 mb-1">
+                              <p className="text-xs text-gray-600 mb-2">
                                 المزود: {order.providerName ? (
                                   <button
                                     type="button"
@@ -719,13 +718,14 @@ export const Orders = () => {
                                   <span className="font-semibold">غير محدد</span>
                                 )}
                               </p>
-                              <p className="text-xs text-red-700 font-semibold mt-2">
-                                ⚠️ السبب: {reason}
-                              </p>
+                              <div className="bg-red-50 rounded-lg px-3 py-2 border border-red-100">
+                                <p className="text-xs font-bold text-red-700 mb-0.5">سبب الإلغاء</p>
+                                <p className="text-sm text-red-800">{reason}</p>
+                              </div>
                             </div>
                             <button
                               onClick={() => setSelectedRequest(order)}
-                              className="text-red-600 hover:text-red-800 text-xs font-semibold"
+                              className="text-red-600 hover:text-red-800 text-xs font-semibold flex-shrink-0"
                             >
                               عرض التفاصيل
                             </button>
@@ -1126,36 +1126,49 @@ export const Orders = () => {
                   >
                     {getStatusBadge(selectedRequest.status).text}
                   </span>
-                  {/* Provider Cancellation / Rejection */}
+                  {/* سبب إلغاء المزود — عرض مرتب */}
                   {(() => {
                     const cancelEvents = Array.isArray(selectedRequest.history)
                       ? selectedRequest.history.filter(h => h.action === 'provider_cancellation' || h.status === 'canceled_by_provider' || h.status === 'canceled_by_provider_with_reason')
                       : [];
-
-                    if (cancelEvents.length === 0) return null;
+                    const hasProviderCancel = cancelEvents.length > 0 || selectedRequest.cancelReason;
+                    if (!hasProviderCancel) return null;
 
                     const latestCancel = cancelEvents[cancelEvents.length - 1];
-                    const reason = latestCancel.cancelReason || latestCancel.reason || latestCancel.message?.split('السبب: ')[1];
+                    const reason = selectedRequest.cancelReason || latestCancel?.cancelReason || latestCancel?.reason || (latestCancel?.message && latestCancel.message.includes('السبب:') ? latestCancel.message.split('السبب: ')[1] : null) || 'لم يُحدد';
                     const wasAccepted = selectedRequest.assignedAt || (Array.isArray(selectedRequest.history) && selectedRequest.history.some(h => h.status === 'assigned'));
-
-                    if (!wasAccepted && !reason) return null;
 
                     return (
                       <div className="space-y-3">
-                        <div className="mt-3 p-3 bg-red-50 border-r-4 border-red-500 rounded-lg">
-                          <p className="text-sm font-semibold text-red-800 mb-2">
-                            ⚠️ {wasAccepted ? 'رفض المزود بعد قبول الطلب' : 'رفض الطلب من المزود'}
-                          </p>
-                          {reason && (
-                            <p className="text-sm text-red-700">
-                              <span className="font-semibold">آخر سبب:</span> {reason}
-                            </p>
-                          )}
-                          {latestCancel.providerId && (
-                            <p className="text-xs text-red-600 mt-2">
-                              معرف المزود: {latestCancel.providerId}
-                            </p>
-                          )}
+                        <div className="mt-3 p-4 bg-red-50 border border-red-200 border-r-4 border-r-red-500 rounded-xl shadow-sm">
+                          <div className="flex items-center gap-2 mb-3">
+                            <XCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
+                            <h4 className="text-base font-bold text-red-800">
+                              {wasAccepted ? 'إلغاء المزود بعد قبول الطلب' : 'رفض الطلب من المزود'}
+                            </h4>
+                          </div>
+                          <dl className="space-y-2 text-sm">
+                            <div>
+                              <dt className="text-red-600 font-semibold mb-0.5">سبب الإلغاء</dt>
+                              <dd className="text-red-800 bg-white/60 rounded-lg px-3 py-2 border border-red-100">
+                                {reason}
+                              </dd>
+                            </div>
+                            {latestCancel?.timestamp && (
+                              <div>
+                                <dt className="text-red-600 font-semibold mb-0.5">وقت الإلغاء</dt>
+                                <dd className="text-red-700">
+                                  {format(new Date(latestCancel.timestamp), 'dd MMMM yyyy، الساعة HH:mm', { locale: ar })}
+                                </dd>
+                              </div>
+                            )}
+                            {latestCancel?.providerId && (
+                              <div>
+                                <dt className="text-red-600 font-semibold mb-0.5">معرف المزود</dt>
+                                <dd className="text-red-700 font-mono text-xs">{latestCancel.providerId}</dd>
+                              </div>
+                            )}
+                          </dl>
                         </div>
 
                         {cancelEvents.length > 1 && (
@@ -1163,12 +1176,12 @@ export const Orders = () => {
                             <h4 className="text-xs font-bold text-gray-700 mb-2 uppercase tracking-wider">سجل الرفض المتكرر ({cancelEvents.length})</h4>
                             <div className="space-y-2">
                               {cancelEvents.slice(0, -1).reverse().map((event, idx) => (
-                                <div key={idx} className="text-xs border-b border-gray-100 pb-1 last:border-0">
-                                  <p className="font-semibold text-gray-600">
-                                    {event.message || 'تم رفض الطلب'}
+                                <div key={idx} className="text-xs border-b border-gray-100 pb-2 last:border-0">
+                                  <p className="font-semibold text-gray-700">
+                                    {event.cancelReason || event.reason || (event.message?.split('السبب: ')[1]) || event.message || 'تم رفض الطلب'}
                                   </p>
-                                  <p className="text-gray-400 mt-0.5 text-[10px]">
-                                    {event.timestamp && format(new Date(event.timestamp), 'dd MMM, HH:mm', { locale: ar })}
+                                  <p className="text-gray-400 mt-0.5">
+                                    {event.timestamp && format(new Date(event.timestamp), 'dd MMM، HH:mm', { locale: ar })}
                                   </p>
                                 </div>
                               ))}

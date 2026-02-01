@@ -18,7 +18,8 @@ export const DistributionSettings = () => {
       vipCommissionRate: 0.10,
       emergencyFee: 25,
       nightFee: 15,
-      minimumOrderAmount: 50
+      minimumOrderAmount: 50,
+      providerCommissionPerOrder: 5
     },
     serviceAreas: {
       defaultRadius: 50,
@@ -96,7 +97,8 @@ export const DistributionSettings = () => {
           vipCommissionRate: 0.10,
           emergencyFee: 25,
           nightFee: 15,
-          minimumOrderAmount: 50
+          minimumOrderAmount: 50,
+          providerCommissionPerOrder: 5
         },
         serviceAreas: {
           defaultRadius: 50,
@@ -341,6 +343,18 @@ export const DistributionSettings = () => {
                       onChange={(e) => updateSetting('pricing', 'minimumOrderAmount', parseFloat(e.target.value))}
                       className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none"
                     />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">خصم محفظة المزود لكل طلب مكتمل (ر.س)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={settings.pricing.providerCommissionPerOrder ?? 5}
+                      onChange={(e) => updateSetting('pricing', 'providerCommissionPerOrder', parseFloat(e.target.value) || 0)}
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">يُخصم من محفظة المزود مباشرة عند اكتمال الطلب</p>
                   </div>
                 </div>
               </div>
