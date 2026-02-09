@@ -664,35 +664,41 @@ export const listenToAllProviders = (callback) => {
 // ✅ Manual Order Management
 
 /**
- * البحث عن مستخدمين بالاسم أو الهاتف
+ * البحث عن مستخدمين بالاسم أو الهاتف في مجموعتي users و customers
  * @param {string} term - كلمة البحث
- * @returns {Promise<Array>}
+ * @returns {Promise<Object>}
  */
 export const getUsersBySearch = async (term) => {
   try {
-    const usersRef = collection(db, 'users');
     const searchLower = term.toLowerCase().trim();
+    const normalize = (val) => String(val || '').replace(/\D/g, '');
+    const searchDigits = normalize(term);
 
-    // في Firestore، البحث النصي المباشر محدود، لذا سنجلب الكل ونفلتر في البداية
-    // أو نستخدم رقم الهاتف كبحث دقيق
-    const q = query(usersRef, limit(50));
-    const querySnapshot = await getDocs(q);
+    // نجلب عينة من المجموعتين للتصفية (Firestore محدود في البحث النصي)
+    const [usersSnap, customersSnap] = await Promise.all([
+      getDocs(query(collection(db, 'users'), limit(100))),
+      getDocs(query(collection(db, 'customers'), limit(100)))
+    ]);
 
-    const users = [];
-    querySnapshot.forEach((doc) => {
+    const resultsMap = new Map();
+
+    const processDoc = (doc) => {
       const data = doc.data();
-      if (
-        data.name?.toLowerCase().includes(searchLower) ||
+      const phoneMatch = searchDigits && normalize(data.phone).includes(searchDigits);
+      const textMatch = data.name?.toLowerCase().includes(searchLower) ||
         data.firstName?.toLowerCase().includes(searchLower) ||
         data.lastName?.toLowerCase().includes(searchLower) ||
-        data.phone?.includes(term) ||
-        data.email?.toLowerCase().includes(searchLower)
-      ) {
-        users.push({ id: doc.id, ...data });
-      }
-    });
+        data.email?.toLowerCase().includes(searchLower);
 
-    return { success: true, users };
+      if (phoneMatch || textMatch) {
+        resultsMap.set(doc.id, { id: doc.id, ...data });
+      }
+    };
+
+    usersSnap.forEach(processDoc);
+    customersSnap.forEach(processDoc);
+
+    return { success: true, users: Array.from(resultsMap.values()) };
   } catch (error) {
     console.error('Search users error:', error);
     throw error;
@@ -700,16 +706,62 @@ export const getUsersBySearch = async (term) => {
 };
 
 /**
- * إنشاء طلب يدوي جديد
+ * البحث عن مزودين بالاسم أو الهاتف
+ * @param {string} term - كلمة البحث
+ * @returns {Promise<Object>}
+ */
+export const getProvidersBySearch = async (term) => {
+  try {
+    const providersRef = collection(db, 'providers');
+    const searchLower = term.toLowerCase().trim();
+    const normalize = (val) => String(val || '').replace(/\D/g, '');
+    const searchDigits = normalize(term);
+
+    const q = query(providersRef, limit(100));
+    const querySnapshot = await getDocs(q);
+
+    const providers = [];
+    querySnapshot.forEach((doc) => {
+      const data = doc.data();
+      const phoneMatch = searchDigits && normalize(data.phone).includes(searchDigits);
+      const textMatch = data.firstName?.toLowerCase().includes(searchLower) ||
+        data.lastName?.toLowerCase().includes(searchLower) ||
+        data.name?.toLowerCase().includes(searchLower) ||
+        data.email?.toLowerCase().includes(searchLower);
+
+      if (phoneMatch || textMatch) {
+        providers.push({ id: doc.id, ...data });
+      }
+    });
+
+    return { success: true, providers };
+  } catch (error) {
+    console.error('Search providers error:', error);
+    throw error;
+  }
+};
+
+/**
+ * إنشاء طلب يدوي جديد (مع رقم طلب متسلسل موحد)
  * @param {Object} orderData - بيانات الطلب
  * @returns {Promise<Object>}
  */
 export const createManualOrder = async (orderData) => {
   try {
     const requestsRef = collection(db, 'requests');
+    const counterRef = doc(db, 'settings', 'orderNumberCounter');
+
+    const orderNumber = await runTransaction(db, async (transaction) => {
+      const snap = await transaction.get(counterRef);
+      const current = snap.exists() ? (snap.data().lastOrderNumber || 0) : 0;
+      const next = current + 1;
+      transaction.set(counterRef, { lastOrderNumber: next }, { merge: true });
+      return next;
+    });
 
     const newRequest = {
       ...orderData,
+      orderNumber,
       status: 'searching',
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
@@ -892,6 +944,101 @@ export const toggleProviderVIP = async (providerId, isVIP) => {
     return { success: true };
   } catch (error) {
     console.error('Toggle provider VIP error:', error);
+    throw error;
+  }
+};
+
+// ——— البانر (شاشة الرئيسية بتطبيق العميل) ———
+const BANNERS_COLLECTION = 'banners';
+const BANNERS_CONFIG_DOC = 'settings/homeBannersConfig';
+
+export const getBanners = async () => {
+  try {
+    const q = query(
+      collection(db, BANNERS_COLLECTION),
+      orderBy('order', 'asc')
+    );
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+  } catch (error) {
+    console.error('getBanners error:', error);
+    throw error;
+  }
+};
+
+export const addBanner = async (data) => {
+  try {
+    const bannersRef = collection(db, BANNERS_COLLECTION);
+    const snapshot = await getDocs(query(bannersRef, orderBy('order', 'desc'), limit(1)));
+    const nextOrder = snapshot.empty ? 0 : (snapshot.docs[0].data().order ?? -1) + 1;
+    const docRef = await addDoc(bannersRef, {
+      imageUrl: data.imageUrl || '',
+      linkType: data.linkType || 'none',
+      linkValue: data.linkValue || '',
+      title: data.title || '',
+      subtitle: data.subtitle || '',
+      order: nextOrder,
+      active: data.active !== false,
+      createdAt: serverTimestamp(),
+    });
+    return { success: true, id: docRef.id };
+  } catch (error) {
+    console.error('addBanner error:', error);
+    throw error;
+  }
+};
+
+export const updateBanner = async (id, data) => {
+  try {
+    const bannerRef = doc(db, BANNERS_COLLECTION, id);
+    const updateData = {};
+    if (data.imageUrl !== undefined) updateData.imageUrl = data.imageUrl;
+    if (data.linkType !== undefined) updateData.linkType = data.linkType;
+    if (data.linkValue !== undefined) updateData.linkValue = data.linkValue;
+    if (data.title !== undefined) updateData.title = data.title;
+    if (data.subtitle !== undefined) updateData.subtitle = data.subtitle;
+    if (data.order !== undefined) updateData.order = data.order;
+    if (data.active !== undefined) updateData.active = data.active;
+    if (Object.keys(updateData).length) {
+      await updateDoc(bannerRef, updateData);
+    }
+    return { success: true };
+  } catch (error) {
+    console.error('updateBanner error:', error);
+    throw error;
+  }
+};
+
+export const deleteBanner = async (id) => {
+  try {
+    await deleteDoc(doc(db, BANNERS_COLLECTION, id));
+    return { success: true };
+  } catch (error) {
+    console.error('deleteBanner error:', error);
+    throw error;
+  }
+};
+
+export const getBannersConfig = async () => {
+  try {
+    const configRef = doc(db, 'settings', 'homeBannersConfig');
+    const snap = await getDoc(configRef);
+    if (!snap.exists()) return { autoPlaySeconds: 5 };
+    return { ...snap.data(), autoPlaySeconds: snap.data().autoPlaySeconds ?? 5 };
+  } catch (error) {
+    console.error('getBannersConfig error:', error);
+    return { autoPlaySeconds: 5 };
+  }
+};
+
+export const updateBannersConfig = async (data) => {
+  try {
+    const [coll, docId] = BANNERS_CONFIG_DOC.split('/');
+    const configRef = doc(db, coll, docId);
+    await setDoc(configRef, { ...data, updatedAt: serverTimestamp() }, { merge: true });
+    return { success: true };
+  } catch (error) {
+    console.error('updateBannersConfig error:', error);
     throw error;
   }
 };

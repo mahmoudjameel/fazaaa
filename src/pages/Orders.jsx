@@ -31,12 +31,13 @@ import {
   listenToAllRequests,
   getProviderById,
   getUsersBySearch,
+  getProvidersBySearch,
   createManualOrder,
   updateOrderDetails
 } from '../services/adminService';
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
-import { collection, getDocs, doc, getDoc, updateDoc, query, orderBy, where } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, updateDoc, query, orderBy, where, limit } from 'firebase/firestore';
 import { db } from '../services/firebase';
 
 export const Orders = () => {
@@ -45,6 +46,8 @@ export const Orders = () => {
   const [filteredRequests, setFilteredRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [matchedUids, setMatchedUids] = useState([]);
+  const [isSearchingUids, setIsSearchingUids] = useState(false);
   const [statusFilter, setStatusFilter] = useState('all');
   const [cityFilter, setCityFilter] = useState('all');
   const [serviceFilter, setServiceFilter] = useState('all');
@@ -149,9 +152,43 @@ export const Orders = () => {
     }
   };
 
+  // البحث الذكي: تحويل رقم الهاتف إلى مصفوفة من المعرفات (UIDs)
+  useEffect(() => {
+    const sTerm = searchTerm.trim();
+    const searchDigits = sTerm.replace(/\D/g, '');
+
+    // لا نقوم بالبحث عبر المجموعات إلا إذا كان المدخل "رقمي" وطوله كافٍ
+    if (searchDigits.length < 3) {
+      setMatchedUids([]);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsSearchingUids(true);
+      try {
+        const [usersRes, providersRes] = await Promise.all([
+          getUsersBySearch(sTerm),
+          getProvidersBySearch(sTerm)
+        ]);
+
+        const uids = new Set();
+        if (usersRes.success) usersRes.users.forEach(u => uids.add(u.id));
+        if (providersRes.success) providersRes.providers.forEach(p => uids.add(p.id));
+
+        setMatchedUids(Array.from(uids));
+      } catch (error) {
+        console.error('Smart search error:', error);
+      } finally {
+        setIsSearchingUids(false);
+      }
+    }, 500); // تأخير نصف ثانية لتقليل الضغط على قاعدة البيانات
+
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
   useEffect(() => {
     filterOrders();
-  }, [requests, searchTerm, statusFilter, cityFilter, serviceFilter]);
+  }, [requests, searchTerm, statusFilter, cityFilter, serviceFilter, matchedUids]);
 
   // جلب بيانات العميل عند فتح Modal تفاصيل الطلب
   useEffect(() => {
@@ -241,74 +278,93 @@ export const Orders = () => {
 
   const filterOrders = () => {
     let filtered = requests;
+    const sTerm = searchTerm.trim();
+    // استخراج الأرقام فقط من نص البحث لتسهيل مقارنة الهواتف
+    const searchDigits = sTerm.replace(/\D/g, '');
+    // التحقق مما إذا كان البحث "رقمي" المنحى (رقم طلب أو جزء كبير من هاتف)
+    // نعتبره بحثاً رقمياً شاملاً إذا كان المدخل أرقاماً فقط، أو إذا استخرجنا أكثر من 4 أرقام
+    const isNumericSearch = searchDigits.length >= 4 || (/^\d+$/.test(sTerm) && sTerm.length >= 3);
 
-    // Filter by Service
-    if (serviceFilter !== 'all') {
-      filtered = filtered.filter(req => req.serviceId === serviceFilter || req.serviceType === serviceFilter);
-    }
+    // إذا لم يكن بحثاً رقمياً، يتم تطبيق الفلاتر المعتادة
+    if (!isNumericSearch) {
+      // Filter by Service
+      if (serviceFilter !== 'all') {
+        filtered = filtered.filter(req => req.serviceId === serviceFilter || req.serviceType === serviceFilter);
+      }
 
-    // Filter by City
-    if (cityFilter !== 'all') {
-      filtered = filtered.filter(req => req.cityId === cityFilter || req.city === cityFilter);
-    }
+      // Filter by City
+      if (cityFilter !== 'all') {
+        filtered = filtered.filter(req => req.cityId === cityFilter || req.city === cityFilter);
+      }
 
-    // Filter by Status
-    if (statusFilter !== 'all') {
-      if (statusFilter === 'active') {
-        filtered = filtered.filter((r) => ['searching', 'assigned', 'en_route', 'arrived', 'in_progress'].includes(r.status));
-      } else if (statusFilter === 'cancelled') {
-        filtered = filtered.filter((r) => r.status?.includes('canceled'));
-      } else if (statusFilter === 'cancelled_by_customer') {
-        filtered = filtered.filter((r) => r.status === 'canceled_by_client' || r.status === 'canceled_by_client_with_reason');
-      } else if (statusFilter === 'cancelled_by_provider') {
-        filtered = filtered.filter((r) => r.status === 'canceled_by_provider' || r.status === 'canceled_by_provider_with_reason');
-      } else if (statusFilter === 'no_providers_timeout') {
-        // فلترة خاصة لعدم وجود مزودين وانتهاء المهلة
-        filtered = filtered.filter(o => {
-          if (o.status !== 'canceled_by_client' && o.status !== 'canceled_by_client_with_reason') {
-            return false;
-          }
+      // Filter by Status
+      if (statusFilter !== 'all') {
+        if (statusFilter === 'active') {
+          filtered = filtered.filter((r) => ['searching', 'assigned', 'en_route', 'arrived', 'in_progress'].includes(r.status));
+        } else if (statusFilter === 'cancelled') {
+          filtered = filtered.filter((r) => r.status?.includes('canceled'));
+        } else if (statusFilter === 'cancelled_by_customer') {
+          filtered = filtered.filter((r) => r.status === 'canceled_by_client' || r.status === 'canceled_by_client_with_reason');
+        } else if (statusFilter === 'cancelled_by_provider') {
+          filtered = filtered.filter((r) => r.status === 'canceled_by_provider' || r.status === 'canceled_by_provider_with_reason');
+        } else if (statusFilter === 'no_providers_timeout') {
+          // فلترة خاصة لعدم وجود مزودين وانتهاء المهلة
+          filtered = filtered.filter(o => {
+            if (o.status !== 'canceled_by_client' && o.status !== 'canceled_by_client_with_reason') {
+              return false;
+            }
+            const wasAccepted = o.assignedAt || (Array.isArray(o.history) && o.history.some(h => h.status === 'assigned'));
+            if (wasAccepted) return false;
+            const cancelReason = o.cancelReason || (Array.isArray(o.history) ? o.history.find(h => h.cancelReason)?.cancelReason : '') || '';
+            const timeoutReasons = ['لا يوجد مزودين متاحين', 'ضغط على الشبكة', 'انتهى وقت البحث', 'لايوجد شبكة متاحة', 'ضغط على الشبكة'];
+            return timeoutReasons.some(r => cancelReason.includes(r));
+          });
+        } else if (statusFilter === 'rejections_after_accept') {
+          // فلترة للرفض بعد القبول
+          filtered = filtered.filter(o => {
+            const wasAccepted = o.assignedAt || (Array.isArray(o.history) && o.history.some(h => h.status === 'assigned'));
+            if (!wasAccepted) return false;
 
-          const wasAccepted = o.assignedAt ||
-            (Array.isArray(o.history) && o.history.some(h => h.status === 'assigned'));
+            const isCancelled = o.status?.includes('canceled') ||
+              (Array.isArray(o.history) && o.history.some(h => h.status?.includes('canceled') || h.action?.includes('cancellation')));
 
-          if (wasAccepted) {
-            return false;
-          }
-
-          const cancelReason = o.cancelReason || '';
-          const historyCancelReason = Array.isArray(o.history)
-            ? o.history.find(h => h.cancelReason)?.cancelReason || ''
-            : '';
-
-          const reason = cancelReason || historyCancelReason;
-
-          const timeoutReasons = [
-            'لا يوجد مزودين متاحين',
-            'ضغط على الشبكة',
-            'انتهى وقت البحث',
-            'نعتذر لايوجد شبكة متاحة في منطقتكم',
-            'نعتذر يوجد ضغط على الشبكة في الوقت الحالي'
-          ];
-
-          return timeoutReasons.some(r => reason.includes(r));
-        });
-      } else {
-        filtered = filtered.filter((r) => r.status === statusFilter);
+            return isCancelled;
+          });
+        } else {
+          filtered = filtered.filter((r) => r.status === statusFilter);
+        }
       }
     }
 
-    // Filter by Search Term (Customer Name, Phone, Provider Name, ID)
-    if (searchTerm) {
-      const searchLower = searchTerm.toLowerCase();
+    // تطبيق البحث
+    if (sTerm) {
+      const searchLower = sTerm.toLowerCase();
+      const normalize = (val) => String(val || '').replace(/\D/g, '');
+      const normalizedSearch = normalize(sTerm);
+
       filtered = filtered.filter(
-        (r) =>
-          r.id?.toLowerCase().includes(searchLower) ||
-          r.customerName?.toLowerCase().includes(searchLower) ||
-          r.customerPhone?.includes(searchTerm) ||
-          r.providerName?.toLowerCase().includes(searchLower) ||
-          r.providerPhone?.includes(searchTerm) ||
-          r.serviceName?.toLowerCase().includes(searchLower)
+        (r) => {
+          // 1. البحث برقم الطلب (Order Number)
+          const matchOrder = r.orderNumber != null && String(r.orderNumber).includes(sTerm);
+
+          // 2. البحث برقم الهاتف - نقوم بتنظيف الرقمين من أي مسافات أو رموز للمقارنة
+          const matchCustomerPhone = normalizedSearch && normalize(r.customerPhone).includes(normalizedSearch);
+          const matchProviderPhone = normalizedSearch && normalize(r.providerPhone).includes(normalizedSearch);
+
+          // 3. البحث الذكي عبر المعرفات (UIDs) التي وجدناها مسبقاً برقم الهاتف
+          const matchUid = matchedUids.includes(r.customerId) ||
+            matchedUids.includes(r.providerId) ||
+            matchedUids.includes(r.userId) ||
+            matchedUids.includes(r.uid);
+
+          // 4. البحث بالاسم أو الخدمة أو المعرف
+          const matchText = r.id?.toLowerCase().includes(searchLower) ||
+            r.customerName?.toLowerCase().includes(searchLower) ||
+            r.providerName?.toLowerCase().includes(searchLower) ||
+            r.serviceName?.toLowerCase().includes(searchLower);
+
+          return matchOrder || matchCustomerPhone || matchProviderPhone || matchUid || matchText;
+        }
       );
     }
 
@@ -381,7 +437,7 @@ export const Orders = () => {
     setEditingOrder(order);
     setEditOrderData({
       serviceName: order.serviceName || '',
-      price: order.price || '',
+      price: order.price || order.servicePrice || '',
       location: order.location || '',
       cancelReason: order.cancelReason || '',
       status: order.status || ''
@@ -392,9 +448,11 @@ export const Orders = () => {
   const handleUpdateOrder = async (e) => {
     e.preventDefault();
     try {
+      const newPrice = Number(editOrderData.price);
       const result = await updateOrderDetails(editingOrder.id, {
         serviceName: editOrderData.serviceName,
-        price: Number(editOrderData.price),
+        price: newPrice,
+        servicePrice: newPrice,
         location: editOrderData.location,
         cancelReason: editOrderData.cancelReason,
         status: editOrderData.status
@@ -415,7 +473,9 @@ export const Orders = () => {
       en_route: { text: 'في الطريق', color: 'bg-blue-100 text-blue-700' },
       arrived: { text: 'وصل', color: 'bg-purple-100 text-purple-700' },
       in_progress: { text: 'قيد التنفيذ', color: 'bg-orange-100 text-orange-700' },
-      pending_client_confirmation: { text: 'بانتظار العميل', color: 'bg-yellow-100 text-yellow-700' },
+      pending_client_confirmation: { text: 'بانتظار تأكيد العميل', color: 'bg-yellow-100 text-yellow-700' },
+      pending_review: { text: 'قيد المراجعة', color: 'bg-amber-100 text-amber-700' },
+      suspended: { text: 'معلق', color: 'bg-gray-100 text-gray-700' },
       completed: { text: 'مكتمل', color: 'bg-green-100 text-green-700' },
       pending_legal_docs: { text: 'بانتظار السند', color: 'bg-orange-100 text-orange-700' },
       canceled_by_client: { text: 'ملغي من العميل', color: 'bg-red-100 text-red-700' },
@@ -460,44 +520,92 @@ export const Orders = () => {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6 mb-4 sm:mb-6">
-        <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-5 md:p-6 shadow-lg">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-3 sm:gap-4 md:gap-4 mb-4 sm:mb-6">
+        <div
+          onClick={() => setStatusFilter('active')}
+          className={`cursor-pointer transition-all hover:scale-105 rounded-xl sm:rounded-2xl p-4 sm:p-5 shadow-lg ${statusFilter === 'active' ? 'bg-primary-teal text-white' : 'bg-white'}`}
+        >
           <div className="flex items-center justify-between mb-2">
-            <Clock className="text-yellow-500 w-5 h-5 sm:w-6 sm:h-6" />
-            <span className="text-xs sm:text-sm text-gray-600">قيد التنفيذ</span>
+            <Clock className={`${statusFilter === 'active' ? 'text-white' : 'text-yellow-500'} w-5 h-5 sm:w-6 sm:h-6`} />
+            <span className={`text-xs sm:text-sm ${statusFilter === 'active' ? 'text-teal-50' : 'text-gray-600'}`}>قيد التنفيذ</span>
           </div>
-          <p className="text-2xl sm:text-3xl font-black text-gray-800">
+          <p className={`text-2xl sm:text-3xl font-black ${statusFilter === 'active' ? 'text-white' : 'text-gray-800'}`}>
             {requests.filter((o) => ['searching', 'assigned', 'en_route', 'arrived', 'in_progress', 'pending_legal_docs'].includes(o.status)).length}
           </p>
         </div>
-        <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-5 md:p-6 shadow-lg">
+
+        <div
+          onClick={() => setStatusFilter('pending_review')}
+          className={`cursor-pointer transition-all hover:scale-105 rounded-xl sm:rounded-2xl p-4 sm:p-5 shadow-lg ${statusFilter === 'pending_review' ? 'bg-amber-500 text-white' : 'bg-white border-b-4 border-amber-400'}`}
+        >
           <div className="flex items-center justify-between mb-2">
-            <DollarSign className="text-green-500 w-5 h-5 sm:w-6 sm:h-6" />
-            <span className="text-xs sm:text-sm text-gray-600">مكتملة</span>
+            <AlertTriangle className={`${statusFilter === 'pending_review' ? 'text-white' : 'text-amber-500'} w-5 h-5 sm:w-6 sm:h-6`} />
+            <span className={`text-xs sm:text-sm ${statusFilter === 'pending_review' ? 'text-amber-50' : 'text-gray-600'}`}>قيد المراجعة</span>
           </div>
-          <p className="text-2xl sm:text-3xl font-black text-gray-800">
+          <p className={`text-2xl sm:text-3xl font-black ${statusFilter === 'pending_review' ? 'text-white' : 'text-gray-800'}`}>
+            {requests.filter((o) => o.status === 'pending_review').length}
+          </p>
+        </div>
+
+        <div
+          onClick={() => setStatusFilter('no_providers_timeout')}
+          className={`cursor-pointer transition-all hover:scale-105 rounded-xl sm:rounded-2xl p-4 sm:p-5 shadow-lg ${statusFilter === 'no_providers_timeout' ? 'bg-purple-600 text-white' : 'bg-white border-b-4 border-purple-400'}`}
+        >
+          <div className="flex items-center justify-between mb-2">
+            <XCircle className={`${statusFilter === 'no_providers_timeout' ? 'text-white' : 'text-purple-500'} w-5 h-5 sm:w-6 sm:h-6`} />
+            <span className={`text-xs sm:text-sm ${statusFilter === 'no_providers_timeout' ? 'text-purple-50' : 'text-gray-600'}`}>انتهاء المهلة</span>
+          </div>
+          <p className={`text-2xl sm:text-3xl font-black ${statusFilter === 'no_providers_timeout' ? 'text-white' : 'text-gray-800'}`}>
+            {requests.filter(o => {
+              if (o.status !== 'canceled_by_client' && o.status !== 'canceled_by_client_with_reason') return false;
+              const wasAccepted = o.assignedAt || (Array.isArray(o.history) && o.history.some(h => h.status === 'assigned'));
+              if (wasAccepted) return false;
+              const cancelReason = o.cancelReason || (Array.isArray(o.history) ? o.history.find(h => h.cancelReason)?.cancelReason : '') || '';
+              const timeoutReasons = ['لا يوجد مزودين متاحين', 'ضغط على الشبكة', 'انتهى وقت البحث', 'لايوجد شبكة متاحة', 'ضغط على الشبكة'];
+              return timeoutReasons.some(r => cancelReason.includes(r));
+            }).length}
+          </p>
+        </div>
+
+        <div
+          onClick={() => setStatusFilter('rejections_after_accept')}
+          className={`cursor-pointer transition-all hover:scale-105 rounded-xl sm:rounded-2xl p-4 sm:p-5 shadow-lg ${statusFilter === 'rejections_after_accept' ? 'bg-red-600 text-white' : 'bg-white border-b-4 border-red-400'}`}
+        >
+          <div className="flex items-center justify-between mb-2">
+            <AlertCircle className={`${statusFilter === 'rejections_after_accept' ? 'text-white' : 'text-red-500'} w-5 h-5 sm:w-6 sm:h-6`} />
+            <span className={`text-xs sm:text-sm ${statusFilter === 'rejections_after_accept' ? 'text-red-50' : 'text-gray-600'}`}>إلغاء بعد القبول</span>
+          </div>
+          <p className={`text-2xl sm:text-3xl font-black ${statusFilter === 'rejections_after_accept' ? 'text-white' : 'text-gray-800'}`}>
+            {requests.filter(o => {
+              const wasAccepted = o.assignedAt || (Array.isArray(o.history) && o.history.some(h => h.status === 'assigned'));
+              if (!wasAccepted) return false;
+              return o.status?.includes('canceled') || (Array.isArray(o.history) && o.history.some(h => h.status?.includes('canceled') || h.action?.includes('cancellation')));
+            }).length}
+          </p>
+        </div>
+
+        <div
+          onClick={() => setStatusFilter('completed')}
+          className={`cursor-pointer transition-all hover:scale-105 rounded-xl sm:rounded-2xl p-4 sm:p-5 shadow-lg ${statusFilter === 'completed' ? 'bg-green-600 text-white' : 'bg-white'}`}
+        >
+          <div className="flex items-center justify-between mb-2">
+            <DollarSign className={`${statusFilter === 'completed' ? 'text-white' : 'text-green-500'} w-5 h-5 sm:w-6 sm:h-6`} />
+            <span className={`text-xs sm:text-sm ${statusFilter === 'completed' ? 'text-green-50' : 'text-gray-600'}`}>مكتملة</span>
+          </div>
+          <p className={`text-2xl sm:text-3xl font-black ${statusFilter === 'completed' ? 'text-white' : 'text-gray-800'}`}>
             {requests.filter((o) => o.status === 'completed').length}
           </p>
         </div>
-        <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-5 md:p-6 shadow-lg">
+
+        <div
+          onClick={() => setStatusFilter('all')}
+          className={`cursor-pointer transition-all hover:scale-105 rounded-xl sm:rounded-2xl p-4 sm:p-5 shadow-lg ${statusFilter === 'all' ? 'bg-blue-600 text-white' : 'bg-white'}`}
+        >
           <div className="flex items-center justify-between mb-2">
-            <MapPin className="text-blue-500 w-5 h-5 sm:w-6 sm:h-6" />
-            <span className="text-xs sm:text-sm text-gray-600">إجمالي الطلبات</span>
+            <MapPin className={`${statusFilter === 'all' ? 'text-white' : 'text-blue-500'} w-5 h-5 sm:w-6 sm:h-6`} />
+            <span className={`text-xs sm:text-sm ${statusFilter === 'all' ? 'text-blue-50' : 'text-gray-600'}`}>إجمالي الطلبات</span>
           </div>
-          <p className="text-2xl sm:text-3xl font-black text-gray-800">{requests.length}</p>
-        </div>
-        <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-5 md:p-6 shadow-lg">
-          <div className="flex items-center justify-between mb-2">
-            <DollarSign className="text-teal-500 w-5 h-5 sm:w-6 sm:h-6" />
-            <span className="text-xs sm:text-sm text-gray-600">إجمالي الإيرادات</span>
-          </div>
-          <p className="text-2xl sm:text-3xl font-black text-gray-800">
-            {requests
-              .filter((o) => o.status === 'completed')
-              .reduce((sum, o) => sum + (o.price || 0), 0)
-              .toLocaleString()}{' '}
-            ر.س
-          </p>
+          <p className={`text-2xl sm:text-3xl font-black ${statusFilter === 'all' ? 'text-white' : 'text-gray-800'}`}>{requests.length}</p>
         </div>
       </div>
 
@@ -537,7 +645,7 @@ export const Orders = () => {
           return timeoutReasons.some(r => reason.includes(r));
         });
 
-        if (noProvidersTimeoutOrders.length > 0) {
+        if (noProvidersTimeoutOrders.length > 0 && statusFilter === 'no_providers_timeout') {
           return (
             <div className="bg-gradient-to-r from-purple-50 to-pink-50 border-2 border-purple-300 rounded-xl sm:rounded-2xl shadow-lg p-4 sm:p-5 md:p-6 mb-4 sm:mb-6">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 mb-3 sm:mb-4">
@@ -660,7 +768,7 @@ export const Orders = () => {
 
         const allRejections = [...providerRejectionsAfterAccept, ...clientRejectionsAfterAccept];
 
-        if (allRejections.length > 0) {
+        if (allRejections.length > 0 && statusFilter === 'rejections_after_accept') {
           return (
             <div className="bg-gradient-to-r from-red-50 to-orange-50 border-2 border-red-300 rounded-2xl shadow-lg p-6 mb-6">
               <div className="flex items-center justify-between mb-4">
@@ -814,11 +922,16 @@ export const Orders = () => {
             <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
             <input
               type="text"
-              placeholder="ابحث عن طلب (الاسم، الهاتف، المزود، الخدمة، رقم الطلب)..."
+              placeholder="ابحث برقم الطلب، أو جوال العميل، أو جوال المزود (بحث شامل)..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pr-10 pl-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none"
+              className="w-full pr-10 pl-10 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none"
             />
+            {isSearchingUids && (
+              <div className="absolute left-3 top-1/2 transform -translate-y-1/2">
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-teal-500"></div>
+              </div>
+            )}
           </div>
           <select
             value={statusFilter}
@@ -826,17 +939,12 @@ export const Orders = () => {
             className="w-full md:w-auto px-4 py-3 border-2 border-gray-100 rounded-xl focus:border-teal-400 focus:outline-none font-semibold text-gray-700"
           >
             <option value="all">كل الحالات</option>
-            <option value="active">قيد التنفيذ</option>
+            <option value="active">قيد التنفيذ (نشط)</option>
+            <option value="pending_client_confirmation">بانتظار تأكيد العميل</option>
+            <option value="pending_review">قيد المراجعة (اعتراض)</option>
             <option value="completed">مكتملة</option>
             <option value="cancelled">ملغاة (الكل)</option>
-            <option value="cancelled_by_customer">ملغاة من العميل</option>
-            <option value="cancelled_by_provider">ملغاة من المزود</option>
-            <option value="searching">جاري البحث</option>
-            <option value="assigned">مقبول</option>
-            <option value="en_route">في الطريق</option>
-            <option value="arrived">وصل</option>
-            <option value="in_progress">قيد التنفيذ</option>
-            <option value="no_providers_timeout">عدم وجود مزودين وانتهاء المهلة</option>
+            <option value="no_providers_timeout">فشل العثور على مزود</option>
           </select>
 
           <select
@@ -1022,14 +1130,26 @@ export const Orders = () => {
                 <div className="flex items-center justify-between">
                   <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-800 flex items-center gap-2">
                     تفاصيل الطلب
-                    <span className="text-sm font-normal text-gray-500">#{selectedRequest.id?.substring(0, 8)}</span>
+                    <span className="text-sm font-normal text-gray-500">رقم {selectedRequest.orderNumber != null ? selectedRequest.orderNumber : (selectedRequest.id ? `#${selectedRequest.id.substring(0, 8)}` : '—')}</span>
                   </h2>
-                  <button
-                    onClick={() => setSelectedRequest(null)}
-                    className="text-gray-500 hover:text-gray-700 text-xl sm:text-2xl"
-                  >
-                    ✕
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => {
+                        handleEditClick(selectedRequest);
+                        setSelectedRequest(null);
+                      }}
+                      className="flex items-center gap-1.5 px-4 py-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-all text-sm font-bold shadow-sm border border-blue-100"
+                    >
+                      <Edit size={16} />
+                      تعديل الطلب
+                    </button>
+                    <button
+                      onClick={() => setSelectedRequest(null)}
+                      className="text-gray-400 hover:text-gray-600 transition-colors"
+                    >
+                      <X size={24} />
+                    </button>
+                  </div>
                 </div>
               </div>
               <div className="p-4 sm:p-5 md:p-6 space-y-3 sm:space-y-4">
@@ -1192,6 +1312,32 @@ export const Orders = () => {
                     );
                   })()}
 
+                  {/* Completion Denial Reason - سبب رفض الانتهاء */}
+                  {(selectedRequest.status === 'pending_review' && selectedRequest.pendingReviewReason) && (
+                    <div className="mt-3 p-4 bg-amber-50 border border-amber-200 border-r-4 border-r-amb-500 rounded-xl shadow-sm">
+                      <div className="flex items-center gap-2 mb-3">
+                        <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />
+                        <h4 className="text-base font-bold text-amber-800">
+                          رفض تأكيد الانتهاء من العميل
+                        </h4>
+                      </div>
+                      <dl className="space-y-2 text-sm">
+                        <div>
+                          <dt className="text-amber-600 font-semibold mb-0.5">سبب الرفض</dt>
+                          <dd className="text-amber-800 bg-white/60 rounded-lg px-3 py-2 border border-amber-100">
+                            {selectedRequest.pendingReviewReason}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-amber-600 font-semibold mb-0.5">الحالة الحالية</dt>
+                          <dd className="text-amber-700">
+                            الطلب قيد المراجعة من قبل الإدارة
+                          </dd>
+                        </div>
+                      </dl>
+                    </div>
+                  )}
+
                   {/* Client Cancellation */}
                   {(selectedRequest.status === 'canceled_by_client' || selectedRequest.status === 'canceled_by_client_with_reason') && (
                     (() => {
@@ -1300,12 +1446,30 @@ export const Orders = () => {
                     })()
                   )}
                 </div>
-                <div>
-                  <h3 className="font-semibold text-sm sm:text-base text-gray-700 mb-1 sm:mb-2">السعر</h3>
-                  <p className="text-xl sm:text-2xl font-black text-green-600">
-                    {selectedRequest.servicePrice || selectedRequest.price || 0} ر.س
-                  </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+                  <div>
+                    <h3 className="font-semibold text-sm sm:text-base text-gray-700 mb-1 sm:mb-2">السعر الإجمالي</h3>
+                    <p className="text-xl sm:text-2xl font-black text-green-600">
+                      {selectedRequest.servicePrice || selectedRequest.price || 0} ر.س
+                    </p>
+                  </div>
+                  {selectedRequest.status === 'completed' && (
+                    <div>
+                      <h3 className="font-semibold text-sm sm:text-base text-gray-700 mb-1 sm:mb-2">عمولة الإدارة</h3>
+                      <p className="text-xl sm:text-2xl font-black text-red-500">
+                        {selectedRequest.commission || 5} ر.س
+                      </p>
+                    </div>
+                  )}
                 </div>
+                {selectedRequest.status === 'completed' && (
+                  <div className="bg-green-50 rounded-xl p-4 border border-green-100">
+                    <h3 className="font-semibold text-sm text-green-800 mb-1">صافي ربح المزود</h3>
+                    <p className="text-2xl font-black text-green-700">
+                      {(selectedRequest.servicePrice || selectedRequest.price || 0) - (selectedRequest.commission || 5)} ر.س
+                    </p>
+                  </div>
+                )}
                 {/* Timeline Section */}
                 <div className="bg-gray-50 rounded-xl p-4 sm:p-5 border border-gray-200">
                   <h3 className="font-semibold text-sm sm:text-base text-gray-700 mb-4 flex items-center gap-2">
@@ -2123,13 +2287,12 @@ export const Orders = () => {
                   >
                     <option value="searching">جاري البحث</option>
                     <option value="assigned">تم التعيين</option>
-                    <option value="en_route">في الطريق</option>
-                    <option value="arrived">وصل</option>
                     <option value="in_progress">قيد التنفيذ</option>
+                    <option value="pending_client_confirmation">بانتظار تأكيد العميل</option>
+                    <option value="pending_review">قيد المراجعة</option>
                     <option value="completed">مكتمل</option>
                     <option value="canceled_by_client">ملغي من العميل</option>
                     <option value="canceled_by_provider">ملغي من المزود</option>
-                    <option value="canceled_by_client_with_reason">ملغي من العميل (بسبب)</option>
                     <option value="canceled_by_provider_with_reason">ملغي من المزود (بسبب)</option>
                   </select>
                 </div>

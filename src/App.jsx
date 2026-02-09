@@ -16,6 +16,7 @@ import BankSettings from './pages/BankSettings';
 import WithdrawalRequests from './pages/WithdrawalRequests';
 import AppSettings from './pages/AppSettings';
 import Admins from './pages/Admins';
+import Banners from './pages/Banners';
 import { AddProvider } from './pages/AddProvider';
 import { Login } from './pages/Login';
 
@@ -82,6 +83,7 @@ function App() {
           <Route path="bank-settings" element={<BankSettings />} />
           <Route path="withdrawal-requests" element={<WithdrawalRequests />} />
           <Route path="app-settings" element={<AppSettings />} />
+          <Route path="banners" element={<Banners />} />
           <Route path="admins" element={<Admins />} />
         </Route>
       </Routes>

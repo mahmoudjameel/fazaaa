@@ -1463,15 +1463,32 @@ export const Providers = () => {
                           ) : (
                             orderStats?.orders.slice(0, 10).map((order) => (
                               <tr key={order.id} className="hover:bg-gray-50 transition-colors">
-                                <td className="px-4 py-3 font-mono text-gray-500">#{order.id.substring(0, 8)}</td>
+                                <td className="px-4 py-3 font-mono text-gray-500">{order.orderNumber != null ? order.orderNumber : (order.id ? `#${order.id.substring(0, 8)}` : '—')}</td>
                                 <td className="px-4 py-3 font-bold text-gray-800">{order.serviceType}</td>
                                 <td className="px-4 py-3 text-gray-600">
                                   {order.createdAt ? format(order.createdAt.toDate ? order.createdAt.toDate() : new Date(order.createdAt), 'dd/MM/yyyy HH:mm', { locale: ar }) : '-'}
                                 </td>
                                 <td className="px-4 py-3">
-                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${order.status === 'completed' ? 'bg-green-100 text-green-700' : order.status.includes('canceled') ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>
-                                    {order.status === 'completed' ? 'مكتمل' : 'ملغى'}
-                                  </span>
+                                  {(() => {
+                                    const badges = {
+                                      completed: { text: 'مكتمل', color: 'bg-green-100 text-green-700' },
+                                      pending_client_confirmation: { text: 'بانتظار تأكيد العميل', color: 'bg-yellow-100 text-yellow-700' },
+                                      pending_review: { text: 'قيد المراجعة', color: 'bg-amber-100 text-amber-700' },
+                                      searching: { text: 'جاري البحث', color: 'bg-blue-100 text-blue-700' },
+                                      assigned: { text: 'مقبول', color: 'bg-teal-100 text-teal-700' },
+                                      en_route: { text: 'في الطريق', color: 'bg-blue-100 text-blue-700' },
+                                      arrived: { text: 'وصل', color: 'bg-purple-100 text-purple-700' },
+                                      in_progress: { text: 'قيد التنفيذ', color: 'bg-orange-100 text-orange-700' },
+                                      canceled_by_client: { text: 'ملغي من العميل', color: 'bg-red-100 text-red-700' },
+                                      canceled_by_provider: { text: 'ملغي من المزود', color: 'bg-red-100 text-red-700' },
+                                    };
+                                    const badge = badges[order.status] || { text: order.status, color: 'bg-gray-100 text-gray-700' };
+                                    return (
+                                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${badge.color}`}>
+                                        {badge.text}
+                                      </span>
+                                    );
+                                  })()}
                                 </td>
                               </tr>
                             ))

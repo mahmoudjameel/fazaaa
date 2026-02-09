@@ -163,6 +163,10 @@ export const Dashboard = () => {
         text: 'ملغي من العميل',
         color: 'bg-status-error/10 text-status-error border-status-error/20',
       },
+      pending_client_confirmation: {
+        text: 'بانتظار تأكيد العميل',
+        color: 'bg-status-warning/10 text-status-warning border-status-warning/20',
+      },
     };
     return (
       badges[status] || {

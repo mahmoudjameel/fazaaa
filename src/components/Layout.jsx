@@ -20,14 +20,51 @@ import {
   ChevronRight,
   UserPlus,
   Bell,
+  ImageIcon,
 } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { db } from '../services/firebase';
 
 export const Layout = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
-  const [sidebarOpen, setSidebarOpen] = useState(true); // مفتوح افتراضياً على جميع الأجهزة
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [pendingReviewCount, setPendingReviewCount] = useState(0);
+  const lastCountRef = useRef(0);
+  const audioRef = useRef(new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3')); // تنبيه افتراضي
+
+  useEffect(() => {
+    // طلب صلاحية الإشعارات
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+
+    // الاستماع للطلبات التي تحتاج مراجعة
+    const q = query(collection(db, 'requests'), where('status', '==', 'pending_review'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const count = snapshot.size;
+      setPendingReviewCount(count);
+
+      // إذا زاد العدد، نقوم بالتنبيه
+      if (count > lastCountRef.current) {
+        // تنبيه صوتي
+        audioRef.current.play().catch(e => console.log('Audio play failed:', e));
+
+        // تنبيه متصفح
+        if ('Notification' in window && Notification.permission === 'granted') {
+          new Notification('فزّاعين: طلب جديد يحتاج مراجعة', {
+            body: `هناك ${count} طلبات بانتظار مراجعتك الآن.`,
+            icon: '/logo192.png'
+          });
+        }
+      }
+      lastCountRef.current = count;
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   useEffect(() => {
     const handleResize = () => {
@@ -185,6 +222,14 @@ export const Layout = () => {
       icon: Settings,
       label: 'إعدادات التطبيق',
       color: 'from-gray-500 to-gray-600',
+      category: 'settings',
+    },
+    {
+      id: 'banners',
+      path: '/banners',
+      icon: ImageIcon,
+      label: 'بانر الشاشة الرئيسية',
+      color: 'from-amber-500 to-amber-600',
       category: 'settings',
     },
     {
@@ -352,6 +397,11 @@ export const Layout = () => {
                             >
                               {item.label}
                             </span>
+                            {item.id === 'orders' && pendingReviewCount > 0 && (
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${isActive ? 'bg-white text-teal-600' : 'bg-red-500 text-white animate-pulse shadow-md'}`}>
+                                {pendingReviewCount}
+                              </span>
+                            )}
                             {isActive && (
                               <ChevronRight
                                 className="w-3 h-3 sm:w-4 sm:h-4 text-white opacity-80 flex-shrink-0"
@@ -392,6 +442,6 @@ export const Layout = () => {
           <Outlet />
         </div>
       </main>
-    </div>
+    </div >
   );
 };
