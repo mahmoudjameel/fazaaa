@@ -754,7 +754,8 @@ export const createManualOrder = async (orderData) => {
     const orderNumber = await runTransaction(db, async (transaction) => {
       const snap = await transaction.get(counterRef);
       const current = snap.exists() ? (snap.data().lastOrderNumber || 0) : 0;
-      const next = current + 1;
+      // ensure starts from 23234
+      const next = (current < 23233) ? 23234 : current + 1;
       transaction.set(counterRef, { lastOrderNumber: next }, { merge: true });
       return next;
     });

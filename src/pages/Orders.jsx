@@ -310,13 +310,14 @@ export const Orders = () => {
         } else if (statusFilter === 'no_providers_timeout') {
           // فلترة خاصة لعدم وجود مزودين وانتهاء المهلة
           filtered = filtered.filter(o => {
+            if (o.status === 'timed_out') return true;
             if (o.status !== 'canceled_by_client' && o.status !== 'canceled_by_client_with_reason') {
               return false;
             }
             const wasAccepted = o.assignedAt || (Array.isArray(o.history) && o.history.some(h => h.status === 'assigned'));
             if (wasAccepted) return false;
             const cancelReason = o.cancelReason || (Array.isArray(o.history) ? o.history.find(h => h.cancelReason)?.cancelReason : '') || '';
-            const timeoutReasons = ['لا يوجد مزودين متاحين', 'ضغط على الشبكة', 'انتهى وقت البحث', 'لايوجد شبكة متاحة', 'ضغط على الشبكة'];
+            const timeoutReasons = ['لا يوجد مزودين متاحين', 'ضغط على الشبكة', 'انتهى وقت البحث', 'لايوجد شبكة متاحة', 'ضغط على الشبكة', 'نعتذر لايوجد شبكة متاحة في منطقتكم', 'نعتذر يوجد ضغط على الشبكة في الوقت الحالي'];
             return timeoutReasons.some(r => cancelReason.includes(r));
           });
         } else if (statusFilter === 'rejections_after_accept') {
@@ -482,6 +483,7 @@ export const Orders = () => {
       canceled_by_provider: { text: 'ملغي من المزود', color: 'bg-red-100 text-red-700' },
       canceled_by_client_with_reason: { text: 'ملغي', color: 'bg-red-100 text-red-700' },
       canceled_by_provider_with_reason: { text: 'ملغي', color: 'bg-red-100 text-red-700' },
+      timed_out: { text: 'انتهت المهلة', color: 'bg-purple-100 text-purple-700' },
     };
     return badges[status] || { text: status, color: 'bg-gray-100 text-gray-700' };
   };
@@ -557,11 +559,12 @@ export const Orders = () => {
           </div>
           <p className={`text-2xl sm:text-3xl font-black ${statusFilter === 'no_providers_timeout' ? 'text-white' : 'text-gray-800'}`}>
             {requests.filter(o => {
+              if (o.status === 'timed_out') return true;
               if (o.status !== 'canceled_by_client' && o.status !== 'canceled_by_client_with_reason') return false;
               const wasAccepted = o.assignedAt || (Array.isArray(o.history) && o.history.some(h => h.status === 'assigned'));
               if (wasAccepted) return false;
               const cancelReason = o.cancelReason || (Array.isArray(o.history) ? o.history.find(h => h.cancelReason)?.cancelReason : '') || '';
-              const timeoutReasons = ['لا يوجد مزودين متاحين', 'ضغط على الشبكة', 'انتهى وقت البحث', 'لايوجد شبكة متاحة', 'ضغط على الشبكة'];
+              const timeoutReasons = ['لا يوجد مزودين متاحين', 'ضغط على الشبكة', 'انتهى وقت البحث', 'لايوجد شبكة متاحة', 'ضغط على الشبكة', 'نعتذر لايوجد شبكة متاحة في منطقتكم', 'نعتذر يوجد ضغط على الشبكة في الوقت الحالي'];
               return timeoutReasons.some(r => cancelReason.includes(r));
             }).length}
           </p>
@@ -612,6 +615,8 @@ export const Orders = () => {
       {/* No Providers / Timeout - Alert Section */}
       {(() => {
         const noProvidersTimeoutOrders = requests.filter(o => {
+          if (o.status === 'timed_out') return true;
+
           // التحقق من أن الطلب ملغي من العميل
           if (o.status !== 'canceled_by_client' && o.status !== 'canceled_by_client_with_reason') {
             return false;
@@ -639,7 +644,9 @@ export const Orders = () => {
             'ضغط على الشبكة',
             'انتهى وقت البحث',
             'نعتذر لايوجد شبكة متاحة في منطقتكم',
-            'نعتذر يوجد ضغط على الشبكة في الوقت الحالي'
+            'نعتذر يوجد ضغط على الشبكة في الوقت الحالي',
+            'لايوجد شبكة متاحة',
+            'ضغط على الشبكة'
           ];
 
           return timeoutReasons.some(r => reason.includes(r));
@@ -675,11 +682,11 @@ export const Orders = () => {
                   let reasonType = 'غير محدد';
                   let reasonColor = 'text-purple-700';
 
-                  if (cancelReason.includes('لا يوجد مزودين') || cancelReason.includes('لايوجد شبكة')) {
+                  if (cancelReason.includes('لا يوجد مزودين') || cancelReason.includes('لايوجد شبكة') || cancelReason.includes('نعتذر لايوجد شبكة')) {
                     reasonType = 'لا يوجد مزودين في المنطقة';
                     reasonColor = 'text-red-700';
-                  } else if (cancelReason.includes('ضغط على الشبكة') || cancelReason.includes('ضغط على الشبكة')) {
-                    reasonType = 'ضغط على الشبكة';
+                  } else if (cancelReason.includes('ضغط على الشبكة') || order.status === 'timed_out') {
+                    reasonType = order.status === 'timed_out' ? 'انتهاء مهلة البحث' : 'ضغط على الشبكة';
                     reasonColor = 'text-orange-700';
                   } else if (cancelReason.includes('انتهى وقت البحث')) {
                     reasonType = 'انتهى وقت البحث';
@@ -992,6 +999,9 @@ export const Orders = () => {
                       <div className="flex items-center gap-3 mb-2">
                         <h3 className="text-xl font-bold text-gray-800">
                           {order.serviceName || order.serviceType || 'خدمة'}
+                          <span className="text-xs font-normal text-gray-500 mr-2">
+                            رقم {order.orderNumber != null ? order.orderNumber : (order.id ? `#${order.id.substring(0, 8)}` : '--')}
+                          </span>
                         </h3>
                         <span
                           className={`px-3 py-1 rounded-full text-xs font-semibold ${statusBadge.color}`}
@@ -1378,16 +1388,17 @@ export const Orders = () => {
                       }
 
                       // عرض حالة عدم وجود مزودين وانتهاء المهلة
-                      if (!wasAccepted && reason) {
+                      if ((selectedRequest.status === 'timed_out' || !wasAccepted) && reason) {
                         const timeoutReasons = [
                           'لا يوجد مزودين متاحين',
                           'ضغط على الشبكة',
                           'انتهى وقت البحث',
                           'نعتذر لايوجد شبكة متاحة في منطقتكم',
-                          'نعتذر يوجد ضغط على الشبكة في الوقت الحالي'
+                          'نعتذر يوجد ضغط على الشبكة في الوقت الحالي',
+                          'لايوجد شبكة متاحة'
                         ];
 
-                        const isTimeoutReason = timeoutReasons.some(r => reason.includes(r));
+                        const isTimeoutReason = selectedRequest.status === 'timed_out' || timeoutReasons.some(r => reason.includes(r));
 
                         if (isTimeoutReason) {
                           let reasonType = 'غير محدد';
@@ -1396,14 +1407,14 @@ export const Orders = () => {
                           let textColor = 'text-purple-800';
                           let reasonTextColor = 'text-purple-700';
 
-                          if (reason.includes('لا يوجد مزودين') || reason.includes('لايوجد شبكة')) {
+                          if (reason.includes('لا يوجد مزودين') || reason.includes('لايوجد شبكة') || reason.includes('نعتذر لايوجد شبكة')) {
                             reasonType = 'لا يوجد مزودين في المنطقة';
                             bgColor = 'bg-red-50';
                             borderColor = 'border-red-500';
                             textColor = 'text-red-800';
                             reasonTextColor = 'text-red-700';
-                          } else if (reason.includes('ضغط على الشبكة')) {
-                            reasonType = 'ضغط على الشبكة';
+                          } else if (reason.includes('ضغط على الشبكة') || selectedRequest.status === 'timed_out') {
+                            reasonType = selectedRequest.status === 'timed_out' ? 'انتهاء مهلة البحث' : 'ضغط على الشبكة';
                             bgColor = 'bg-orange-50';
                             borderColor = 'border-orange-500';
                             textColor = 'text-orange-800';
