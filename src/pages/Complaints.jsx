@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Search, MessageSquare, AlertTriangle, CheckCircle, Clock, User, Calendar, Filter } from 'lucide-react';
-import { collection, getDocs, query, orderBy, where, doc, updateDoc } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
@@ -12,15 +12,39 @@ export const Complaints = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
+  const [priorityFilter, setPriorityFilter] = useState('all');
   const [selectedComplaint, setSelectedComplaint] = useState(null);
+  const [updatingPriority, setUpdatingPriority] = useState(false);
+  const [adminNoteText, setAdminNoteText] = useState('');
+  const [requestDetails, setRequestDetails] = useState(null);
 
   useEffect(() => {
     fetchComplaints();
   }, []);
 
   useEffect(() => {
+    if (!selectedComplaint || selectedComplaint.type !== 'order_report' || !selectedComplaint.requestId) {
+      setRequestDetails(null);
+      return;
+    }
+    const fetchRequest = async () => {
+      try {
+        const reqSnap = await getDoc(doc(db, 'requests', selectedComplaint.requestId));
+        setRequestDetails(reqSnap.exists() ? reqSnap.data() : null);
+      } catch {
+        setRequestDetails(null);
+      }
+    };
+    fetchRequest();
+  }, [selectedComplaint?.id, selectedComplaint?.requestId, selectedComplaint?.type]);
+
+  useEffect(() => {
     filterComplaints();
-  }, [complaintsList, searchTerm, statusFilter, typeFilter]);
+  }, [complaintsList, searchTerm, statusFilter, typeFilter, priorityFilter]);
+
+  useEffect(() => {
+    setAdminNoteText(selectedComplaint?.adminNotes || '');
+  }, [selectedComplaint]);
 
   const fetchComplaints = async () => {
     try {
@@ -50,34 +74,65 @@ export const Complaints = () => {
       filtered = filtered.filter((c) => c.type === typeFilter);
     }
 
+    if (priorityFilter !== 'all') {
+      filtered = filtered.filter((c) => (c.priority || 'medium') === priorityFilter);
+    }
+
     if (searchTerm) {
+      const term = searchTerm.toLowerCase();
       filtered = filtered.filter(
         (c) =>
-          c.subject?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          c.userName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          c.description?.toLowerCase().includes(searchTerm.toLowerCase())
+          c.subject?.toLowerCase().includes(term) ||
+          c.userName?.toLowerCase().includes(term) ||
+          c.description?.toLowerCase().includes(term) ||
+          c.orderNumber?.toString().includes(term) ||
+          c.requestId?.toLowerCase().includes(term) ||
+          c.serviceName?.toLowerCase().includes(term)
       );
     }
 
     setFilteredComplaints(filtered);
   };
 
-  const updateComplaintStatus = async (complaintId, newStatus) => {
+  const updateComplaintStatus = async (complaintId, newStatus, adminNotes = '') => {
     try {
       const complaintRef = doc(db, 'complaints', complaintId);
-      await updateDoc(complaintRef, {
+      const payload = {
         status: newStatus,
         updatedAt: new Date().toISOString(),
-      });
-      
-      // Update local state
-      setComplaintsList(complaintsList.map(c => 
-        c.id === complaintId ? { ...c, status: newStatus, updatedAt: new Date().toISOString() } : c
+      };
+      if (adminNotes.trim()) payload.adminNotes = adminNotes.trim();
+      if (newStatus === 'resolved') payload.resolvedAt = new Date().toISOString();
+      await updateDoc(complaintRef, payload);
+
+      setComplaintsList(complaintsList.map(c =>
+        c.id === complaintId ? { ...c, ...payload } : c
       ));
-      
       setSelectedComplaint(null);
+      setAdminNoteText('');
     } catch (error) {
       console.error('Error updating complaint status:', error);
+    }
+  };
+
+  const updateComplaintPriority = async (complaintId, newPriority) => {
+    if (!complaintId || !newPriority) return;
+    setUpdatingPriority(true);
+    try {
+      const complaintRef = doc(db, 'complaints', complaintId);
+      const payload = {
+        priority: newPriority,
+        updatedAt: new Date().toISOString(),
+      };
+      await updateDoc(complaintRef, payload);
+      setComplaintsList(complaintsList.map(c =>
+        c.id === complaintId ? { ...c, ...payload } : c
+      ));
+      setSelectedComplaint((prev) => (prev && prev.id === complaintId ? { ...prev, ...payload } : prev));
+    } catch (error) {
+      console.error('Error updating complaint priority:', error);
+    } finally {
+      setUpdatingPriority(false);
     }
   };
 
@@ -97,6 +152,7 @@ export const Complaints = () => {
       suggestion: { text: 'اقتراح', color: 'bg-blue-100 text-blue-700' },
       feedback: { text: 'ملاحظة', color: 'bg-purple-100 text-purple-700' },
       bug: { text: 'بلاغ عن مشكلة', color: 'bg-orange-100 text-orange-700' },
+      order_report: { text: 'بلاغ عن طلب', color: 'bg-amber-100 text-amber-800' },
     };
     return badges[type] || { text: type, color: 'bg-gray-100 text-gray-700' };
   };
@@ -198,6 +254,18 @@ export const Complaints = () => {
             <option value="suggestion">اقتراح</option>
             <option value="feedback">ملاحظة</option>
             <option value="bug">بلاغ عن مشكلة</option>
+            <option value="order_report">بلاغ عن طلب</option>
+          </select>
+          <select
+            value={priorityFilter}
+            onChange={(e) => setPriorityFilter(e.target.value)}
+            className="w-full md:w-auto px-4 py-2.5 sm:py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none text-sm sm:text-base"
+          >
+            <option value="all">جميع الأولويات</option>
+            <option value="low">منخفض</option>
+            <option value="medium">متوسط</option>
+            <option value="high">مرتفع</option>
+            <option value="urgent">عاجل</option>
           </select>
         </div>
       </div>
@@ -250,6 +318,11 @@ export const Complaints = () => {
                       <p className="text-xs sm:text-sm text-gray-600 mb-3 line-clamp-2">
                         {complaint.description || 'لا يوجد وصف'}
                       </p>
+                      {complaint.type === 'order_report' && (complaint.orderNumber || complaint.requestId) && (
+                        <p className="text-xs text-amber-700 font-semibold mb-2">
+                          رقم الطلب: {complaint.orderNumber || complaint.requestId}
+                        </p>
+                      )}
                       <div className="space-y-1 text-xs sm:text-sm text-gray-600">
                         <div className="flex items-center gap-2">
                           <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
@@ -309,16 +382,88 @@ export const Complaints = () => {
                 <h3 className="font-semibold text-sm sm:text-base text-gray-700 mb-1 sm:mb-2">الوصف</h3>
                 <p className="text-sm sm:text-base text-gray-800 whitespace-pre-wrap">{selectedComplaint.description || 'لا يوجد وصف'}</p>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                <div>
-                  <h3 className="font-semibold text-sm sm:text-base text-gray-700 mb-1 sm:mb-2">اسم المستخدم</h3>
-                  <p className="text-sm sm:text-base text-gray-800">{selectedComplaint.userName || 'غير محدد'}</p>
-                </div>
-                <div>
-                  <h3 className="font-semibold text-sm sm:text-base text-gray-700 mb-1 sm:mb-2">البريد الإلكتروني</h3>
-                  <p className="text-sm sm:text-base text-gray-800 break-all">{selectedComplaint.userEmail || 'غير محدد'}</p>
+
+              {/* بيانات العميل */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 sm:p-4">
+                <h3 className="font-semibold text-sm sm:text-base text-blue-800 mb-2">بيانات العميل</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 text-sm">
+                  <div>
+                    <span className="text-gray-600">اسم العميل:</span>{' '}
+                    <span className="font-medium text-gray-800">{selectedComplaint.userName || 'غير محدد'}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">رقم هاتف العميل:</span>{' '}
+                    <span className="font-medium text-gray-800 break-all">
+                      {selectedComplaint.userPhone ||
+                        (selectedComplaint.userEmail
+                          ? String(selectedComplaint.userEmail).replace(/@fazaaa-client\.com/gi, '').trim()
+                          : 'غير محدد')}
+                    </span>
+                  </div>
                 </div>
               </div>
+
+              {/* بيانات المزود - للبلاغ عن طلب */}
+              {selectedComplaint.type === 'order_report' && requestDetails && (requestDetails.providerName || requestDetails.providerPhone) && (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-3 sm:p-4">
+                  <h3 className="font-semibold text-sm sm:text-base text-green-800 mb-2">بيانات المزود</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 text-sm">
+                    {requestDetails.providerName && (
+                      <div>
+                        <span className="text-gray-600">اسم المزود:</span>{' '}
+                        <span className="font-medium text-gray-800">{requestDetails.providerName}</span>
+                      </div>
+                    )}
+                    {requestDetails.providerPhone && (
+                      <div>
+                        <span className="text-gray-600">رقم هاتف المزود:</span>{' '}
+                        <span className="font-medium text-gray-800 break-all">{requestDetails.providerPhone}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* بيانات الطلب المُبلَغ عنه */}
+              {selectedComplaint.type === 'order_report' && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 sm:p-4 space-y-2">
+                  <h3 className="font-semibold text-sm sm:text-base text-amber-800 mb-2">بيانات الطلب المُبلَغ عنه</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 text-sm">
+                    {(selectedComplaint.orderNumber || selectedComplaint.requestId) && (
+                      <div>
+                        <span className="text-gray-600">رقم الطلب:</span>{' '}
+                        <span className="font-medium text-gray-800">{selectedComplaint.orderNumber || selectedComplaint.requestId}</span>
+                      </div>
+                    )}
+                    {selectedComplaint.requestId && (
+                      <div>
+                        <span className="text-gray-600">معرف الطلب:</span>{' '}
+                        <span className="font-mono text-gray-800 break-all">{selectedComplaint.requestId}</span>
+                      </div>
+                    )}
+                    {selectedComplaint.serviceName && (
+                      <div className="sm:col-span-2">
+                        <span className="text-gray-600">الخدمة:</span>{' '}
+                        <span className="text-gray-800">{selectedComplaint.serviceName}</span>
+                      </div>
+                    )}
+                    {selectedComplaint.location && (
+                      <div className="sm:col-span-2">
+                        <span className="text-gray-600">الموقع:</span>{' '}
+                        <a
+                          href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedComplaint.location)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-teal-600 hover:text-teal-800 underline font-medium break-all"
+                        >
+                          {selectedComplaint.location}
+                        </a>
+                        <span className="text-xs text-gray-500 block mt-0.5">اضغط لفتح الموقع في خرائط جوجل</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
                 <div>
                   <h3 className="font-semibold text-sm sm:text-base text-gray-700 mb-1 sm:mb-2">النوع</h3>
@@ -328,9 +473,20 @@ export const Complaints = () => {
                 </div>
                 <div>
                   <h3 className="font-semibold text-sm sm:text-base text-gray-700 mb-1 sm:mb-2">الأولوية</h3>
-                  <span className={`inline-block px-3 py-1 rounded-full text-xs sm:text-sm font-semibold ${getPriorityBadge(selectedComplaint.priority).color}`}>
-                    {getPriorityBadge(selectedComplaint.priority).text}
-                  </span>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <select
+                      value={selectedComplaint.priority || 'medium'}
+                      onChange={(e) => updateComplaintPriority(selectedComplaint.id, e.target.value)}
+                      disabled={updatingPriority}
+                      className="px-3 py-2 rounded-lg border-2 border-gray-200 focus:border-teal-400 focus:outline-none text-sm sm:text-base font-semibold cursor-pointer disabled:opacity-60 min-w-[120px]"
+                    >
+                      <option value="low">منخفض</option>
+                      <option value="medium">متوسط</option>
+                      <option value="high">مرتفع</option>
+                      <option value="urgent">عاجل</option>
+                    </select>
+                    {updatingPriority && <span className="text-xs text-gray-500">جاري الحفظ...</span>}
+                  </div>
                 </div>
                 <div>
                   <h3 className="font-semibold text-sm sm:text-base text-gray-700 mb-1 sm:mb-2">الحالة</h3>
@@ -350,12 +506,30 @@ export const Complaints = () => {
                     : '-'}
                 </p>
               </div>
-              
+              {selectedComplaint.adminNotes && (
+                <div>
+                  <h3 className="font-semibold text-sm sm:text-base text-gray-700 mb-1 sm:mb-2">ملاحظة الإدارة</h3>
+                  <p className="text-sm sm:text-base text-gray-800 whitespace-pre-wrap bg-gray-50 p-3 rounded-lg">{selectedComplaint.adminNotes}</p>
+                </div>
+              )}
+
+              {/* ملاحظة الإدارة - للإجراء */}
+              <div>
+                <label className="block font-semibold text-sm sm:text-base text-gray-700 mb-1 sm:mb-2">ملاحظة الإدارة (اختياري)</label>
+                <textarea
+                  value={adminNoteText}
+                  onChange={(e) => setAdminNoteText(e.target.value)}
+                  placeholder="أضف ملاحظة أو إجراء تم اتخاذه..."
+                  className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none text-sm sm:text-base min-h-[80px]"
+                  rows={3}
+                />
+              </div>
+
               {/* Action Buttons */}
               <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 pt-3 sm:pt-4 border-t border-gray-200">
                 {selectedComplaint.status === 'pending' && (
                   <button
-                    onClick={() => updateComplaintStatus(selectedComplaint.id, 'in_progress')}
+                    onClick={() => updateComplaintStatus(selectedComplaint.id, 'in_progress', adminNoteText)}
                     className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all text-sm sm:text-base"
                   >
                     بدء المعالجة
@@ -363,7 +537,7 @@ export const Complaints = () => {
                 )}
                 {selectedComplaint.status === 'in_progress' && (
                   <button
-                    onClick={() => updateComplaintStatus(selectedComplaint.id, 'resolved')}
+                    onClick={() => updateComplaintStatus(selectedComplaint.id, 'resolved', adminNoteText)}
                     className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-all text-sm sm:text-base"
                   >
                     تم الحل
@@ -371,7 +545,7 @@ export const Complaints = () => {
                 )}
                 {(selectedComplaint.status === 'pending' || selectedComplaint.status === 'in_progress') && (
                   <button
-                    onClick={() => updateComplaintStatus(selectedComplaint.id, 'rejected')}
+                    onClick={() => updateComplaintStatus(selectedComplaint.id, 'rejected', adminNoteText)}
                     className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-all text-sm sm:text-base"
                   >
                     رفض
