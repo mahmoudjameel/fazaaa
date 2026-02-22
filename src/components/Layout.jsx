@@ -7,6 +7,7 @@ import {
   Menu,
   X,
   MessageSquare,
+  MessageCircle,
   UserCheck,
   Package,
   Settings,
@@ -190,6 +191,14 @@ export const Layout = () => {
       icon: MessageSquare,
       label: 'الشكاوي والملاحظات',
       color: 'from-pink-500 to-pink-600',
+      category: 'management',
+    },
+    {
+      id: 'chats',
+      path: '/chats',
+      icon: MessageCircle,
+      label: 'المحادثات (عميل–مزود)',
+      color: 'from-violet-500 to-violet-600',
       category: 'management',
     },
     {

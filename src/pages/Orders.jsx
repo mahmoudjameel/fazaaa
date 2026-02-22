@@ -1008,6 +1008,14 @@ export const Orders = () => {
                         >
                           {statusBadge.text}
                         </span>
+                        {order.status === 'completed' && (
+                          <span className="flex items-center gap-0.5 text-amber-600" title="تقييم العميل">
+                            <Star size={14} className={order.rated ? 'fill-amber-500 text-amber-500' : 'text-gray-300'} />
+                            <span className="text-xs font-semibold text-gray-700">
+                              {order.rated ? `${order.rating ?? '—'}/5` : 'لم يُقيّم'}
+                            </span>
+                          </span>
+                        )}
                       </div>
                       <div className="space-y-1 text-sm text-gray-600">
                         {order.location && (
@@ -1666,6 +1674,17 @@ export const Orders = () => {
                     {selectedRequest.ratingComment && (
                       <p className="text-gray-600 text-sm bg-white p-3 rounded-lg border border-yellow-100 italic">
                         "{selectedRequest.ratingComment}"
+                      </p>
+                    )}
+                    {selectedRequest.ratedAt && (
+                      <p className="text-xs text-gray-500 mt-2">
+                        تاريخ التقييم: {format(
+                          selectedRequest.ratedAt?.toMillis
+                            ? new Date(selectedRequest.ratedAt.toMillis())
+                            : new Date(selectedRequest.ratedAt),
+                          'dd MMM yyyy, HH:mm',
+                          { locale: ar }
+                        )}
                       </p>
                     )}
                   </div>

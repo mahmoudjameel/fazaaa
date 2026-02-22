@@ -12,6 +12,7 @@ import { CityManagers } from './pages/CityManagers';
 import { Users } from './pages/Users';
 import { Notifications } from './pages/Notifications';
 import { Complaints } from './pages/Complaints';
+import { Chats } from './pages/Chats';
 import BankSettings from './pages/BankSettings';
 import WithdrawalRequests from './pages/WithdrawalRequests';
 import AppSettings from './pages/AppSettings';
@@ -80,6 +81,7 @@ function App() {
           <Route path="users" element={<Users />} />
           <Route path="notifications" element={<Notifications />} />
           <Route path="complaints" element={<Complaints />} />
+          <Route path="chats" element={<Chats />} />
           <Route path="bank-settings" element={<BankSettings />} />
           <Route path="withdrawal-requests" element={<WithdrawalRequests />} />
           <Route path="app-settings" element={<AppSettings />} />
