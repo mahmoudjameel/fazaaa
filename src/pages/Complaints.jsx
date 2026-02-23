@@ -153,6 +153,7 @@ export const Complaints = () => {
       feedback: { text: 'ملاحظة', color: 'bg-purple-100 text-purple-700' },
       bug: { text: 'بلاغ عن مشكلة', color: 'bg-orange-100 text-orange-700' },
       order_report: { text: 'بلاغ عن طلب', color: 'bg-amber-100 text-amber-800' },
+      provider_ticket: { text: 'تذكرة مزود', color: 'bg-teal-100 text-teal-700' },
     };
     return badges[type] || { text: type, color: 'bg-gray-100 text-gray-700' };
   };
@@ -255,6 +256,7 @@ export const Complaints = () => {
             <option value="feedback">ملاحظة</option>
             <option value="bug">بلاغ عن مشكلة</option>
             <option value="order_report">بلاغ عن طلب</option>
+            <option value="provider_ticket">تذكرة مزود</option>
           </select>
           <select
             value={priorityFilter}
@@ -293,12 +295,14 @@ export const Complaints = () => {
                       complaint.type === 'complaint' ? 'bg-red-100' :
                       complaint.type === 'suggestion' ? 'bg-blue-100' :
                       complaint.type === 'feedback' ? 'bg-purple-100' :
+                      complaint.type === 'provider_ticket' ? 'bg-teal-100' :
                       'bg-orange-100'
                     }`}>
                       <MessageSquare className={`w-5 h-5 sm:w-6 sm:h-6 ${
                         complaint.type === 'complaint' ? 'text-red-600' :
                         complaint.type === 'suggestion' ? 'text-blue-600' :
                         complaint.type === 'feedback' ? 'text-purple-600' :
+                        complaint.type === 'provider_ticket' ? 'text-teal-600' :
                         'text-orange-600'
                       }`} />
                     </div>

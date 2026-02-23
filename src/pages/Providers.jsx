@@ -19,6 +19,7 @@ import {
   getProviderOrderStats,
   toggleProviderVIP,
 } from '../services/adminService';
+import ProviderProfileRequests from './ProviderProfileRequests';
 import { doc, updateDoc, collection, getDocs } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../services/firebase';
@@ -59,6 +60,7 @@ export const Providers = () => {
   const [selectedProvidersForGroup, setSelectedProvidersForGroup] = useState([]);
   const [lowBalanceFilter, setLowBalanceFilter] = useState(false);
   const [hasAddPermission, setHasAddPermission] = useState(false);
+  const [providersSection, setProvidersSection] = useState('list'); // 'list' | 'profile_requests'
   const navigate = useNavigate();
 
   // Groups Management
@@ -502,7 +504,7 @@ export const Providers = () => {
 
   return (
     <div>
-      <div className="mb-8 flex items-center justify-between">
+      <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-black text-gray-800 mb-2">إدارة المزودين</h1>
           <p className="text-gray-600">عرض وإدارة جميع مزودي الخدمة</p>
@@ -527,6 +529,28 @@ export const Providers = () => {
         </div>
       </div>
 
+      {/* تبويب: قائمة المزودين | طلبات تعديل البروفايل */}
+      <div className="flex gap-2 mb-6">
+        <button
+          type="button"
+          onClick={() => setProvidersSection('list')}
+          className={`px-5 py-2.5 rounded-xl font-bold transition-all ${providersSection === 'list' ? 'bg-teal-500 text-white shadow-md' : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'}`}
+        >
+          قائمة المزودين
+        </button>
+        <button
+          type="button"
+          onClick={() => setProvidersSection('profile_requests')}
+          className={`px-5 py-2.5 rounded-xl font-bold transition-all ${providersSection === 'profile_requests' ? 'bg-teal-500 text-white shadow-md' : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'}`}
+        >
+          طلبات تعديل البروفايل
+        </button>
+      </div>
+
+      {providersSection === 'profile_requests' ? (
+        <ProviderProfileRequests />
+      ) : (
+        <>
       {/* Groups Management Section */}
       {showGroupsSection && (
         <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
@@ -1502,6 +1526,8 @@ export const Providers = () => {
             </div>
           </div>
         </div>
+      )}
+        </>
       )}
     </div>
   );

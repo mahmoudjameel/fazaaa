@@ -68,8 +68,9 @@ export const createManualProvider = async (providerData) => {
     }
 
     const newProvider = {
-      firstName: providerData.firstName,
-      lastName: providerData.lastName,
+      firstName: (providerData.firstName || '').trim() || 'مزود',
+      lastName: (providerData.lastName || '').trim() || '',
+      fullName: [providerData.firstName, providerData.lastName].filter(Boolean).map(s => (s || '').trim()).join(' ').trim() || 'مزود',
       phone: phone,
       email: providerData.email || null,
       nationality: providerData.nationality || '',
@@ -94,14 +95,15 @@ export const createManualProvider = async (providerData) => {
       hasSeenWelcomeAlert: false,
     };
 
-    // إضافة الوثائق
+    // إضافة الوثائق (نفس المفاتيح المستخدمة في تسجيل المزود الجديد)
+    const docs = providerData.documents || {};
     newProvider.documents = {
-      id_photo: providerData.idImage || '',
-      equipment_photo: '',
-      driver_license: '',
-      car_registration: '',
-      car_front: '',
-      car_side: ''
+      id_photo: docs.id_photo || providerData.idImage || '',
+      equipment_photo: docs.equipment_photo || '',
+      driver_license: docs.driver_license || '',
+      car_registration: docs.car_registration || '',
+      car_front: docs.car_front || '',
+      car_side: docs.car_side || ''
     };
 
     const docRef = await addDoc(providersRef, newProvider);
@@ -1040,6 +1042,75 @@ export const updateBannersConfig = async (data) => {
     return { success: true };
   } catch (error) {
     console.error('updateBannersConfig error:', error);
+    throw error;
+  }
+};
+
+// طلبات تعديل بيانات المزودين (المعتمدين)
+const PROVIDER_PROFILE_CHANGE_REQUESTS = 'providerProfileChangeRequests';
+
+export const getProviderProfileChangeRequests = async (statusFilter = 'all') => {
+  try {
+    const ref = collection(db, PROVIDER_PROFILE_CHANGE_REQUESTS);
+    const q = query(ref, orderBy('requestedAt', 'desc'));
+    const snapshot = await getDocs(q);
+    const list = [];
+    snapshot.forEach((d) => list.push({ id: d.id, ...d.data() }));
+    if (statusFilter !== 'all') {
+      return list.filter((r) => r.status === statusFilter);
+    }
+    return list;
+  } catch (error) {
+    console.error('getProviderProfileChangeRequests error:', error);
+    throw error;
+  }
+};
+
+export const approveProviderProfileChange = async (requestId) => {
+  try {
+    const requestRef = doc(db, PROVIDER_PROFILE_CHANGE_REQUESTS, requestId);
+    const requestSnap = await getDoc(requestRef);
+    if (!requestSnap.exists()) throw new Error('طلب غير موجود');
+    const data = requestSnap.data();
+    if (data.status !== 'pending') throw new Error('تمت معالجة هذا الطلب مسبقاً');
+
+    const providerRef = doc(db, 'providers', data.providerId);
+    const requested = data.requestedChanges || {};
+    const updates = {
+      firstName: requested.firstName,
+      lastName: requested.lastName,
+      phone: requested.phone,
+      email: requested.email ?? null,
+      nationality: requested.nationality,
+      fullName: [requested.firstName, requested.lastName].filter(Boolean).join(' ').trim() || data.providerName,
+      updatedAt: serverTimestamp(),
+    };
+    await updateDoc(providerRef, updates);
+    await updateDoc(requestRef, {
+      status: 'approved',
+      reviewedAt: serverTimestamp(),
+    });
+    return { success: true };
+  } catch (error) {
+    console.error('approveProviderProfileChange error:', error);
+    throw error;
+  }
+};
+
+export const rejectProviderProfileChange = async (requestId) => {
+  try {
+    const requestRef = doc(db, PROVIDER_PROFILE_CHANGE_REQUESTS, requestId);
+    const requestSnap = await getDoc(requestRef);
+    if (!requestSnap.exists()) throw new Error('طلب غير موجود');
+    const data = requestSnap.data();
+    if (data.status !== 'pending') throw new Error('تمت معالجة هذا الطلب مسبقاً');
+    await updateDoc(requestRef, {
+      status: 'rejected',
+      reviewedAt: serverTimestamp(),
+    });
+    return { success: true };
+  } catch (error) {
+    console.error('rejectProviderProfileChange error:', error);
     throw error;
   }
 };

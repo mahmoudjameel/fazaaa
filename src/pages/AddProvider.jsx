@@ -4,7 +4,11 @@ import {
     UserPlus,
     X,
     Plus,
-    Tag
+    Tag,
+    FileImage,
+    Wrench,
+    Car,
+    FileText
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -15,12 +19,29 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../services/firebase';
 import { NATIONALITIES } from './Providers';
 
+// نفس تصنيفات المستندات كما في تسجيل المزود الجديد (DocumentsScreen)
+const DOCUMENT_FIELDS = [
+    { key: 'idImage', title: 'الهوية / الإقامة', subtitle: 'صورة الهوية الوطنية أو الإقامة', icon: FileImage },
+    { key: 'equipmentPhoto', title: 'صورة العدة', subtitle: 'العدة والأدوات التي تعمل بها', icon: Wrench },
+    { key: 'carFront', title: 'السيارة - صورة أمامية', subtitle: 'صورة واضحة للسيارة من الأمام', icon: Car },
+    { key: 'carSide', title: 'السيارة - صورة جانبية', subtitle: 'صورة واضحة للسيارة من الجانب', icon: Car },
+    { key: 'licensePhoto', title: 'رخصة القيادة', subtitle: 'صورة أو ملف PDF أو Word', icon: FileText },
+    { key: 'registrationPhoto', title: 'استمارة السيارة', subtitle: 'صورة أو ملف PDF أو Word', icon: FileText },
+];
+
 export const AddProvider = () => {
     const navigate = useNavigate();
     const [mainServices, setMainServices] = useState([]);
     const [loading, setLoading] = useState(true);
     const [isUploading, setIsUploading] = useState(false);
-    const [idImageFile, setIdImageFile] = useState(null);
+    const [documentFiles, setDocumentFiles] = useState({
+        idImage: null,
+        equipmentPhoto: null,
+        carFront: null,
+        carSide: null,
+        licensePhoto: null,
+        registrationPhoto: null,
+    });
     const [providerFormData, setProviderFormData] = useState({
         firstName: '',
         lastName: '',
@@ -59,39 +80,55 @@ export const AddProvider = () => {
     const handleCreateProvider = async (e) => {
         e.preventDefault();
 
-        if (!providerFormData.firstName || !providerFormData.lastName || !providerFormData.phone) {
-            alert('يرجى إكمال جميع الحقول المطلوبة (الاسم والرقم)');
+        // الإلزامي فقط: الاسم (الأول + الأخير) ورقم الهاتف
+        const firstName = (providerFormData.firstName || '').trim();
+        const lastName = (providerFormData.lastName || '').trim();
+        const phone = (providerFormData.phone || '').trim();
+        if (!firstName || !lastName) {
+            alert('يرجى إدخال الاسم الأول والأخير');
             return;
         }
-
-        if (providerFormData.services.length === 0) {
+        if (!phone) {
+            alert('يرجى إدخال رقم الهاتف');
+            return;
+        }
+        if (!providerFormData.services || providerFormData.services.length === 0) {
             alert('يرجى اختيار خدمة واحدة على الأقل');
             return;
         }
 
-        if (!providerFormData.nationality) {
-            alert('يرجى اختيار الجنسية');
-            return;
-        }
-
         setIsUploading(true);
-        let idImageUrl = '';
-
-        if (idImageFile) {
-            try {
-                const storageRef = ref(storage, `providers/${Date.now()}_${idImageFile.name}`);
-                await uploadBytes(storageRef, idImageFile);
-                idImageUrl = await getDownloadURL(storageRef);
-            } catch (uploadError) {
-                console.error('Image upload failed:', uploadError);
-                alert('فشل رفع الصورة، سيتم إضافة المزود بدون صورة');
-            }
+        const prefix = `providers/${Date.now()}`;
+        const uploadOne = async (file, key) => {
+            if (!file) return '';
+            const storageRef = ref(storage, `${prefix}_${key}_${file.name}`);
+            await uploadBytes(storageRef, file);
+            return getDownloadURL(storageRef);
+        };
+        let documentUrls = {};
+        try {
+            documentUrls = {
+                id_photo: await uploadOne(documentFiles.idImage, 'id'),
+                equipment_photo: await uploadOne(documentFiles.equipmentPhoto, 'equipment'),
+                car_front: await uploadOne(documentFiles.carFront, 'car_front'),
+                car_side: await uploadOne(documentFiles.carSide, 'car_side'),
+                driver_license: await uploadOne(documentFiles.licensePhoto, 'license'),
+                car_registration: await uploadOne(documentFiles.registrationPhoto, 'registration'),
+            };
+        } catch (uploadError) {
+            console.error('Document upload failed:', uploadError);
+            alert('فشل رفع أحد المستندات. تأكد من حجم الملفات وحاول مرة أخرى.');
+            setIsUploading(false);
+            return;
         }
 
         try {
             const result = await createManualProvider({
                 ...providerFormData,
-                idImage: idImageUrl
+                firstName: firstName,
+                lastName: lastName,
+                phone: phone,
+                documents: documentUrls
             });
 
             if (!result.success && result.error === 'duplicate_phone') {
@@ -186,9 +223,8 @@ export const AddProvider = () => {
                                 </div>
                             </div>
                             <div>
-                                <label className="block text-sm font-semibold text-gray-700 mb-2">الجنسية *</label>
+                                <label className="block text-sm font-semibold text-gray-700 mb-2">الجنسية (اختياري)</label>
                                 <select
-                                    required
                                     value={providerFormData.nationality}
                                     onChange={(e) => setProviderFormData({ ...providerFormData, nationality: e.target.value })}
                                     className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-xl focus:border-blue-400 focus:outline-none transition-all"
@@ -215,9 +251,10 @@ export const AddProvider = () => {
                         </div>
                     </div>
 
-                    {/* Services Selection */}
+                    {/* Services Selection - مطلوب */}
                     <div className="space-y-4">
-                        <h3 className="text-lg font-bold text-gray-700 border-r-4 border-blue-500 pr-3">الخدمات المتاحة</h3>
+                        <h3 className="text-lg font-bold text-gray-700 border-r-4 border-blue-500 pr-3">الخدمات المتاحة *</h3>
+                        <p className="text-sm text-gray-500">اختر خدمة واحدة على الأقل</p>
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                             {mainServices.map((service) => (
                                 <label
@@ -252,48 +289,68 @@ export const AddProvider = () => {
                         </div>
                     </div>
 
-                    {/* ID Document */}
-                    <div className="space-y-4">
-                        <h3 className="text-lg font-bold text-gray-700 border-r-4 border-blue-500 pr-3">المستندات الثبوتية</h3>
-                        <div className="border-2 border-dashed border-gray-200 rounded-2xl p-10 bg-gray-50 hover:bg-white hover:border-blue-400 transition-all text-center group">
-                            <input
-                                type="file"
-                                accept="image/*"
-                                onChange={(e) => setIdImageFile(e.target.files[0])}
-                                className="hidden"
-                                id="id-image-upload-standalone"
-                            />
-                            <label htmlFor="id-image-upload-standalone" className="cursor-pointer flex flex-col items-center justify-center">
-                                {idImageFile ? (
-                                    <div className="space-y-3">
-                                        <div className="w-20 h-20 mx-auto bg-green-100 text-green-600 rounded-2xl flex items-center justify-center">
-                                            <CheckCircle size={40} />
+                    {/* المستندات الثبوتية - واضحة مثل تسجيل المزود الجديد */}
+                    <div className="space-y-6">
+                        <div>
+                            <h3 className="text-lg font-bold text-gray-700 border-r-4 border-blue-500 pr-3">المستندات الثبوتية</h3>
+                            <p className="text-sm text-gray-500 mt-1">يمكنك رفع صور (JPG, PNG) أو ملفات PDF أو Word — جميع الحقول اختيارية</p>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {DOCUMENT_FIELDS.map((field) => {
+                                const file = documentFiles[field.key];
+                                const Icon = field.icon;
+                                return (
+                                    <div
+                                        key={field.key}
+                                        className="border-2 border-dashed border-gray-200 rounded-xl p-4 bg-gray-50 hover:bg-white hover:border-blue-300 transition-all"
+                                    >
+                                        <div className="flex items-start gap-3">
+                                            <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center shrink-0">
+                                                <Icon className="w-5 h-5 text-blue-600" />
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="font-semibold text-gray-800">{field.title}</p>
+                                                <p className="text-xs text-gray-500 mt-0.5">{field.subtitle}</p>
+                                                <div className="mt-2 flex items-center gap-2">
+                                                    <input
+                                                        type="file"
+                                                        accept="image/*,.pdf,.doc,.docx"
+                                                        onChange={(e) => {
+                                                            const f = e.target.files?.[0];
+                                                            if (f) setDocumentFiles((prev) => ({ ...prev, [field.key]: f }));
+                                                        }}
+                                                        className="hidden"
+                                                        id={`doc-${field.key}`}
+                                                    />
+                                                    <label
+                                                        htmlFor={`doc-${field.key}`}
+                                                        className="cursor-pointer text-sm font-medium text-blue-600 hover:underline"
+                                                    >
+                                                        {file ? 'تغيير الملف' : 'رفع ملف'}
+                                                    </label>
+                                                    {file && (
+                                                        <>
+                                                            <span className="text-sm text-gray-600 truncate max-w-[120px]" title={file.name}>{file.name}</span>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setDocumentFiles((prev) => ({ ...prev, [field.key]: null }))}
+                                                                className="text-red-500 text-xs font-bold hover:underline"
+                                                            >
+                                                                إزالة
+                                                            </button>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            {file && (
+                                                <div className="shrink-0 w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
+                                                    <CheckCircle className="w-4 h-4 text-green-600" />
+                                                </div>
+                                            )}
                                         </div>
-                                        <div>
-                                            <span className="block font-bold text-gray-800">{idImageFile.name}</span>
-                                            <span className="text-sm text-gray-500">تم اختيار الملف بنجاح</span>
-                                        </div>
-                                        <button
-                                            type="button"
-                                            onClick={(e) => {
-                                                e.preventDefault();
-                                                setIdImageFile(null);
-                                            }}
-                                            className="text-red-500 text-sm font-bold hover:underline"
-                                        >
-                                            إزالة واستبدال
-                                        </button>
                                     </div>
-                                ) : (
-                                    <>
-                                        <div className="w-16 h-16 rounded-2xl bg-white shadow-sm flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                                            <span className="text-3xl">🪪</span>
-                                        </div>
-                                        <span className="text-lg font-bold text-gray-700">اضغط لرفع صورة الإقامة أو الهوية</span>
-                                        <span className="text-gray-400 mt-2">يمكنك رفع ملف JPG أو PNG حتى حجم 5 ميجابايت (اختياري)</span>
-                                    </>
-                                )}
-                            </label>
+                                );
+                            })}
                         </div>
                     </div>
 
