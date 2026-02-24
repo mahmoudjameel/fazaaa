@@ -25,7 +25,9 @@ export const getAllProviders = async () => {
     const querySnapshot = await getDocs(q);
     const providers = [];
     querySnapshot.forEach((doc) => {
-      providers.push({ id: doc.id, ...doc.data() });
+      // id: doc.id يجب أن يكون أخيراً لضمان استخدام Firestore document ID دائماً
+      // وعدم تجاوزه بحقل id داخل بيانات المستند
+      providers.push({ ...doc.data(), id: doc.id });
     });
     return { success: true, providers };
   } catch (error) {
@@ -140,7 +142,7 @@ export const getProviderById = async (providerId) => {
       return { success: false, error: 'المزود غير موجود' };
     }
 
-    return { success: true, provider: { id: providerSnap.id, ...providerSnap.data() } };
+    return { success: true, provider: { ...providerSnap.data(), id: providerSnap.id } };
   } catch (error) {
     console.error('Get provider by ID error:', error);
     throw error;
@@ -403,7 +405,7 @@ export const getDashboardStats = async () => {
     const orders = [];
 
     providersSnapshot.forEach((doc) => {
-      providers.push({ id: doc.id, ...doc.data() });
+      providers.push({ ...doc.data(), id: doc.id });
     });
 
     ordersSnapshot.forEach((doc) => {
@@ -732,7 +734,7 @@ export const getProvidersBySearch = async (term) => {
         data.email?.toLowerCase().includes(searchLower);
 
       if (phoneMatch || textMatch) {
-        providers.push({ id: doc.id, ...data });
+        providers.push({ ...data, id: doc.id });
       }
     });
 
