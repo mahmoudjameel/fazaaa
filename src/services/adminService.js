@@ -14,6 +14,7 @@ import {
   serverTimestamp,
   onSnapshot,
   runTransaction,
+  collectionGroup,
 } from 'firebase/firestore';
 import { db } from './firebase';
 
@@ -204,6 +205,50 @@ export const updateProviderServiceStatus = async (providerId, serviceId, status)
     return { success: true };
   } catch (error) {
     console.error('Update provider service status error:', error);
+    throw error;
+  }
+};
+
+/**
+ * جلب جميع السجلات التي تحظر هذا المزود من جميع العملاء
+ * @param {string} providerId 
+ * @returns {Promise<Array>}
+ */
+export const getProviderBlocks = async (providerId) => {
+  try {
+    const blockedQuery = query(
+      collectionGroup(db, 'blocked_providers'),
+      where('providerId', '==', providerId)
+    );
+    const snapshot = await getDocs(blockedQuery);
+    const blocks = [];
+    snapshot.forEach(docSnap => {
+      const customerId = docSnap.ref.parent.parent.id; // Get customerId from path
+      blocks.push({
+        id: docSnap.id,
+        customerId,
+        ...docSnap.data()
+      });
+    });
+    return { success: true, blocks };
+  } catch (error) {
+    console.error('Get provider blocks error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * رفع الحظر عن مزود لعميل معين
+ * @param {string} customerId 
+ * @param {string} providerId 
+ */
+export const unblockProviderForCustomer = async (customerId, providerId) => {
+  try {
+    const blockRef = doc(db, 'customers', customerId, 'blocked_providers', providerId);
+    await deleteDoc(blockRef);
+    return { success: true };
+  } catch (error) {
+    console.error('Unblock provider error:', error);
     throw error;
   }
 };

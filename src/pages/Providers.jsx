@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   Search, CheckCircle, XCircle, Clock, Eye, Phone, Mail, Star, Power,
-  UserCheck, Users, Plus, Edit2, Trash2, Tag, X, FileText
+  UserCheck, Users, Plus, Edit2, Trash2, Tag, X, FileText, AlertCircle
 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -14,10 +14,12 @@ import {
   assignProvidersToGroup,
   removeProviderFromGroup,
   updateProviderServiceStatus,
-  getProviderWalletHistory,
-  adjustProviderWallet,
   getProviderOrderStats,
   toggleProviderVIP,
+  getProviderBlocks,
+  unblockProviderForCustomer,
+  getProviderWalletHistory,
+  adjustProviderWallet,
 } from '../services/adminService';
 import ProviderProfileRequests from './ProviderProfileRequests';
 import { doc, updateDoc, collection, getDocs } from 'firebase/firestore';
@@ -85,7 +87,12 @@ export const Providers = () => {
   const [orderStats, setOrderStats] = useState(null);
   const [loadingStats, setLoadingStats] = useState(false);
   const [walletAdjustment, setWalletAdjustment] = useState({ amount: '', type: 'addition', reason: '' });
+  const [walletAmountError, setWalletAmountError] = useState('');
   const [isAdjustingWallet, setIsAdjustingWallet] = useState(false);
+  const [providerBlocks, setProviderBlocks] = useState([]);
+  const [blocksError, setBlocksError] = useState(null);
+  const [loadingBlocks, setLoadingBlocks] = useState(false);
+  const [updatingServiceId, setUpdatingServiceId] = useState(null);
 
   useEffect(() => {
     fetchProviders();
@@ -158,9 +165,42 @@ export const Providers = () => {
     if (selectedProvider) {
       fetchWalletData();
       fetchOrderStats();
+      fetchProviderBlocks();
       setActiveTab('info');
     }
   }, [selectedProvider]);
+
+  const fetchProviderBlocks = async () => {
+    if (!selectedProvider) return;
+    setLoadingBlocks(true);
+    try {
+      const result = await getProviderBlocks(selectedProvider.id);
+      if (result.success) {
+        setProviderBlocks(result.blocks);
+        setBlocksError(null);
+      } else {
+        setBlocksError(result.error);
+      }
+    } catch (error) {
+      console.error('Error fetching provider blocks:', error);
+    } finally {
+      setLoadingBlocks(false);
+    }
+  };
+
+  const handleUnblock = async (customerId) => {
+    if (!window.confirm('هل أنت متأكد من رفع الحظر عن هذا المزود لهذا العميل؟')) return;
+    try {
+      const result = await unblockProviderForCustomer(customerId, selectedProvider.id);
+      if (result.success) {
+        alert('تم رفع الحظر بنجاح');
+        fetchProviderBlocks();
+      }
+    } catch (error) {
+      alert('فشل رفع الحظر');
+      console.error(error);
+    }
+  };
 
   const fetchWalletData = async () => {
     if (!selectedProvider) return;
@@ -192,12 +232,47 @@ export const Providers = () => {
     }
   };
 
+  const handleUpdateServiceStatus = async (serviceId, status) => {
+    if (!selectedProvider) return;
+    setUpdatingServiceId(`${serviceId}:${status}`);
+    try {
+      await updateProviderServiceStatus(selectedProvider.id, serviceId, status);
+      await fetchProviders();
+      alert(status === 'approved' ? 'تم إضافة/تفعيل الخدمة للمزوّد بنجاح' : 'تم تحديث حالة الخدمة بنجاح');
+    } catch (error) {
+      console.error('Error updating provider service:', error);
+      alert('فشل تحديث الخدمة، حاول مرة أخرى');
+    } finally {
+      setUpdatingServiceId(null);
+    }
+  };
+
   const handleAdjustWallet = async (e) => {
     e.preventDefault();
-    if (!walletAdjustment.amount || !walletAdjustment.reason) {
-      alert('يرجى إكمال البيانات');
+    const rawAmount = Number(walletAdjustment.amount);
+
+    // التحقق من صحة المبلغ: مطلوب، أكبر من صفر، ومضاعفات ٥ ريال
+    if (!walletAdjustment.amount || isNaN(rawAmount)) {
+      setWalletAmountError('يرجى إدخال المبلغ');
       return;
     }
+    if (rawAmount <= 0) {
+      setWalletAmountError('المبلغ يجب أن يكون أكبر من صفر');
+      return;
+    }
+    if (walletAdjustment.type === 'addition' || walletAdjustment.type === 'compensation') {
+      if (rawAmount % 5 !== 0) {
+        setWalletAmountError('المبلغ يجب أن يكون من مضاعفات ٥ ر.س (٥، ١٠، ١٥، ٢٠ ...)');
+        return;
+      }
+    }
+    if (!walletAdjustment.reason) {
+      setWalletAmountError('');
+      alert('يرجى كتابة سبب العملية');
+      return;
+    }
+
+    setWalletAmountError('');
 
     setIsAdjustingWallet(true);
     try {
@@ -551,982 +626,1079 @@ export const Providers = () => {
         <ProviderProfileRequests />
       ) : (
         <>
-      {/* Groups Management Section */}
-      {showGroupsSection && (
-        <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-bold text-gray-800">إدارة المجموعات</h2>
-            <button
-              onClick={() => openGroupModal()}
-              className="flex items-center gap-2 px-4 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition-all"
-            >
-              <Plus size={18} />
-              إضافة مجموعة جديدة
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {groups.map((group) => (
-              <div
-                key={group.id}
-                className="border-2 border-gray-200 rounded-xl p-4 hover:border-purple-300 transition-all"
-                style={{ borderLeftColor: group.color, borderLeftWidth: '4px' }}
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <div
-                      className="w-10 h-10 rounded-lg flex items-center justify-center text-white"
-                      style={{ backgroundColor: group.color }}
-                    >
-                      <Users size={20} />
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-gray-800">{group.name}</h3>
-                      {group.isVip && (
-                        <span className="text-xs text-purple-600 font-semibold">VIP</span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => openGroupModal(group)}
-                      className="p-1 text-blue-600 hover:bg-blue-50 rounded"
-                    >
-                      <Edit2 size={16} />
-                    </button>
-                    <button
-                      onClick={() => handleDeleteGroup(group.id)}
-                      className="p-1 text-red-600 hover:bg-red-50 rounded"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                </div>
-                {group.description && (
-                  <p className="text-sm text-gray-600 mb-2">{group.description}</p>
-                )}
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-500">
-                    عدد الأعضاء: <span className="font-semibold">{group.memberIds?.length || 0}</span>
-                  </span>
-                  <span className="text-gray-500">
-                    الأولوية: <span className="font-semibold">{group.priority || 0}</span>
-                  </span>
-                </div>
-              </div>
-            ))}
-            {groups.length === 0 && (
-              <div className="col-span-full text-center py-8 text-gray-500">
-                لا توجد مجموعات. قم بإضافة مجموعة جديدة.
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 mb-6">
-        <div className="bg-white rounded-2xl p-4 md:p-6 shadow-lg">
-          <div className="flex items-center justify-between mb-2">
-            <UserCheck className="text-blue-500" size={20} />
-            <span className="text-xs md:text-sm text-gray-600">إجمالي المزودين</span>
-          </div>
-          <p className="text-2xl md:text-3xl font-black text-gray-800">{providers.length}</p>
-        </div>
-        <div className="bg-white rounded-2xl p-4 md:p-6 shadow-lg">
-          <div className="flex items-center justify-between mb-2">
-            <Star className="text-purple-500" size={20} />
-            <span className="text-xs md:text-sm text-gray-600">مزودين VIP</span>
-          </div>
-          <p className="text-2xl md:text-3xl font-black text-gray-800">
-            {providers.filter((p) => p.type === 'vip').length}
-          </p>
-        </div>
-        <div className="bg-white rounded-2xl p-4 md:p-6 shadow-lg">
-          <div className="flex items-center justify-between mb-2">
-            <CheckCircle className="text-green-500" size={20} />
-            <span className="text-xs md:text-sm text-gray-600">نشطون</span>
-          </div>
-          <p className="text-2xl md:text-3xl font-black text-gray-800">
-            {providers.filter((p) => p.isActive !== false).length}
-          </p>
-        </div>
-        <div className="bg-white rounded-2xl p-4 md:p-6 shadow-lg">
-          <div className="flex items-center justify-between mb-2">
-            <Users className="text-teal-500" size={20} />
-            <span className="text-xs md:text-sm text-gray-600">المجموعات</span>
-          </div>
-          <p className="text-2xl md:text-3xl font-black text-gray-800">{groups.length}</p>
-        </div>
-      </div>
-
-      {/* Filters */}
-      <div className="bg-white rounded-2xl shadow-lg p-4 md:p-6 mb-6">
-        <div className="flex flex-col md:flex-row gap-3 md:gap-4">
-          <div className="flex-1 relative">
-            <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-            <input
-              type="text"
-              placeholder="ابحث عن مزود..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pr-10 pl-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none text-sm md:text-base"
-            />
-          </div>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="w-full md:w-auto px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none text-sm md:text-base"
-          >
-            <option value="all">جميع الحالات</option>
-            <option value="pending">قيد المراجعة</option>
-            <option value="approved">موافق عليه</option>
-            <option value="rejected">مرفوض</option>
-          </select>
-          <select
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value)}
-            className="w-full md:w-auto px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none text-sm md:text-base"
-          >
-            <option value="all">جميع الأنواع</option>
-            <option value="vip">VIP</option>
-            <option value="general">عام</option>
-          </select>
-          <select
-            value={groupFilter}
-            onChange={(e) => setGroupFilter(e.target.value)}
-            className="w-full md:w-auto px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none text-sm md:text-base"
-          >
-            <option value="all">جميع المجموعات</option>
-            <option value="no-group">بدون مجموعة</option>
-            {groups.map((group) => (
-              <option key={group.id} value={group.id}>
-                {group.name}
-              </option>
-            ))}
-          </select>
-
-          <div className="flex items-center gap-2 px-4 py-2 bg-red-50 rounded-lg border border-red-100">
-            <input
-              type="checkbox"
-              id="lowBalance"
-              checked={lowBalanceFilter}
-              onChange={(e) => setLowBalanceFilter(e.target.checked)}
-              className="w-4 h-4 text-red-600 rounded focus:ring-red-500 cursor-pointer"
-            />
-            <label htmlFor="lowBalance" className="text-sm font-bold text-red-700 cursor-pointer whitespace-nowrap">
-              رصيد منخفض (≤ 25)
-            </label>
-          </div>
-        </div>
-      </div>
-
-      {/* Providers List */}
-      <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-4 text-right text-sm font-semibold text-gray-700">المزود</th>
-                <th className="px-6 py-4 text-right text-sm font-semibold text-gray-700">الخدمات</th>
-                <th className="px-6 py-4 text-right text-sm font-semibold text-gray-700">المجموعة</th>
-                <th className="px-6 py-4 text-right text-sm font-semibold text-gray-700">النوع</th>
-                <th className="px-6 py-4 text-right text-sm font-semibold text-gray-700">الحالة</th>
-                <th className="px-6 py-4 text-right text-sm font-semibold text-gray-700">التفعيل</th>
-                <th className="px-6 py-4 text-right text-sm font-semibold text-gray-700">التاريخ</th>
-                <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">الإجراءات</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {filteredProviders.length === 0 ? (
-                <tr>
-                  <td colSpan="8" className="px-6 py-12 text-center text-gray-500">
-                    لا توجد نتائج
-                  </td>
-                </tr>
-              ) : (
-                filteredProviders.map((provider) => {
-                  // استخدام approvalStatus بدلاً من status (status قد يكون "online"/"offline")
-                  const approvalStatus = provider.approvalStatus || provider.status;
-                  const statusBadge = getStatusBadge(approvalStatus);
-                  const typeBadge = getTypeBadge(provider.type);
-                  const groupBadge = getGroupBadge(provider.groupId);
-                  const StatusIcon = statusBadge.icon;
-                  const TypeIcon = typeBadge.icon;
-                  return (
-                    <tr key={provider.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <p className="font-semibold text-gray-800">
-                              {provider.firstName} {provider.lastName}
-                            </p>
-                            {provider.registrationMethod === 'phone_otp' && (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
-                                <Phone size={10} className="ml-1" />
-                                OTP
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2 mt-1 text-sm text-gray-500">
-                            <Phone size={14} />
-                            <span className="font-medium">{provider.phone}</span>
-                          </div>
-                          {provider.email ? (
-                            <div className="flex items-center gap-2 mt-1 text-sm text-gray-500">
-                              <Mail size={14} />
-                              <span>{provider.email}</span>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-2 mt-1 text-xs text-gray-400 italic">
-                              <Mail size={12} />
-                              <span>لا يوجد بريد إلكتروني</span>
-                            </div>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex flex-wrap gap-2">
-                          {(() => {
-                            // دعم البنية القديمة (array) والجديدة (object)
-                            const services = provider.services || {};
-                            let serviceList = [];
-
-                            if (Array.isArray(services)) {
-                              // البنية القديمة
-                              serviceList = services.map(s => ({
-                                id: typeof s === 'string' ? s : String(s),
-                                status: 'approved'
-                              }));
-                            } else if (typeof services === 'object' && services !== null) {
-                              // البنية الجديدة
-                              serviceList = Object.entries(services)
-                                .filter(([id, data]) => {
-                                  // تجاهل إذا كان data هو array أو null
-                                  return data !== null && !Array.isArray(data) && typeof data === 'object';
-                                })
-                                .map(([id, data]) => ({
-                                  id: String(id),
-                                  status: data?.status || 'pending',
-                                }));
-                            }
-
-                            return serviceList.map((service) => {
-                              // البحث عن اسم الخدمة من mainServices أو استخدام serviceNames القديم
-                              const serviceId = String(service.id || '');
-                              let serviceName = serviceId;
-
-                              // البحث في الخدمات الرئيسية (emergency-services)
-                              const mainService = mainServices.find(s =>
-                                s.id === serviceId || s.serviceId === serviceId
-                              );
-
-                              if (mainService) {
-                                serviceName = mainService.name;
-                              } else {
-                                // استخدام serviceNames القديم للتوافق مع الخدمات القديمة
-                                const oldServiceNames = {
-                                  tires: '🚗 كفرات',
-                                  battery: '🔋 بطاريات',
-                                  locksmith: '🔐 أقفال',
-                                  fuel: '⛽ تعبئة وقود',
-                                };
-                                serviceName = oldServiceNames[serviceId] || serviceId;
-                              }
-
-                              const statusColors = {
-                                approved: 'bg-green-100 text-green-700',
-                                pending: 'bg-yellow-100 text-yellow-700',
-                                rejected: 'bg-red-100 text-red-700',
-                              };
-
-                              return (
-                                <span
-                                  key={serviceId}
-                                  className={`px-2 py-1 ${statusColors[service.status] || 'bg-gray-100 text-gray-700'} text-xs rounded-full`}
-                                  title={`حالة: ${service.status === 'approved' ? 'مقبولة' : service.status === 'pending' ? 'قيد المراجعة' : 'مرفوضة'}`}
-                                >
-                                  {serviceName}
-                                </span>
-                              );
-                            });
-                          })()}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        {groupBadge ? (
-                          <span
-                            className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold text-white"
-                            style={{ backgroundColor: groupBadge.color }}
-                          >
-                            <Tag size={12} />
-                            {groupBadge.text}
-                          </span>
-                        ) : (
-                          <span className="text-sm text-gray-400">بدون مجموعة</span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            toggleProviderType(provider.id);
-                          }}
-                          className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold transition-all hover:opacity-80 ${typeBadge.color}`}
-                          title="تبديل النوع (VIP / عام)"
-                        >
-                          <TypeIcon size={14} />
-                          {typeBadge.text}
-                        </button>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span
-                          className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold ${statusBadge.color}`}
-                        >
-                          <StatusIcon size={14} />
-                          {statusBadge.text}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <button
-                          onClick={() => toggleProviderActivation(provider.id)}
-                          className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold transition-all ${provider.isActive !== false
-                            ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                            : 'bg-red-100 text-red-700 hover:bg-red-200'
-                            }`}
-                        >
-                          <Power size={14} />
-                          {provider.isActive !== false ? 'نشط' : 'معطل'}
-                        </button>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-600">
-                        {provider.createdAt
-                          ? (() => {
-                            const date = new Date(provider.createdAt);
-                            return isNaN(date.getTime()) ? '-' : format(date, 'dd MMM yyyy', { locale: ar });
-                          })()
-                          : '-'}
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center justify-center gap-2">
-                          <button
-                            onClick={() => setSelectedProvider(provider)}
-                            className="p-2 text-green-600 hover:bg-green-50 rounded-lg"
-                            title="عرض التفاصيل"
-                          >
-                            <Eye size={18} />
-                          </button>
-                          <button
-                            onClick={() => {
-                              setSelectedProvidersForGroup([provider]);
-                              setIsAssignGroupModalOpen(true);
-                            }}
-                            className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg"
-                            title="تعيين لمجموعة"
-                          >
-                            <Users size={18} />
-                          </button>
-                          {provider.groupId && (
-                            <button
-                              onClick={() => handleRemoveFromGroup(provider.id)}
-                              className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
-                              title="إزالة من المجموعة"
-                            >
-                              <X size={18} />
-                            </button>
-                          )}
-                          {(() => {
-                            // استخدام approvalStatus بدلاً من status
-                            const approvalStatus = provider.approvalStatus || provider.status;
-                            return (
-                              <>
-                                {approvalStatus === 'pending' && (
-                                  <>
-                                    <button
-                                      onClick={() => handleStatusChange(provider.id, 'approved')}
-                                      className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-all text-sm font-semibold"
-                                    >
-                                      قبول
-                                    </button>
-                                    <button
-                                      onClick={() => handleStatusChange(provider.id, 'rejected')}
-                                      className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-all text-sm font-semibold"
-                                    >
-                                      رفض
-                                    </button>
-                                  </>
-                                )}
-                                {approvalStatus === 'approved' && (
-                                  <>
-                                    <button
-                                      onClick={() => handleStatusChange(provider.id, 'rejected')}
-                                      className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-all text-sm font-semibold"
-                                    >
-                                      رفض
-                                    </button>
-                                    <button
-                                      onClick={() => handleStatusChange(provider.id, 'pending')}
-                                      className="px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 transition-all text-sm font-semibold"
-                                    >
-                                      إعادة للمراجعة
-                                    </button>
-                                  </>
-                                )}
-                                {approvalStatus === 'rejected' && (
-                                  <>
-                                    <button
-                                      onClick={() => handleStatusChange(provider.id, 'approved')}
-                                      className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-all text-sm font-semibold"
-                                    >
-                                      قبول
-                                    </button>
-                                    <button
-                                      onClick={() => handleStatusChange(provider.id, 'pending')}
-                                      className="px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 transition-all text-sm font-semibold"
-                                    >
-                                      إعادة للمراجعة
-                                    </button>
-                                  </>
-                                )}
-                              </>
-                            );
-                          })()}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Add Provider Modal */}
-      {/* Modal removed - moved to AddProvider.jsx */}
-
-      {/* Group Modal */}
-      {isGroupModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-6">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
-            <div className="p-6 border-b border-gray-200">
-              <div className="flex items-center justify-between">
-                <h2 className="text-2xl font-bold text-gray-800">
-                  {selectedGroup ? 'تعديل المجموعة' : 'إضافة مجموعة جديدة'}
-                </h2>
+          {/* Groups Management Section */}
+          {showGroupsSection && (
+            <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-2xl font-bold text-gray-800">إدارة المجموعات</h2>
                 <button
-                  onClick={() => {
-                    setIsGroupModalOpen(false);
-                    setSelectedGroup(null);
-                  }}
-                  className="text-gray-500 hover:text-gray-700"
+                  onClick={() => openGroupModal()}
+                  className="flex items-center gap-2 px-4 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition-all"
                 >
-                  <X size={24} />
+                  <Plus size={18} />
+                  إضافة مجموعة جديدة
                 </button>
               </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {groups.map((group) => (
+                  <div
+                    key={group.id}
+                    className="border-2 border-gray-200 rounded-xl p-4 hover:border-purple-300 transition-all"
+                    style={{ borderLeftColor: group.color, borderLeftWidth: '4px' }}
+                  >
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="w-10 h-10 rounded-lg flex items-center justify-center text-white"
+                          style={{ backgroundColor: group.color }}
+                        >
+                          <Users size={20} />
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-gray-800">{group.name}</h3>
+                          {group.isVip && (
+                            <span className="text-xs text-purple-600 font-semibold">VIP</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => openGroupModal(group)}
+                          className="p-1 text-blue-600 hover:bg-blue-50 rounded"
+                        >
+                          <Edit2 size={16} />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteGroup(group.id)}
+                          className="p-1 text-red-600 hover:bg-red-50 rounded"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </div>
+                    {group.description && (
+                      <p className="text-sm text-gray-600 mb-2">{group.description}</p>
+                    )}
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-500">
+                        عدد الأعضاء: <span className="font-semibold">{group.memberIds?.length || 0}</span>
+                      </span>
+                      <span className="text-gray-500">
+                        الأولوية: <span className="font-semibold">{group.priority || 0}</span>
+                      </span>
+                    </div>
+                  </div>
+                ))}
+                {groups.length === 0 && (
+                  <div className="col-span-full text-center py-8 text-gray-500">
+                    لا توجد مجموعات. قم بإضافة مجموعة جديدة.
+                  </div>
+                )}
+              </div>
             </div>
-            <div className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">اسم المجموعة *</label>
+          )}
+
+          {/* Stats Cards */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 mb-6">
+            <div className="bg-white rounded-2xl p-4 md:p-6 shadow-lg">
+              <div className="flex items-center justify-between mb-2">
+                <UserCheck className="text-blue-500" size={20} />
+                <span className="text-xs md:text-sm text-gray-600">إجمالي المزودين</span>
+              </div>
+              <p className="text-2xl md:text-3xl font-black text-gray-800">{providers.length}</p>
+            </div>
+            <div className="bg-white rounded-2xl p-4 md:p-6 shadow-lg">
+              <div className="flex items-center justify-between mb-2">
+                <Star className="text-purple-500" size={20} />
+                <span className="text-xs md:text-sm text-gray-600">مزودين VIP</span>
+              </div>
+              <p className="text-2xl md:text-3xl font-black text-gray-800">
+                {providers.filter((p) => p.type === 'vip').length}
+              </p>
+            </div>
+            <div className="bg-white rounded-2xl p-4 md:p-6 shadow-lg">
+              <div className="flex items-center justify-between mb-2">
+                <CheckCircle className="text-green-500" size={20} />
+                <span className="text-xs md:text-sm text-gray-600">نشطون</span>
+              </div>
+              <p className="text-2xl md:text-3xl font-black text-gray-800">
+                {providers.filter((p) => p.isActive !== false).length}
+              </p>
+            </div>
+            <div className="bg-white rounded-2xl p-4 md:p-6 shadow-lg">
+              <div className="flex items-center justify-between mb-2">
+                <Users className="text-teal-500" size={20} />
+                <span className="text-xs md:text-sm text-gray-600">المجموعات</span>
+              </div>
+              <p className="text-2xl md:text-3xl font-black text-gray-800">{groups.length}</p>
+            </div>
+          </div>
+
+          {/* Filters */}
+          <div className="bg-white rounded-2xl shadow-lg p-4 md:p-6 mb-6">
+            <div className="flex flex-col md:flex-row gap-3 md:gap-4">
+              <div className="flex-1 relative">
+                <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
                 <input
                   type="text"
-                  value={groupFormData.name}
-                  onChange={(e) => setGroupFormData({ ...groupFormData, name: e.target.value })}
-                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none"
-                  placeholder="مثال: مجموعة VIP المميزة"
+                  placeholder="ابحث عن مزود..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pr-10 pl-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none text-sm md:text-base"
                 />
               </div>
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">الوصف</label>
-                <textarea
-                  value={groupFormData.description}
-                  onChange={(e) => setGroupFormData({ ...groupFormData, description: e.target.value })}
-                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none"
-                  rows="3"
-                  placeholder="وصف المجموعة..."
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">اللون</label>
-                  <input
-                    type="color"
-                    value={groupFormData.color}
-                    onChange={(e) => setGroupFormData({ ...groupFormData, color: e.target.value })}
-                    className="w-full h-12 border-2 border-gray-200 rounded-lg cursor-pointer"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">الأولوية</label>
-                  <input
-                    type="number"
-                    value={groupFormData.priority}
-                    onChange={(e) => setGroupFormData({ ...groupFormData, priority: parseInt(e.target.value) || 0 })}
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none"
-                    min="0"
-                  />
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="w-full md:w-auto px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none text-sm md:text-base"
+              >
+                <option value="all">جميع الحالات</option>
+                <option value="pending">قيد المراجعة</option>
+                <option value="approved">موافق عليه</option>
+                <option value="rejected">مرفوض</option>
+              </select>
+              <select
+                value={typeFilter}
+                onChange={(e) => setTypeFilter(e.target.value)}
+                className="w-full md:w-auto px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none text-sm md:text-base"
+              >
+                <option value="all">جميع الأنواع</option>
+                <option value="vip">VIP</option>
+                <option value="general">عام</option>
+              </select>
+              <select
+                value={groupFilter}
+                onChange={(e) => setGroupFilter(e.target.value)}
+                className="w-full md:w-auto px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none text-sm md:text-base"
+              >
+                <option value="all">جميع المجموعات</option>
+                <option value="no-group">بدون مجموعة</option>
+                {groups.map((group) => (
+                  <option key={group.id} value={group.id}>
+                    {group.name}
+                  </option>
+                ))}
+              </select>
+
+              <div className="flex items-center gap-2 px-4 py-2 bg-red-50 rounded-lg border border-red-100">
                 <input
                   type="checkbox"
-                  checked={groupFormData.isVip}
-                  onChange={(e) => setGroupFormData({ ...groupFormData, isVip: e.target.checked })}
-                  className="w-5 h-5 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                  id="lowBalance"
+                  checked={lowBalanceFilter}
+                  onChange={(e) => setLowBalanceFilter(e.target.checked)}
+                  className="w-4 h-4 text-red-600 rounded focus:ring-red-500 cursor-pointer"
                 />
-                <label className="text-sm font-semibold text-gray-700">مجموعة VIP</label>
-              </div>
-              <div className="flex gap-3 pt-4">
-                <button
-                  onClick={selectedGroup ? handleUpdateGroup : handleCreateGroup}
-                  className="flex-1 px-6 py-3 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition-all font-semibold"
-                >
-                  {selectedGroup ? 'تحديث' : 'إنشاء'}
-                </button>
-                <button
-                  onClick={() => {
-                    setIsGroupModalOpen(false);
-                    setSelectedGroup(null);
-                  }}
-                  className="flex-1 px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-all font-semibold"
-                >
-                  إلغاء
-                </button>
+                <label htmlFor="lowBalance" className="text-sm font-bold text-red-700 cursor-pointer whitespace-nowrap">
+                  رصيد منخفض (≤ 25)
+                </label>
               </div>
             </div>
           </div>
-        </div>
-      )}
 
-      {/* Assign Group Modal */}
-      {isAssignGroupModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-6">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
-            <div className="p-6 border-b border-gray-200">
-              <div className="flex items-center justify-between">
-                <h2 className="text-2xl font-bold text-gray-800">تعيين لمجموعة</h2>
-                <button
-                  onClick={() => {
-                    setIsAssignGroupModalOpen(false);
-                    setSelectedProvidersForGroup([]);
-                  }}
-                  className="text-gray-500 hover:text-gray-700"
-                >
-                  <X size={24} />
-                </button>
-              </div>
-            </div>
-            <div className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">اختر المجموعة</label>
-                <select
-                  onChange={(e) => {
-                    const groupId = e.target.value === 'none' ? null : e.target.value;
-                    handleAssignToGroup(groupId);
-                  }}
-                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none"
-                >
-                  <option value="none">إزالة من المجموعات (عام)</option>
-                  {groups.map((group) => (
-                    <option key={group.id} value={group.id}>
-                      {group.name} {group.isVip && '(VIP)'}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="pt-4 border-t border-gray-200">
-                <p className="text-sm text-gray-600 mb-2">
-                  المزوّدون المحددون: {selectedProvidersForGroup.length}
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Provider Details Modal */}
-      {selectedProvider && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 md:p-6">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-auto">
-            <div className="p-4 md:p-6 border-b border-gray-200 sticky top-0 bg-white z-10">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl md:text-2xl font-bold text-gray-800">تفاصيل المزود</h2>
-                <button
-                  onClick={() => setSelectedProvider(null)}
-                  className="text-gray-500 hover:text-gray-700"
-                >
-                  <XCircle size={24} />
-                </button>
-              </div>
-
-              {/* Tabs */}
-              <div className="flex gap-2 p-1 bg-gray-100 rounded-xl">
-                <button
-                  onClick={() => setActiveTab('info')}
-                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg font-bold transition-all ${activeTab === 'info' ? 'bg-white text-teal-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                >
-                  <Users size={18} />
-                  <span>المعلومات</span>
-                </button>
-                <button
-                  onClick={() => setActiveTab('wallet')}
-                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg font-bold transition-all ${activeTab === 'wallet' ? 'bg-white text-teal-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                >
-                  <Tag size={18} />
-                  <span>المحفظة</span>
-                  {selectedProvider.wallet && (
-                    <span className="bg-teal-50 text-teal-700 px-2 py-0.5 rounded-full text-xs">
-                      {selectedProvider.wallet.balance?.toFixed(1)}
-                    </span>
-                  )}
-                </button>
-                <button
-                  onClick={() => setActiveTab('orders')}
-                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg font-bold transition-all ${activeTab === 'orders' ? 'bg-white text-teal-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                >
-                  <CheckCircle size={18} />
-                  <span>الطلبات</span>
-                  {orderStats && (
-                    <span className="bg-gray-200 text-gray-700 px-2 py-0.5 rounded-full text-xs">
-                      {orderStats.total}
-                    </span>
-                  )}
-                </button>
-              </div>
-            </div>
-            <div className="p-4 md:p-6 space-y-6">
-              {activeTab === 'info' && (
-                <div className="space-y-6 animate-in fade-in duration-300">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                      <h3 className="font-semibold text-gray-700 mb-2">الاسم</h3>
-                      <p className="text-gray-800 font-medium">
-                        {selectedProvider.firstName} {selectedProvider.lastName}
-                      </p>
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-gray-700 mb-2">رقم الهاتف</h3>
-                      <p className="text-gray-800 font-medium">{selectedProvider.phone}</p>
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-gray-700 mb-2">البريد الإلكتروني</h3>
-                      <p className="text-gray-800">{selectedProvider.email || 'لا يوجد'}</p>
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-gray-700 mb-2">الجنسية</h3>
-                      <p className="text-gray-800">{NATIONALITIES.find(n => n.value === selectedProvider.nationality)?.label || selectedProvider.nationality || 'غير محدد'}</p>
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-gray-700 mb-2">نوع المزود</h3>
-                      <div className="flex items-center gap-3">
-                        <span
-                          className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold ${getTypeBadge(selectedProvider.type).color}`}
-                        >
-                          {getTypeBadge(selectedProvider.type).text}
-                        </span>
-                        <button
-                          onClick={() => toggleProviderType(selectedProvider.id)}
-                          className="text-xs px-3 py-1 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-colors"
-                        >
-                          تعديل إلى {selectedProvider.type === 'vip' ? 'عام' : 'VIP'}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div>
-                    <h3 className="font-semibold text-gray-700 mb-4">إدارة الخدمات</h3>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {mainServices.map((service) => {
-                        const providerService = selectedProvider.services?.[service.id] || selectedProvider.services?.[service.serviceId];
-                        const isRequested = !!providerService;
-                        const status = typeof providerService === 'object' ? providerService.status : (providerService === true ? 'approved' : 'pending');
-
-                        return (
-                          <div key={service.id} className="border border-gray-200 rounded-xl p-4 flex items-center justify-between">
+          {/* Providers List */}
+          <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-4 text-right text-sm font-semibold text-gray-700">المزود</th>
+                    <th className="px-6 py-4 text-right text-sm font-semibold text-gray-700">الخدمات</th>
+                    <th className="px-6 py-4 text-right text-sm font-semibold text-gray-700">المجموعة</th>
+                    <th className="px-6 py-4 text-right text-sm font-semibold text-gray-700">النوع</th>
+                    <th className="px-6 py-4 text-right text-sm font-semibold text-gray-700">الحالة</th>
+                    <th className="px-6 py-4 text-right text-sm font-semibold text-gray-700">التفعيل</th>
+                    <th className="px-6 py-4 text-right text-sm font-semibold text-gray-700">التاريخ</th>
+                    <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">الإجراءات</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {filteredProviders.length === 0 ? (
+                    <tr>
+                      <td colSpan="8" className="px-6 py-12 text-center text-gray-500">
+                        لا توجد نتائج
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredProviders.map((provider) => {
+                      // استخدام approvalStatus بدلاً من status (status قد يكون "online"/"offline")
+                      const approvalStatus = provider.approvalStatus || provider.status;
+                      const statusBadge = getStatusBadge(approvalStatus);
+                      const typeBadge = getTypeBadge(provider.type);
+                      const groupBadge = getGroupBadge(provider.groupId);
+                      const StatusIcon = statusBadge.icon;
+                      const TypeIcon = typeBadge.icon;
+                      return (
+                        <tr key={provider.id} className="hover:bg-gray-50">
+                          <td className="px-6 py-4">
                             <div>
-                              <p className="font-bold text-gray-800">{service.name}</p>
-                              {isRequested ? (
-                                <span className={`text-xs px-2 py-0.5 rounded-full ${status === 'approved' ? 'bg-green-100 text-green-700' : status === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                                  {status === 'approved' ? '✅ مقبول' : status === 'rejected' ? '❌ مرفوض' : '⏳ قيد المراجعة'}
-                                </span>
+                              <div className="flex items-center gap-2">
+                                <p className="font-semibold text-gray-800">
+                                  {provider.firstName} {provider.lastName}
+                                </p>
+                                {provider.registrationMethod === 'phone_otp' && (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                                    <Phone size={10} className="ml-1" />
+                                    OTP
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2 mt-1 text-sm text-gray-500">
+                                <Phone size={14} />
+                                <span className="font-medium">{provider.phone}</span>
+                              </div>
+                              {provider.email ? (
+                                <div className="flex items-center gap-2 mt-1 text-sm text-gray-500">
+                                  <Mail size={14} />
+                                  <span>{provider.email}</span>
+                                </div>
                               ) : (
-                                <span className="text-xs text-gray-400 font-medium">غير مشترك</span>
+                                <div className="flex items-center gap-2 mt-1 text-xs text-gray-400 italic">
+                                  <Mail size={12} />
+                                  <span>لا يوجد بريد إلكتروني</span>
+                                </div>
                               )}
                             </div>
-                            {isRequested && (
-                              <div className="flex gap-1">
-                                {status !== 'approved' && (
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex flex-wrap gap-2">
+                              {(() => {
+                                // دعم البنية القديمة (array) والجديدة (object)
+                                const services = provider.services || {};
+                                let serviceList = [];
+
+                                if (Array.isArray(services)) {
+                                  // البنية القديمة
+                                  serviceList = services.map(s => ({
+                                    id: typeof s === 'string' ? s : String(s),
+                                    status: 'approved'
+                                  }));
+                                } else if (typeof services === 'object' && services !== null) {
+                                  // البنية الجديدة
+                                  serviceList = Object.entries(services)
+                                    .filter(([id, data]) => {
+                                      // تجاهل إذا كان data هو array أو null
+                                      return data !== null && !Array.isArray(data) && typeof data === 'object';
+                                    })
+                                    .map(([id, data]) => ({
+                                      id: String(id),
+                                      status: data?.status || 'pending',
+                                    }));
+                                }
+
+                                return serviceList.map((service) => {
+                                  // البحث عن اسم الخدمة من mainServices أو استخدام serviceNames القديم
+                                  const serviceId = String(service.id || '');
+                                  let serviceName = serviceId;
+
+                                  // البحث في الخدمات الرئيسية (emergency-services)
+                                  const mainService = mainServices.find(s =>
+                                    s.id === serviceId || s.serviceId === serviceId
+                                  );
+
+                                  if (mainService) {
+                                    serviceName = mainService.name;
+                                  } else {
+                                    // استخدام serviceNames القديم للتوافق مع الخدمات القديمة
+                                    const oldServiceNames = {
+                                      tires: '🚗 كفرات',
+                                      battery: '🔋 بطاريات',
+                                      locksmith: '🔐 أقفال',
+                                      fuel: '⛽ تعبئة وقود',
+                                    };
+                                    serviceName = oldServiceNames[serviceId] || serviceId;
+                                  }
+
+                                  const statusColors = {
+                                    approved: 'bg-green-100 text-green-700',
+                                    pending: 'bg-yellow-100 text-yellow-700',
+                                    rejected: 'bg-red-100 text-red-700',
+                                  };
+
+                                  return (
+                                    <span
+                                      key={serviceId}
+                                      className={`px-2 py-1 ${statusColors[service.status] || 'bg-gray-100 text-gray-700'} text-xs rounded-full`}
+                                      title={`حالة: ${service.status === 'approved' ? 'مقبولة' : service.status === 'pending' ? 'قيد المراجعة' : 'مرفوضة'}`}
+                                    >
+                                      {serviceName}
+                                    </span>
+                                  );
+                                });
+                              })()}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            {groupBadge ? (
+                              <span
+                                className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold text-white"
+                                style={{ backgroundColor: groupBadge.color }}
+                              >
+                                <Tag size={12} />
+                                {groupBadge.text}
+                              </span>
+                            ) : (
+                              <span className="text-sm text-gray-400">بدون مجموعة</span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleProviderType(provider.id);
+                              }}
+                              className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold transition-all hover:opacity-80 ${typeBadge.color}`}
+                              title="تبديل النوع (VIP / عام)"
+                            >
+                              <TypeIcon size={14} />
+                              {typeBadge.text}
+                            </button>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span
+                              className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold ${statusBadge.color}`}
+                            >
+                              <StatusIcon size={14} />
+                              {statusBadge.text}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4">
+                            <button
+                              onClick={() => toggleProviderActivation(provider.id)}
+                              className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold transition-all ${provider.isActive !== false
+                                ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                                : 'bg-red-100 text-red-700 hover:bg-red-200'
+                                }`}
+                            >
+                              <Power size={14} />
+                              {provider.isActive !== false ? 'نشط' : 'معطل'}
+                            </button>
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-600">
+                            {provider.createdAt
+                              ? (() => {
+                                const date = new Date(provider.createdAt);
+                                return isNaN(date.getTime()) ? '-' : format(date, 'dd MMM yyyy', { locale: ar });
+                              })()
+                              : '-'}
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center justify-center gap-2">
+                              <button
+                                onClick={() => setSelectedProvider(provider)}
+                                className="p-2 text-green-600 hover:bg-green-50 rounded-lg"
+                                title="عرض التفاصيل"
+                              >
+                                <Eye size={18} />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setSelectedProvidersForGroup([provider]);
+                                  setIsAssignGroupModalOpen(true);
+                                }}
+                                className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg"
+                                title="تعيين لمجموعة"
+                              >
+                                <Users size={18} />
+                              </button>
+                              {provider.groupId && (
+                                <button
+                                  onClick={() => handleRemoveFromGroup(provider.id)}
+                                  className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                                  title="إزالة من المجموعة"
+                                >
+                                  <X size={18} />
+                                </button>
+                              )}
+                              {(() => {
+                                // استخدام approvalStatus بدلاً من status
+                                const approvalStatus = provider.approvalStatus || provider.status;
+                                return (
+                                  <>
+                                    {approvalStatus === 'pending' && (
+                                      <>
+                                        <button
+                                          onClick={() => handleStatusChange(provider.id, 'approved')}
+                                          className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-all text-sm font-semibold"
+                                        >
+                                          قبول
+                                        </button>
+                                        <button
+                                          onClick={() => handleStatusChange(provider.id, 'rejected')}
+                                          className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-all text-sm font-semibold"
+                                        >
+                                          رفض
+                                        </button>
+                                      </>
+                                    )}
+                                    {approvalStatus === 'approved' && (
+                                      <>
+                                        <button
+                                          onClick={() => handleStatusChange(provider.id, 'rejected')}
+                                          className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-all text-sm font-semibold"
+                                        >
+                                          رفض
+                                        </button>
+                                        <button
+                                          onClick={() => handleStatusChange(provider.id, 'pending')}
+                                          className="px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 transition-all text-sm font-semibold"
+                                        >
+                                          إعادة للمراجعة
+                                        </button>
+                                      </>
+                                    )}
+                                    {approvalStatus === 'rejected' && (
+                                      <>
+                                        <button
+                                          onClick={() => handleStatusChange(provider.id, 'approved')}
+                                          className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-all text-sm font-semibold"
+                                        >
+                                          قبول
+                                        </button>
+                                        <button
+                                          onClick={() => handleStatusChange(provider.id, 'pending')}
+                                          className="px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 transition-all text-sm font-semibold"
+                                        >
+                                          إعادة للمراجعة
+                                        </button>
+                                      </>
+                                    )}
+                                  </>
+                                );
+                              })()}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Add Provider Modal */}
+          {/* Modal removed - moved to AddProvider.jsx */}
+
+          {/* Group Modal */}
+          {isGroupModalOpen && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-6">
+              <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
+                <div className="p-6 border-b border-gray-200">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-2xl font-bold text-gray-800">
+                      {selectedGroup ? 'تعديل المجموعة' : 'إضافة مجموعة جديدة'}
+                    </h2>
+                    <button
+                      onClick={() => {
+                        setIsGroupModalOpen(false);
+                        setSelectedGroup(null);
+                      }}
+                      className="text-gray-500 hover:text-gray-700"
+                    >
+                      <X size={24} />
+                    </button>
+                  </div>
+                </div>
+                <div className="p-6 space-y-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">اسم المجموعة *</label>
+                    <input
+                      type="text"
+                      value={groupFormData.name}
+                      onChange={(e) => setGroupFormData({ ...groupFormData, name: e.target.value })}
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none"
+                      placeholder="مثال: مجموعة VIP المميزة"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">الوصف</label>
+                    <textarea
+                      value={groupFormData.description}
+                      onChange={(e) => setGroupFormData({ ...groupFormData, description: e.target.value })}
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none"
+                      rows="3"
+                      placeholder="وصف المجموعة..."
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">اللون</label>
+                      <input
+                        type="color"
+                        value={groupFormData.color}
+                        onChange={(e) => setGroupFormData({ ...groupFormData, color: e.target.value })}
+                        className="w-full h-12 border-2 border-gray-200 rounded-lg cursor-pointer"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">الأولوية</label>
+                      <input
+                        type="number"
+                        value={groupFormData.priority}
+                        onChange={(e) => setGroupFormData({ ...groupFormData, priority: parseInt(e.target.value) || 0 })}
+                        className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none"
+                        min="0"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={groupFormData.isVip}
+                      onChange={(e) => setGroupFormData({ ...groupFormData, isVip: e.target.checked })}
+                      className="w-5 h-5 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                    />
+                    <label className="text-sm font-semibold text-gray-700">مجموعة VIP</label>
+                  </div>
+                  <div className="flex gap-3 pt-4">
+                    <button
+                      onClick={selectedGroup ? handleUpdateGroup : handleCreateGroup}
+                      className="flex-1 px-6 py-3 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition-all font-semibold"
+                    >
+                      {selectedGroup ? 'تحديث' : 'إنشاء'}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setIsGroupModalOpen(false);
+                        setSelectedGroup(null);
+                      }}
+                      className="flex-1 px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-all font-semibold"
+                    >
+                      إلغاء
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Assign Group Modal */}
+          {isAssignGroupModalOpen && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-6">
+              <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
+                <div className="p-6 border-b border-gray-200">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-2xl font-bold text-gray-800">تعيين لمجموعة</h2>
+                    <button
+                      onClick={() => {
+                        setIsAssignGroupModalOpen(false);
+                        setSelectedProvidersForGroup([]);
+                      }}
+                      className="text-gray-500 hover:text-gray-700"
+                    >
+                      <X size={24} />
+                    </button>
+                  </div>
+                </div>
+                <div className="p-6 space-y-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">اختر المجموعة</label>
+                    <select
+                      onChange={(e) => {
+                        const groupId = e.target.value === 'none' ? null : e.target.value;
+                        handleAssignToGroup(groupId);
+                      }}
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none"
+                    >
+                      <option value="none">إزالة من المجموعات (عام)</option>
+                      {groups.map((group) => (
+                        <option key={group.id} value={group.id}>
+                          {group.name} {group.isVip && '(VIP)'}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="pt-4 border-t border-gray-200">
+                    <p className="text-sm text-gray-600 mb-2">
+                      المزوّدون المحددون: {selectedProvidersForGroup.length}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Provider Details Modal */}
+          {selectedProvider && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 md:p-6">
+              <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-auto">
+                <div className="p-4 md:p-6 border-b border-gray-200 sticky top-0 bg-white z-10">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-xl md:text-2xl font-bold text-gray-800">تفاصيل المزود</h2>
+                    <button
+                      onClick={() => setSelectedProvider(null)}
+                      className="text-gray-500 hover:text-gray-700"
+                    >
+                      <XCircle size={24} />
+                    </button>
+                  </div>
+
+                  {/* Tabs */}
+                  <div className="flex gap-2 p-1 bg-gray-100 rounded-xl">
+                    <button
+                      onClick={() => setActiveTab('info')}
+                      className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg font-bold transition-all ${activeTab === 'info' ? 'bg-white text-teal-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                    >
+                      <Users size={18} />
+                      <span>المعلومات</span>
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('wallet')}
+                      className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg font-bold transition-all ${activeTab === 'wallet' ? 'bg-white text-teal-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                    >
+                      <Tag size={18} />
+                      <span>المحفظة</span>
+                      {selectedProvider.wallet && (
+                        <span className="bg-teal-50 text-teal-700 px-2 py-0.5 rounded-full text-xs">
+                          {selectedProvider.wallet.balance?.toFixed(1)}
+                        </span>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('orders')}
+                      className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg font-bold transition-all ${activeTab === 'orders' ? 'bg-white text-teal-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                    >
+                      <CheckCircle size={18} />
+                      <span>الطلبات</span>
+                      {orderStats && (
+                        <span className="bg-gray-200 text-gray-700 px-2 py-0.5 rounded-full text-xs">
+                          {orderStats.total}
+                        </span>
+                      )}
+                    </button>
+                  </div>
+                </div>
+                <div className="p-4 md:p-6 space-y-6">
+                  {activeTab === 'info' && (
+                    <div className="space-y-6 animate-in fade-in duration-300">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                          <h3 className="font-semibold text-gray-700 mb-2">الاسم</h3>
+                          <p className="text-gray-800 font-medium">
+                            {selectedProvider.firstName} {selectedProvider.lastName}
+                          </p>
+                        </div>
+                        <div>
+                          <h3 className="font-semibold text-gray-700 mb-2">رقم الهاتف</h3>
+                          <p className="text-gray-800 font-medium">{selectedProvider.phone}</p>
+                        </div>
+                        <div>
+                          <h3 className="font-semibold text-gray-700 mb-2">البريد الإلكتروني</h3>
+                          <p className="text-gray-800">{selectedProvider.email || 'لا يوجد'}</p>
+                        </div>
+                        <div>
+                          <h3 className="font-semibold text-gray-700 mb-2">الجنسية</h3>
+                          <p className="text-gray-800">{NATIONALITIES.find(n => n.value === selectedProvider.nationality)?.label || selectedProvider.nationality || 'غير محدد'}</p>
+                        </div>
+                        <div>
+                          <h3 className="font-semibold text-gray-700 mb-2">نوع المزود</h3>
+                          <div className="flex items-center gap-3">
+                            <span
+                              className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold ${getTypeBadge(selectedProvider.type).color}`}
+                            >
+                              {getTypeBadge(selectedProvider.type).text}
+                            </span>
+                            <button
+                              onClick={() => toggleProviderType(selectedProvider.id)}
+                              className="text-xs px-3 py-1 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-colors"
+                            >
+                              تعديل إلى {selectedProvider.type === 'vip' ? 'عام' : 'VIP'}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <h3 className="font-semibold text-gray-700 mb-4">إدارة الخدمات</h3>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {mainServices.map((service) => {
+                            const providerService =
+                              selectedProvider.services?.[service.id] ||
+                              selectedProvider.services?.[service.serviceId];
+                            const isRequested = !!providerService;
+                            const status =
+                              typeof providerService === 'object'
+                                ? providerService.status
+                                : providerService === true
+                                ? 'approved'
+                                : 'pending';
+
+                            return (
+                              <div
+                                key={service.id}
+                                className="border border-gray-200 rounded-xl p-4 flex items-center justify-between"
+                              >
+                                <div>
+                                  <p className="font-bold text-gray-800">{service.name}</p>
+                                  {isRequested ? (
+                                    <span
+                                      className={`text-xs px-2 py-0.5 rounded-full ${
+                                        status === 'approved'
+                                          ? 'bg-green-100 text-green-700'
+                                          : status === 'rejected'
+                                          ? 'bg-red-100 text-red-700'
+                                          : 'bg-yellow-100 text-yellow-700'
+                                      }`}
+                                    >
+                                      {status === 'approved'
+                                        ? '✅ مقبول'
+                                        : status === 'rejected'
+                                        ? '❌ مرفوض'
+                                        : '⏳ قيد المراجعة'}
+                                    </span>
+                                  ) : (
+                                    <span className="text-xs text-gray-400 font-medium">غير مشترك</span>
+                                  )}
+                                </div>
+
+                                {/* أزرار التحكم */}
+                                {isRequested ? (
+                                  <div className="flex gap-1">
+                                    {status !== 'approved' && (
+                                      <button
+                                        onClick={() => handleUpdateServiceStatus(service.id, 'approved')}
+                                        className="p-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 disabled:opacity-50"
+                                        disabled={updatingServiceId === `${service.id}:approved`}
+                                        title="قبول"
+                                      >
+                                        <CheckCircle size={16} />
+                                      </button>
+                                    )}
+                                    {status !== 'rejected' && (
+                                      <button
+                                        onClick={() => handleUpdateServiceStatus(service.id, 'rejected')}
+                                        className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 disabled:opacity-50"
+                                        disabled={updatingServiceId === `${service.id}:rejected`}
+                                        title="رفض"
+                                      >
+                                        <XCircle size={16} />
+                                      </button>
+                                    )}
+                                  </div>
+                                ) : (
+                                  // إذا لم يكن مشتركاً، زر لإضافة الخدمة مباشرة كمقبولة
                                   <button
-                                    onClick={() => updateProviderServiceStatus(selectedProvider.id, service.id, 'approved').then(() => fetchProviders())}
-                                    className="p-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100"
-                                    title="قبول"
+                                    onClick={() => handleUpdateServiceStatus(service.id, 'approved')}
+                                    className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-teal-50 text-teal-700 hover:bg-teal-100 disabled:opacity-50"
+                                    disabled={updatingServiceId === `${service.id}:approved`}
                                   >
-                                    <CheckCircle size={16} />
-                                  </button>
-                                )}
-                                {status !== 'rejected' && (
-                                  <button
-                                    onClick={() => updateProviderServiceStatus(selectedProvider.id, service.id, 'rejected').then(() => fetchProviders())}
-                                    className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"
-                                    title="رفض"
-                                  >
-                                    <XCircle size={16} />
+                                    {updatingServiceId === `${service.id}:approved` ? 'جاري الإضافة...' : 'إضافة الخدمة للمزوّد'}
                                   </button>
                                 )}
                               </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Documents - صور أو PDF أو Word */}
-                  {selectedProvider.documents && (
-                    <div>
-                      <h3 className="font-semibold text-gray-700 mb-4">المستندات والصور</h3>
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                        {Object.entries(selectedProvider.documents).map(([key, value]) => {
-                          const url = typeof value === 'string' ? value : value?.url;
-                          const type = (typeof value === 'object' && value ? value.type : null) || 'image';
-                          const docLabel = key === 'idImage' ? 'الهوية' : key === 'carPhotoFront' ? 'السيارة - أمام' : key === 'licensePhoto' ? 'الرخصة' : key === 'registrationPhoto' ? 'استمارة السيارة' : key === 'equipmentPhoto' ? 'صورة العدة' : key === 'carPhotoSide' ? 'السيارة - جانبي' : key;
-                          if (!url) return null;
-                          const isImage = type === 'image';
-                          return (
-                            <div key={key} className="relative group rounded-xl overflow-hidden border-2 border-gray-100 hover:border-teal-400 transition-all bg-gray-50">
-                              {isImage ? (
-                                <>
-                                  <img src={url} alt={docLabel} className="w-full h-32 object-cover" />
-                                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all">
-                                    <button onClick={() => window.open(url, '_blank')} className="p-2 bg-white rounded-full shadow-lg" title="عرض">
-                                      <Eye size={18} className="text-gray-700" />
-                                    </button>
-                                  </div>
-                                </>
-                              ) : (
-                                <a href={url} target="_blank" rel="noopener noreferrer" className="flex flex-col items-center justify-center h-32 p-3 hover:bg-teal-50 transition-colors">
-                                  <FileText size={36} className="text-teal-600 mb-2" />
-                                  <span className="text-xs font-semibold text-gray-600">{type === 'pdf' ? 'PDF' : 'Word'}</span>
-                                  <span className="text-[10px] text-gray-500 mt-1">اضغط للتحميل/العرض</span>
-                                </a>
-                              )}
-                              <p className="absolute bottom-0 inset-x-0 bg-black/60 text-white text-[10px] py-1 text-center truncate px-1">
-                                {docLabel}
-                              </p>
-                            </div>
-                          );
-                        })}
+                            );
+                          })}
+                        </div>
                       </div>
-                    </div>
-                  )}
-                </div>
-              )}
 
-              {activeTab === 'wallet' && (
-                <div className="space-y-6 animate-in fade-in duration-300">
-                  {/* Stats Cards */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="bg-gradient-to-br from-teal-500 to-teal-600 p-5 rounded-2xl text-white shadow-lg">
-                      <p className="text-teal-100 text-sm font-semibold mb-1">الرصيد الحالي</p>
-                      <h4 className="text-3xl font-black">{selectedProvider.wallet?.balance?.toFixed(2) || '0.00'} ر.س</h4>
-                    </div>
-                    <div className="bg-white p-5 rounded-2xl border-2 border-gray-100 shadow-sm">
-                      <p className="text-gray-500 text-sm font-semibold mb-1">إجمالي الإيداعات</p>
-                      <h4 className="text-2xl font-black text-green-600">
-                        {walletHistory.filter(h => h.type === 'addition').reduce((sum, h) => sum + (h.amount || 0), 0).toFixed(1)} ر.س
-                      </h4>
-                    </div>
-                    <div className="bg-white p-5 rounded-2xl border-2 border-gray-100 shadow-sm">
-                      <p className="text-gray-500 text-sm font-semibold mb-1">إجمالي الخصومات</p>
-                      <h4 className="text-2xl font-black text-red-600">
-                        {walletHistory.filter(h => h.type === 'deduction').reduce((sum, h) => sum + (h.amount || 0), 0).toFixed(1)} ر.س
-                      </h4>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {/* Adjustment Form */}
-                    <div className="bg-gray-50 p-6 rounded-2xl border border-gray-200">
-                      <h4 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
-                        <Edit2 size={18} className="text-teal-600" />
-                        تعديل الرصيد يدوياً
-                      </h4>
-                      <form onSubmit={handleAdjustWallet} className="space-y-4">
-                        <div className="grid grid-cols-2 gap-3">
-                          <button
-                            type="button"
-                            onClick={() => setWalletAdjustment({ ...walletAdjustment, type: 'addition' })}
-                            className={`py-3 rounded-xl font-bold transition-all border-2 ${walletAdjustment.type === 'addition' ? 'bg-green-50 border-green-500 text-green-700' : 'bg-white border-gray-100 text-gray-500'}`}
-                          >
-                            إضافة (شحن)
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setWalletAdjustment({ ...walletAdjustment, type: 'deduction' })}
-                            className={`py-3 rounded-xl font-bold transition-all border-2 ${walletAdjustment.type === 'deduction' ? 'bg-red-50 border-red-500 text-red-700' : 'bg-white border-gray-100 text-gray-500'}`}
-                          >
-                            خصم
-                          </button>
-                        </div>
-                        <div className="grid grid-cols-2 gap-3">
-                          <button
-                            type="button"
-                            onClick={() => setWalletAdjustment({ ...walletAdjustment, type: 'compensation' })}
-                            className={`py-3 rounded-xl font-bold transition-all border-2 ${walletAdjustment.type === 'compensation' ? 'bg-blue-50 border-blue-500 text-blue-700' : 'bg-white border-gray-100 text-gray-500'}`}
-                          >
-                            تعويض
-                          </button>
-                          <input
-                            type="number"
-                            placeholder="المبلغ"
-                            value={walletAdjustment.amount}
-                            onChange={(e) => setWalletAdjustment({ ...walletAdjustment, amount: e.target.value })}
-                            className="px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-teal-400 focus:outline-none font-bold"
-                          />
-                        </div>
-                        <textarea
-                          placeholder="سبب العملية (مثال: شحن عبر واتساب)"
-                          value={walletAdjustment.reason}
-                          onChange={(e) => setWalletAdjustment({ ...walletAdjustment, reason: e.target.value })}
-                          className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-teal-400 focus:outline-none min-h-[80px]"
-                        ></textarea>
-                        <button
-                          disabled={isAdjustingWallet}
-                          type="submit"
-                          className="w-full py-4 bg-teal-600 text-white rounded-xl font-bold shadow-lg hover:bg-teal-700 disabled:opacity-50 transition-all"
-                        >
-                          {isAdjustingWallet ? 'جاري التنفيذ...' : 'تأكيد العملية'}
-                        </button>
-                      </form>
-                    </div>
-
-                    {/* History */}
-                    <div className="space-y-4">
-                      <h4 className="font-bold text-gray-800 flex items-center gap-2">
-                        <Clock size={18} className="text-gray-500" />
-                        سجل العمليات الأخير
-                      </h4>
-                      <div className="max-h-[300px] overflow-auto space-y-2 pr-2">
-                        {loadingWallet ? (
-                          <p className="text-center text-gray-400 py-4">جاري التحميل...</p>
-                        ) : walletHistory.length === 0 ? (
-                          <p className="text-center text-gray-400 py-4">لا توجد عمليات مسجلة</p>
-                        ) : (
-                          walletHistory.map((item) => (
-                            <div key={item.id} className="bg-white p-3 rounded-xl border border-gray-100 flex items-center justify-between">
-                              <div className="flex items-center gap-3">
-                                <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg ${item.type === 'addition' ? 'bg-green-100 text-green-600' : item.type === 'deduction' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>
-                                  {item.type === 'addition' ? '+' : item.type === 'deduction' ? '-' : '↺'}
-                                </div>
-                                <div>
-                                  <p className="text-sm font-bold text-gray-800">{item.reason || 'عملية مجهولة'}</p>
-                                  <p className="text-[10px] text-gray-500">
-                                    {item.timestamp ? format(item.timestamp.toDate ? item.timestamp.toDate() : new Date(item.timestamp), 'dd MMM yyyy, HH:mm', { locale: ar }) : '-'}
+                      {/* Documents - صور أو PDF أو Word */}
+                      {selectedProvider.documents && (
+                        <div>
+                          <h3 className="font-semibold text-gray-700 mb-4">المستندات والصور</h3>
+                          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                            {Object.entries(selectedProvider.documents).map(([key, value]) => {
+                              const url = typeof value === 'string' ? value : value?.url;
+                              const type = (typeof value === 'object' && value ? value.type : null) || 'image';
+                              const docLabel = key === 'idImage' ? 'الهوية' : key === 'carPhotoFront' ? 'السيارة - أمام' : key === 'licensePhoto' ? 'الرخصة' : key === 'registrationPhoto' ? 'استمارة السيارة' : key === 'equipmentPhoto' ? 'صورة العدة' : key === 'carPhotoSide' ? 'السيارة - جانبي' : key;
+                              if (!url) return null;
+                              const isImage = type === 'image';
+                              return (
+                                <div key={key} className="relative group rounded-xl overflow-hidden border-2 border-gray-100 hover:border-teal-400 transition-all bg-gray-50">
+                                  {isImage ? (
+                                    <>
+                                      <img src={url} alt={docLabel} className="w-full h-32 object-cover" />
+                                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all">
+                                        <button onClick={() => window.open(url, '_blank')} className="p-2 bg-white rounded-full shadow-lg" title="عرض">
+                                          <Eye size={18} className="text-gray-700" />
+                                        </button>
+                                      </div>
+                                    </>
+                                  ) : (
+                                    <a href={url} target="_blank" rel="noopener noreferrer" className="flex flex-col items-center justify-center h-32 p-3 hover:bg-teal-50 transition-colors">
+                                      <FileText size={36} className="text-teal-600 mb-2" />
+                                      <span className="text-xs font-semibold text-gray-600">{type === 'pdf' ? 'PDF' : 'Word'}</span>
+                                      <span className="text-[10px] text-gray-500 mt-1">اضغط للتحميل/العرض</span>
+                                    </a>
+                                  )}
+                                  <p className="absolute bottom-0 inset-x-0 bg-black/60 text-white text-[10px] py-1 text-center truncate px-1">
+                                    {docLabel}
                                   </p>
                                 </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Temporary Blocks Section */}
+                      <div className="bg-orange-50 p-6 rounded-2xl border border-orange-200">
+                        <h3 className="font-bold text-orange-800 mb-4 flex items-center gap-2">
+                          <Clock size={18} />
+                          الحظر المؤقت النشط (ساعة واحدة)
+                        </h3>
+                        {loadingBlocks ? (
+                          <p className="text-gray-500 text-sm">جاري التحميل...</p>
+                        ) : blocksError ? (
+                          <div className="p-3 bg-red-100 border border-red-200 rounded-lg">
+                            <p className="text-red-700 text-xs font-bold mb-1 flex items-center gap-1">
+                              <AlertCircle size={14} />
+                              فشل تحميل السجلات
+                            </p>
+                            <p className="text-red-600 text-[10px] break-words">{blocksError}</p>
+                            {blocksError.includes('index') && (
+                              <p className="mt-2 text-[10px] text-gray-600 italic">
+                                * يتطلب هذا الإجراء إنشاء فهرس (Index) في Firestore. يرجى مراجعة Console الخاص بـ Firebase.
+                              </p>
+                            )}
+                          </div>
+                        ) : providerBlocks.length === 0 ? (
+                          <p className="text-gray-500 text-sm italic">لا يوجد حظر نشط حالياً لهذا المزود من أي عميل.</p>
+                        ) : (
+                          <div className="space-y-3">
+                            {providerBlocks.map((block) => (
+                              <div key={block.id} className="bg-white p-4 rounded-xl border border-orange-100 flex items-center justify-between shadow-sm">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-10 h-10 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center font-bold">
+                                    {block.customerId.substring(0, 2).toUpperCase()}
+                                  </div>
+                                  <div>
+                                    <p className="text-sm font-bold text-gray-800">معرف العميل: {block.customerId}</p>
+                                    <p className="text-[10px] text-gray-500">
+                                      تنتهي الصلاحية: {block.blockedUntil ? (block.blockedUntil.toDate ? format(block.blockedUntil.toDate(), 'HH:mm:ss', { locale: ar }) : format(new Date(block.blockedUntil), 'HH:mm:ss', { locale: ar })) : '-'}
+                                    </p>
+                                  </div>
+                                </div>
+                                <button
+                                  onClick={() => handleUnblock(block.customerId)}
+                                  className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-all text-xs font-bold shadow-md"
+                                >
+                                  إلغاء الحظر
+                                </button>
                               </div>
-                              <div className="text-left">
-                                <p className={`font-black ${item.type === 'addition' || item.type === 'compensation' ? 'text-green-600' : 'text-red-600'}`}>
-                                  {item.type === 'deduction' ? '-' : '+'}{item.amount}
-                                </p>
-                                <p className="text-[9px] text-gray-400">الرصيد: {item.balance}</p>
-                              </div>
-                            </div>
-                          ))
+                            ))}
+                          </div>
                         )}
                       </div>
                     </div>
-                  </div>
-                </div>
-              )}
+                  )}
 
-              {activeTab === 'orders' && (
-                <div className="space-y-6 animate-in fade-in duration-300">
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div className="bg-blue-50 p-5 rounded-2xl border border-blue-100">
-                      <p className="text-blue-600 text-xs font-bold mb-1">إجمالي الطلبات</p>
-                      <h4 className="text-2xl font-black text-blue-700">{orderStats?.total || 0}</h4>
-                    </div>
-                    <div className="bg-green-50 p-5 rounded-2xl border border-green-100">
-                      <p className="text-green-600 text-xs font-bold mb-1">مكتملة</p>
-                      <h4 className="text-2xl font-black text-green-700">{orderStats?.completed || 0}</h4>
-                    </div>
-                    <div className="bg-red-50 p-5 rounded-2xl border border-red-100">
-                      <p className="text-red-600 text-xs font-bold mb-1">ملغاة</p>
-                      <h4 className="text-2xl font-black text-red-700">{orderStats?.cancelled || 0}</h4>
-                    </div>
-                    <div className="bg-purple-50 p-5 rounded-2xl border border-purple-100">
-                      <p className="text-purple-600 text-xs font-bold mb-1">نسبة الإنجاز</p>
-                      <h4 className="text-2xl font-black text-purple-700">
-                        {orderStats?.total ? Math.round((orderStats.completed / orderStats.total) * 100) : 0}%
-                      </h4>
-                    </div>
-                  </div>
+                  {activeTab === 'wallet' && (
+                    <div className="space-y-6 animate-in fade-in duration-300">
+                      {/* Stats Cards */}
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="bg-gradient-to-br from-teal-500 to-teal-600 p-5 rounded-2xl text-white shadow-lg">
+                          <p className="text-teal-100 text-sm font-semibold mb-1">الرصيد الحالي</p>
+                          <h4 className="text-3xl font-black">{selectedProvider.wallet?.balance?.toFixed(2) || '0.00'} ر.س</h4>
+                        </div>
+                        <div className="bg-white p-5 rounded-2xl border-2 border-gray-100 shadow-sm">
+                          <p className="text-gray-500 text-sm font-semibold mb-1">إجمالي الإيداعات</p>
+                          <h4 className="text-2xl font-black text-green-600">
+                            {walletHistory.filter(h => h.type === 'addition').reduce((sum, h) => sum + (h.amount || 0), 0).toFixed(1)} ر.س
+                          </h4>
+                        </div>
+                        <div className="bg-white p-5 rounded-2xl border-2 border-gray-100 shadow-sm">
+                          <p className="text-gray-500 text-sm font-semibold mb-1">إجمالي الخصومات</p>
+                          <h4 className="text-2xl font-black text-red-600">
+                            {walletHistory.filter(h => h.type === 'deduction').reduce((sum, h) => sum + (h.amount || 0), 0).toFixed(1)} ر.س
+                          </h4>
+                        </div>
+                      </div>
 
-                  <div>
-                    <h4 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
-                      <Clock size={18} className="text-gray-500" />
-                      آخر الطلبات المسندة
-                    </h4>
-                    <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-                      <table className="w-full text-sm">
-                        <thead className="bg-gray-50">
-                          <tr>
-                            <th className="px-4 py-3 text-right">رقم الطلب</th>
-                            <th className="px-4 py-3 text-right">الخدمة</th>
-                            <th className="px-4 py-3 text-right">التاريخ</th>
-                            <th className="px-4 py-3 text-right">الحالة</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100">
-                          {loadingStats ? (
-                            <tr><td colSpan="4" className="text-center py-8 text-gray-400">جاري التحميل...</td></tr>
-                          ) : orderStats?.orders.length === 0 ? (
-                            <tr><td colSpan="4" className="text-center py-8 text-gray-400">لا توجد طلبات مسجلة</td></tr>
-                          ) : (
-                            orderStats?.orders.slice(0, 10).map((order) => (
-                              <tr key={order.id} className="hover:bg-gray-50 transition-colors">
-                                <td className="px-4 py-3 font-mono text-gray-500">{order.orderNumber != null ? order.orderNumber : (order.id ? `#${order.id.substring(0, 8)}` : '—')}</td>
-                                <td className="px-4 py-3 font-bold text-gray-800">{order.serviceType}</td>
-                                <td className="px-4 py-3 text-gray-600">
-                                  {order.createdAt ? format(order.createdAt.toDate ? order.createdAt.toDate() : new Date(order.createdAt), 'dd/MM/yyyy HH:mm', { locale: ar }) : '-'}
-                                </td>
-                                <td className="px-4 py-3">
-                                  {(() => {
-                                    const badges = {
-                                      completed: { text: 'مكتمل', color: 'bg-green-100 text-green-700' },
-                                      pending_client_confirmation: { text: 'بانتظار تأكيد العميل', color: 'bg-yellow-100 text-yellow-700' },
-                                      pending_review: { text: 'قيد المراجعة', color: 'bg-amber-100 text-amber-700' },
-                                      searching: { text: 'جاري البحث', color: 'bg-blue-100 text-blue-700' },
-                                      assigned: { text: 'مقبول', color: 'bg-teal-100 text-teal-700' },
-                                      en_route: { text: 'في الطريق', color: 'bg-blue-100 text-blue-700' },
-                                      arrived: { text: 'وصل', color: 'bg-purple-100 text-purple-700' },
-                                      in_progress: { text: 'قيد التنفيذ', color: 'bg-orange-100 text-orange-700' },
-                                      canceled_by_client: { text: 'ملغي من العميل', color: 'bg-red-100 text-red-700' },
-                                      canceled_by_provider: { text: 'ملغي من المزود', color: 'bg-red-100 text-red-700' },
-                                    };
-                                    const badge = badges[order.status] || { text: order.status, color: 'bg-gray-100 text-gray-700' };
-                                    return (
-                                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${badge.color}`}>
-                                        {badge.text}
-                                      </span>
-                                    );
-                                  })()}
-                                </td>
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        {/* Adjustment Form */}
+                        <div className="bg-gray-50 p-6 rounded-2xl border border-gray-200">
+                          <h4 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
+                            <Edit2 size={18} className="text-teal-600" />
+                            تعديل الرصيد يدوياً
+                          </h4>
+                          <form onSubmit={handleAdjustWallet} className="space-y-4">
+                            <div className="grid grid-cols-2 gap-3">
+                              <button
+                                type="button"
+                                onClick={() => setWalletAdjustment({ ...walletAdjustment, type: 'addition' })}
+                                className={`py-3 rounded-xl font-bold transition-all border-2 ${walletAdjustment.type === 'addition' ? 'bg-green-50 border-green-500 text-green-700' : 'bg-white border-gray-100 text-gray-500'}`}
+                              >
+                                إضافة (شحن)
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setWalletAdjustment({ ...walletAdjustment, type: 'deduction' })}
+                                className={`py-3 rounded-xl font-bold transition-all border-2 ${walletAdjustment.type === 'deduction' ? 'bg-red-50 border-red-500 text-red-700' : 'bg-white border-gray-100 text-gray-500'}`}
+                              >
+                                خصم
+                              </button>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                              <button
+                                type="button"
+                                onClick={() => setWalletAdjustment({ ...walletAdjustment, type: 'compensation' })}
+                                className={`py-3 rounded-xl font-bold transition-all border-2 ${walletAdjustment.type === 'compensation' ? 'bg-blue-50 border-blue-500 text-blue-700' : 'bg-white border-gray-100 text-gray-500'}`}
+                              >
+                                تعويض
+                              </button>
+                              <input
+                                type="number"
+                                placeholder="المبلغ"
+                                value={walletAdjustment.amount}
+                                onChange={(e) => {
+                                  setWalletAmountError('');
+                                  setWalletAdjustment({ ...walletAdjustment, amount: e.target.value });
+                                }}
+                                className={`px-4 py-3 rounded-xl border-2 focus:outline-none font-bold ${
+                                  walletAmountError
+                                    ? 'border-red-400 focus:border-red-500'
+                                    : 'border-gray-200 focus:border-teal-400'
+                                }`}
+                              />
+                            </div>
+                            {walletAmountError && (
+                              <p className="text-sm text-red-500 font-semibold">
+                                {walletAmountError}
+                              </p>
+                            )}
+                            <textarea
+                              placeholder="سبب العملية (مثال: شحن عبر واتساب)"
+                              value={walletAdjustment.reason}
+                              onChange={(e) => setWalletAdjustment({ ...walletAdjustment, reason: e.target.value })}
+                              className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-teal-400 focus:outline-none min-h-[80px]"
+                            ></textarea>
+                            <button
+                              disabled={isAdjustingWallet}
+                              type="submit"
+                              className="w-full py-4 bg-teal-600 text-white rounded-xl font-bold shadow-lg hover:bg-teal-700 disabled:opacity-50 transition-all"
+                            >
+                              {isAdjustingWallet ? 'جاري التنفيذ...' : 'تأكيد العملية'}
+                            </button>
+                          </form>
+                        </div>
+
+                        {/* History */}
+                        <div className="space-y-4">
+                          <h4 className="font-bold text-gray-800 flex items-center gap-2">
+                            <Clock size={18} className="text-gray-500" />
+                            سجل العمليات الأخير
+                          </h4>
+                          <div className="max-h-[300px] overflow-auto space-y-2 pr-2">
+                            {loadingWallet ? (
+                              <p className="text-center text-gray-400 py-4">جاري التحميل...</p>
+                            ) : walletHistory.length === 0 ? (
+                              <p className="text-center text-gray-400 py-4">لا توجد عمليات مسجلة</p>
+                            ) : (
+                              walletHistory.map((item) => (
+                                <div key={item.id} className="bg-white p-3 rounded-xl border border-gray-100 flex items-center justify-between">
+                                  <div className="flex items-center gap-3">
+                                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg ${item.type === 'addition' ? 'bg-green-100 text-green-600' : item.type === 'deduction' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>
+                                      {item.type === 'addition' ? '+' : item.type === 'deduction' ? '-' : '↺'}
+                                    </div>
+                                    <div>
+                                      <p className="text-sm font-bold text-gray-800">{item.reason || 'عملية مجهولة'}</p>
+                                      <p className="text-[10px] text-gray-500">
+                                        {item.timestamp ? format(item.timestamp.toDate ? item.timestamp.toDate() : new Date(item.timestamp), 'dd MMM yyyy, HH:mm', { locale: ar }) : '-'}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <div className="text-left">
+                                    <p className={`font-black ${item.type === 'addition' || item.type === 'compensation' ? 'text-green-600' : 'text-red-600'}`}>
+                                      {item.type === 'deduction' ? '-' : '+'}{item.amount}
+                                    </p>
+                                    <p className="text-[9px] text-gray-400">الرصيد: {item.balance}</p>
+                                  </div>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {activeTab === 'orders' && (
+                    <div className="space-y-6 animate-in fade-in duration-300">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div className="bg-blue-50 p-5 rounded-2xl border border-blue-100">
+                          <p className="text-blue-600 text-xs font-bold mb-1">إجمالي الطلبات</p>
+                          <h4 className="text-2xl font-black text-blue-700">{orderStats?.total || 0}</h4>
+                        </div>
+                        <div className="bg-green-50 p-5 rounded-2xl border border-green-100">
+                          <p className="text-green-600 text-xs font-bold mb-1">مكتملة</p>
+                          <h4 className="text-2xl font-black text-green-700">{orderStats?.completed || 0}</h4>
+                        </div>
+                        <div className="bg-red-50 p-5 rounded-2xl border border-red-100">
+                          <p className="text-red-600 text-xs font-bold mb-1">ملغاة</p>
+                          <h4 className="text-2xl font-black text-red-700">{orderStats?.cancelled || 0}</h4>
+                        </div>
+                        <div className="bg-purple-50 p-5 rounded-2xl border border-purple-100">
+                          <p className="text-purple-600 text-xs font-bold mb-1">نسبة الإنجاز</p>
+                          <h4 className="text-2xl font-black text-purple-700">
+                            {orderStats?.total ? Math.round((orderStats.completed / orderStats.total) * 100) : 0}%
+                          </h4>
+                        </div>
+                      </div>
+
+                      <div>
+                        <h4 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
+                          <Clock size={18} className="text-gray-500" />
+                          آخر الطلبات المسندة
+                        </h4>
+                        <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+                          <table className="w-full text-sm">
+                            <thead className="bg-gray-50">
+                              <tr>
+                                <th className="px-4 py-3 text-right">رقم الطلب</th>
+                                <th className="px-4 py-3 text-right">الخدمة</th>
+                                <th className="px-4 py-3 text-right">التاريخ</th>
+                                <th className="px-4 py-3 text-right">الحالة</th>
                               </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                              {loadingStats ? (
+                                <tr><td colSpan="4" className="text-center py-8 text-gray-400">جاري التحميل...</td></tr>
+                              ) : orderStats?.orders.length === 0 ? (
+                                <tr><td colSpan="4" className="text-center py-8 text-gray-400">لا توجد طلبات مسجلة</td></tr>
+                              ) : (
+                                orderStats?.orders.slice(0, 10).map((order) => (
+                                  <tr key={order.id} className="hover:bg-gray-50 transition-colors">
+                                    <td className="px-4 py-3 font-mono text-gray-500">{order.orderNumber != null ? order.orderNumber : (order.id ? `#${order.id.substring(0, 8)}` : '—')}</td>
+                                    <td className="px-4 py-3 font-bold text-gray-800">{order.serviceType}</td>
+                                    <td className="px-4 py-3 text-gray-600">
+                                      {order.createdAt ? format(order.createdAt.toDate ? order.createdAt.toDate() : new Date(order.createdAt), 'dd/MM/yyyy HH:mm', { locale: ar }) : '-'}
+                                    </td>
+                                    <td className="px-4 py-3">
+                                      {(() => {
+                                        const badges = {
+                                          completed: { text: 'مكتمل', color: 'bg-green-100 text-green-700' },
+                                          pending_client_confirmation: { text: 'بانتظار تأكيد العميل', color: 'bg-yellow-100 text-yellow-700' },
+                                          pending_review: { text: 'قيد المراجعة', color: 'bg-amber-100 text-amber-700' },
+                                          searching: { text: 'جاري البحث', color: 'bg-blue-100 text-blue-700' },
+                                          assigned: { text: 'مقبول', color: 'bg-teal-100 text-teal-700' },
+                                          en_route: { text: 'في الطريق', color: 'bg-blue-100 text-blue-700' },
+                                          arrived: { text: 'وصل', color: 'bg-purple-100 text-purple-700' },
+                                          in_progress: { text: 'قيد التنفيذ', color: 'bg-orange-100 text-orange-700' },
+                                          canceled_by_client: { text: 'ملغي من العميل', color: 'bg-red-100 text-red-700' },
+                                          canceled_by_provider: { text: 'ملغي من المزود', color: 'bg-red-100 text-red-700' },
+                                        };
+                                        const badge = badges[order.status] || { text: order.status, color: 'bg-gray-100 text-gray-700' };
+                                        return (
+                                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${badge.color}`}>
+                                            {badge.text}
+                                          </span>
+                                        );
+                                      })()}
+                                    </td>
+                                  </tr>
+                                ))
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
-              )}
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          )}
         </>
       )}
     </div>
