@@ -95,7 +95,7 @@ export const Dashboard = () => {
     },
     {
       title: 'طلبات ملغاة',
-      value: (stats?.totalOrders || 0) - (stats?.completedOrders || 0) - (stats?.activeOrders || 0),
+      value: stats?.cancelledOrders ?? Math.max(0, (stats?.totalOrders || 0) - (stats?.completedOrders || 0) - (stats?.activeOrders || 0)),
       icon: XCircle,
       gradient: 'from-red-500 to-red-600',
       bgColor: 'bg-red-50',
@@ -450,11 +450,16 @@ export const Dashboard = () => {
               const statusBadge = getStatusBadge(activity.status);
               const ActivityIcon = getActivityIcon(activity.type);
               const activityColor = getActivityColor(activity.type);
+              const orderId = activity.requestId;
 
               return (
                 <div
                   key={activity.id}
-                  className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 sm:p-4 bg-background-light rounded-xl hover:bg-gray-100 transition-all duration-200 border border-border-light card-hover"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => orderId && navigate(`/orders?orderId=${orderId}`)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && orderId) navigate(`/orders?orderId=${orderId}`); }}
+                  className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 sm:p-4 bg-background-light rounded-xl hover:bg-gray-100 transition-all duration-200 border border-border-light card-hover cursor-pointer"
                 >
                   <div className="flex items-start sm:items-center gap-3 sm:gap-4 flex-1">
                     <div

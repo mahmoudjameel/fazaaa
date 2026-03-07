@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import {
   Search, CheckCircle, XCircle, Clock, Eye, Phone, Mail, Star, Power,
-  UserCheck, Users, Plus, Edit2, Trash2, Tag, X, FileText, AlertCircle
+  UserCheck, Users, Plus, Edit2, Trash2, Tag, X, FileText
 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   getAllProviders,
+  getProviderById,
+  updateProvider,
   updateProviderStatus,
   getAllProviderGroups,
   createProviderGroup,
@@ -14,10 +16,11 @@ import {
   assignProvidersToGroup,
   removeProviderFromGroup,
   updateProviderServiceStatus,
+  removeProviderService,
+  removeProviderDocument,
+  addOrUpdateProviderDocument,
   getProviderOrderStats,
   toggleProviderVIP,
-  getProviderBlocks,
-  unblockProviderForCustomer,
   getProviderWalletHistory,
   adjustProviderWallet,
 } from '../services/adminService';
@@ -45,6 +48,15 @@ export const NATIONALITIES = [
   { value: 'sy', label: 'سوريا' },
   { value: 'sd', label: 'السودان' },
   { value: 'other', label: 'جنسية أخرى' },
+];
+
+const DOCUMENT_TYPE_OPTIONS = [
+  { key: 'idImage', label: 'الهوية / الإقامة' },
+  { key: 'equipmentPhoto', label: 'صورة العدة' },
+  { key: 'carPhotoFront', label: 'السيارة - أمام' },
+  { key: 'carPhotoSide', label: 'السيارة - جانبي' },
+  { key: 'licensePhoto', label: 'رخصة القيادة' },
+  { key: 'registrationPhoto', label: 'استمارة السيارة' },
 ];
 
 export const Providers = () => {
@@ -89,10 +101,22 @@ export const Providers = () => {
   const [walletAdjustment, setWalletAdjustment] = useState({ amount: '', type: 'addition', reason: '' });
   const [walletAmountError, setWalletAmountError] = useState('');
   const [isAdjustingWallet, setIsAdjustingWallet] = useState(false);
-  const [providerBlocks, setProviderBlocks] = useState([]);
-  const [blocksError, setBlocksError] = useState(null);
-  const [loadingBlocks, setLoadingBlocks] = useState(false);
   const [updatingServiceId, setUpdatingServiceId] = useState(null);
+  const [editProviderForm, setEditProviderForm] = useState(null);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [deletingDocKey, setDeletingDocKey] = useState(null);
+  const [removingServiceId, setRemovingServiceId] = useState(null);
+  const [uploadingDocument, setUploadingDocument] = useState(false);
+  const [addDocType, setAddDocType] = useState(DOCUMENT_TYPE_OPTIONS[0].key);
+  const [addDocFile, setAddDocFile] = useState(null);
+
+  useEffect(() => {
+    if (selectedProvider) {
+      setEditProviderForm(null);
+      setAddDocFile(null);
+      setAddDocType(DOCUMENT_TYPE_OPTIONS[0].key);
+    }
+  }, [selectedProvider?.id]);
 
   useEffect(() => {
     fetchProviders();
@@ -165,42 +189,9 @@ export const Providers = () => {
     if (selectedProvider) {
       fetchWalletData();
       fetchOrderStats();
-      fetchProviderBlocks();
       setActiveTab('info');
     }
   }, [selectedProvider]);
-
-  const fetchProviderBlocks = async () => {
-    if (!selectedProvider) return;
-    setLoadingBlocks(true);
-    try {
-      const result = await getProviderBlocks(selectedProvider.id);
-      if (result.success) {
-        setProviderBlocks(result.blocks);
-        setBlocksError(null);
-      } else {
-        setBlocksError(result.error);
-      }
-    } catch (error) {
-      console.error('Error fetching provider blocks:', error);
-    } finally {
-      setLoadingBlocks(false);
-    }
-  };
-
-  const handleUnblock = async (customerId) => {
-    if (!window.confirm('هل أنت متأكد من رفع الحظر عن هذا المزود لهذا العميل؟')) return;
-    try {
-      const result = await unblockProviderForCustomer(customerId, selectedProvider.id);
-      if (result.success) {
-        alert('تم رفع الحظر بنجاح');
-        fetchProviderBlocks();
-      }
-    } catch (error) {
-      alert('فشل رفع الحظر');
-      console.error(error);
-    }
-  };
 
   const fetchWalletData = async () => {
     if (!selectedProvider) return;
@@ -232,18 +223,117 @@ export const Providers = () => {
     }
   };
 
+  const refreshSelectedProvider = async () => {
+    if (!selectedProvider) return;
+    try {
+      const res = await getProviderById(selectedProvider.id);
+      if (res.success && res.provider) {
+        setSelectedProvider(res.provider);
+        setProviders(prev => prev.map(p => p.id === res.provider.id ? res.provider : p));
+      }
+    } catch (e) {
+      console.error('Refresh provider error', e);
+    }
+  };
+
   const handleUpdateServiceStatus = async (serviceId, status) => {
     if (!selectedProvider) return;
     setUpdatingServiceId(`${serviceId}:${status}`);
     try {
       await updateProviderServiceStatus(selectedProvider.id, serviceId, status);
-      await fetchProviders();
+      await refreshSelectedProvider();
       alert(status === 'approved' ? 'تم إضافة/تفعيل الخدمة للمزوّد بنجاح' : 'تم تحديث حالة الخدمة بنجاح');
     } catch (error) {
       console.error('Error updating provider service:', error);
       alert('فشل تحديث الخدمة، حاول مرة أخرى');
     } finally {
       setUpdatingServiceId(null);
+    }
+  };
+
+  const handleRemoveService = async (serviceId) => {
+    if (!selectedProvider || !window.confirm('هل أنت متأكد من حذف هذه الخدمة من المزود؟')) return;
+    setRemovingServiceId(serviceId);
+    try {
+      await removeProviderService(selectedProvider.id, serviceId);
+      await refreshSelectedProvider();
+      alert('تم حذف الخدمة من المزود');
+    } catch (error) {
+      console.error('Error removing provider service:', error);
+      alert('فشل حذف الخدمة');
+    } finally {
+      setRemovingServiceId(null);
+    }
+  };
+
+  const handleDeleteDocument = async (docKey) => {
+    if (!selectedProvider || !window.confirm('هل أنت متأكد من حذف هذا المستند/الصورة؟')) return;
+    setDeletingDocKey(docKey);
+    try {
+      await removeProviderDocument(selectedProvider.id, docKey);
+      await refreshSelectedProvider();
+      alert('تم حذف المستند');
+    } catch (error) {
+      console.error('Error deleting document:', error);
+      alert('فشل حذف المستند');
+    } finally {
+      setDeletingDocKey(null);
+    }
+  };
+
+  const getFileType = (file) => {
+    if (!file) return 'image';
+    const t = (file.type || '').toLowerCase();
+    if (t.includes('pdf')) return 'pdf';
+    if (t.includes('word') || t.includes('document') || file.name?.toLowerCase().endsWith('.doc') || file.name?.toLowerCase().endsWith('.docx')) return 'word';
+    return 'image';
+  };
+
+  const handleAddDocument = async (e) => {
+    e.preventDefault();
+    if (!selectedProvider || !addDocFile) {
+      alert('اختر نوع المستند وملفاً لرفعه');
+      return;
+    }
+    setUploadingDocument(true);
+    try {
+      const path = `providers/${selectedProvider.id}/documents/${addDocType}_${Date.now()}_${addDocFile.name}`;
+      const storageRef = ref(storage, path);
+      await uploadBytes(storageRef, addDocFile);
+      const url = await getDownloadURL(storageRef);
+      const type = getFileType(addDocFile);
+      await addOrUpdateProviderDocument(selectedProvider.id, addDocType, type === 'image' ? url : { url, type });
+      await refreshSelectedProvider();
+      setAddDocFile(null);
+      alert('تم إضافة المستند بنجاح');
+    } catch (error) {
+      console.error('Error adding document:', error);
+      alert('فشل رفع المستند: ' + (error.message || 'حاول مرة أخرى'));
+    } finally {
+      setUploadingDocument(false);
+    }
+  };
+
+  const handleSaveEditProvider = async (e) => {
+    e.preventDefault();
+    if (!selectedProvider || !editProviderForm) return;
+    setSavingEdit(true);
+    try {
+      await updateProvider(selectedProvider.id, {
+        firstName: editProviderForm.firstName,
+        lastName: editProviderForm.lastName,
+        phone: editProviderForm.phone,
+        email: editProviderForm.email || null,
+        nationality: editProviderForm.nationality,
+      });
+      await refreshSelectedProvider();
+      setEditProviderForm(null);
+      alert('تم حفظ التعديلات');
+    } catch (error) {
+      console.error('Error updating provider:', error);
+      alert('فشل حفظ التعديلات');
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -1272,42 +1362,133 @@ export const Providers = () => {
                 <div className="p-4 md:p-6 space-y-6">
                   {activeTab === 'info' && (
                     <div className="space-y-6 animate-in fade-in duration-300">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div>
-                          <h3 className="font-semibold text-gray-700 mb-2">الاسم</h3>
-                          <p className="text-gray-800 font-medium">
-                            {selectedProvider.firstName} {selectedProvider.lastName}
-                          </p>
-                        </div>
-                        <div>
-                          <h3 className="font-semibold text-gray-700 mb-2">رقم الهاتف</h3>
-                          <p className="text-gray-800 font-medium">{selectedProvider.phone}</p>
-                        </div>
-                        <div>
-                          <h3 className="font-semibold text-gray-700 mb-2">البريد الإلكتروني</h3>
-                          <p className="text-gray-800">{selectedProvider.email || 'لا يوجد'}</p>
-                        </div>
-                        <div>
-                          <h3 className="font-semibold text-gray-700 mb-2">الجنسية</h3>
-                          <p className="text-gray-800">{NATIONALITIES.find(n => n.value === selectedProvider.nationality)?.label || selectedProvider.nationality || 'غير محدد'}</p>
-                        </div>
-                        <div>
-                          <h3 className="font-semibold text-gray-700 mb-2">نوع المزود</h3>
-                          <div className="flex items-center gap-3">
-                            <span
-                              className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold ${getTypeBadge(selectedProvider.type).color}`}
-                            >
-                              {getTypeBadge(selectedProvider.type).text}
-                            </span>
+                      {editProviderForm ? (
+                        <form onSubmit={handleSaveEditProvider} className="bg-gray-50 rounded-2xl p-6 border border-gray-200 space-y-4">
+                          <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
+                            <Edit2 size={20} />
+                            تعديل بيانات المزود
+                          </h3>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-sm font-semibold text-gray-700 mb-1">الاسم الأول</label>
+                              <input
+                                type="text"
+                                value={editProviderForm.firstName}
+                                onChange={(e) => setEditProviderForm(f => ({ ...f, firstName: e.target.value }))}
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-semibold text-gray-700 mb-1">الاسم الأخير</label>
+                              <input
+                                type="text"
+                                value={editProviderForm.lastName}
+                                onChange={(e) => setEditProviderForm(f => ({ ...f, lastName: e.target.value }))}
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-semibold text-gray-700 mb-1">رقم الهاتف</label>
+                              <input
+                                type="text"
+                                value={editProviderForm.phone}
+                                onChange={(e) => setEditProviderForm(f => ({ ...f, phone: e.target.value }))}
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-semibold text-gray-700 mb-1">البريد الإلكتروني</label>
+                              <input
+                                type="text"
+                                value={editProviderForm.email || ''}
+                                onChange={(e) => setEditProviderForm(f => ({ ...f, email: e.target.value || null }))}
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                                placeholder="اختياري"
+                              />
+                            </div>
+                            <div className="md:col-span-2">
+                              <label className="block text-sm font-semibold text-gray-700 mb-1">الجنسية</label>
+                              <select
+                                value={editProviderForm.nationality || ''}
+                                onChange={(e) => setEditProviderForm(f => ({ ...f, nationality: e.target.value }))}
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                              >
+                                {NATIONALITIES.map((n) => (
+                                  <option key={n.value} value={n.value}>{n.label}</option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                          <div className="flex gap-2 pt-2">
                             <button
-                              onClick={() => toggleProviderType(selectedProvider.id)}
-                              className="text-xs px-3 py-1 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-colors"
+                              type="submit"
+                              disabled={savingEdit}
+                              className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50 font-semibold"
                             >
-                              تعديل إلى {selectedProvider.type === 'vip' ? 'عام' : 'VIP'}
+                              {savingEdit ? 'جاري الحفظ...' : 'حفظ'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditProviderForm(null)}
+                              className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-semibold"
+                            >
+                              إلغاء
+                            </button>
+                          </div>
+                        </form>
+                      ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div>
+                            <h3 className="font-semibold text-gray-700 mb-2">الاسم</h3>
+                            <p className="text-gray-800 font-medium">
+                              {selectedProvider.firstName} {selectedProvider.lastName}
+                            </p>
+                          </div>
+                          <div>
+                            <h3 className="font-semibold text-gray-700 mb-2">رقم الهاتف</h3>
+                            <p className="text-gray-800 font-medium">{selectedProvider.phone}</p>
+                          </div>
+                          <div>
+                            <h3 className="font-semibold text-gray-700 mb-2">البريد الإلكتروني</h3>
+                            <p className="text-gray-800">{selectedProvider.email || 'لا يوجد'}</p>
+                          </div>
+                          <div>
+                            <h3 className="font-semibold text-gray-700 mb-2">الجنسية</h3>
+                            <p className="text-gray-800">{NATIONALITIES.find(n => n.value === selectedProvider.nationality)?.label || selectedProvider.nationality || 'غير محدد'}</p>
+                          </div>
+                          <div>
+                            <h3 className="font-semibold text-gray-700 mb-2">نوع المزود</h3>
+                            <div className="flex items-center gap-3">
+                              <span
+                                className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold ${getTypeBadge(selectedProvider.type).color}`}
+                              >
+                                {getTypeBadge(selectedProvider.type).text}
+                              </span>
+                              <button
+                                onClick={() => toggleProviderType(selectedProvider.id)}
+                                className="text-xs px-3 py-1 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-colors"
+                              >
+                                تعديل إلى {selectedProvider.type === 'vip' ? 'عام' : 'VIP'}
+                              </button>
+                            </div>
+                          </div>
+                          <div className="md:col-span-2">
+                            <button
+                              onClick={() => setEditProviderForm({
+                                firstName: selectedProvider.firstName || '',
+                                lastName: selectedProvider.lastName || '',
+                                phone: selectedProvider.phone || '',
+                                email: selectedProvider.email || '',
+                                nationality: selectedProvider.nationality || '',
+                              })}
+                              className="inline-flex items-center gap-2 px-4 py-2 bg-teal-50 text-teal-700 rounded-lg hover:bg-teal-100 font-semibold"
+                            >
+                              <Edit2 size={18} />
+                              تعديل البيانات
                             </button>
                           </div>
                         </div>
-                      </div>
+                      )}
 
                       <div>
                         <h3 className="font-semibold text-gray-700 mb-4">إدارة الخدمات</h3>
@@ -1354,7 +1535,7 @@ export const Providers = () => {
 
                                 {/* أزرار التحكم */}
                                 {isRequested ? (
-                                  <div className="flex gap-1">
+                                  <div className="flex items-center gap-1">
                                     {status !== 'approved' && (
                                       <button
                                         onClick={() => handleUpdateServiceStatus(service.id, 'approved')}
@@ -1375,6 +1556,18 @@ export const Providers = () => {
                                         <XCircle size={16} />
                                       </button>
                                     )}
+                                    <button
+                                      onClick={() => handleRemoveService(service.id)}
+                                      className="p-1.5 bg-gray-100 text-gray-600 rounded-lg hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                                      disabled={removingServiceId === service.id}
+                                      title="حذف الخدمة من المزود"
+                                    >
+                                      {removingServiceId === service.id ? (
+                                        <Clock size={16} className="animate-pulse" />
+                                      ) : (
+                                        <Trash2 size={16} />
+                                      )}
+                                    </button>
                                   </div>
                                 ) : (
                                   // إذا لم يكن مشتركاً، زر لإضافة الخدمة مباشرة كمقبولة
@@ -1393,14 +1586,14 @@ export const Providers = () => {
                       </div>
 
                       {/* Documents - صور أو PDF أو Word */}
-                      {selectedProvider.documents && (
-                        <div>
-                          <h3 className="font-semibold text-gray-700 mb-4">المستندات والصور</h3>
-                          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                      <div>
+                        <h3 className="font-semibold text-gray-700 mb-4">المستندات والصور</h3>
+                        {selectedProvider.documents && Object.keys(selectedProvider.documents).length > 0 && (
+                          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
                             {Object.entries(selectedProvider.documents).map(([key, value]) => {
                               const url = typeof value === 'string' ? value : value?.url;
                               const type = (typeof value === 'object' && value ? value.type : null) || 'image';
-                              const docLabel = key === 'idImage' ? 'الهوية' : key === 'carPhotoFront' ? 'السيارة - أمام' : key === 'licensePhoto' ? 'الرخصة' : key === 'registrationPhoto' ? 'استمارة السيارة' : key === 'equipmentPhoto' ? 'صورة العدة' : key === 'carPhotoSide' ? 'السيارة - جانبي' : key;
+                              const docLabel = DOCUMENT_TYPE_OPTIONS.find(o => o.key === key)?.label || key;
                               if (!url) return null;
                               const isImage = type === 'image';
                               return (
@@ -1408,18 +1601,36 @@ export const Providers = () => {
                                   {isImage ? (
                                     <>
                                       <img src={url} alt={docLabel} className="w-full h-32 object-cover" />
-                                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all">
+                                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-2 transition-all">
                                         <button onClick={() => window.open(url, '_blank')} className="p-2 bg-white rounded-full shadow-lg" title="عرض">
                                           <Eye size={18} className="text-gray-700" />
+                                        </button>
+                                        <button
+                                          onClick={() => handleDeleteDocument(key)}
+                                          disabled={deletingDocKey === key}
+                                          className="p-2 bg-red-500 text-white rounded-full shadow-lg hover:bg-red-600 disabled:opacity-50"
+                                          title="حذف المستند"
+                                        >
+                                          {deletingDocKey === key ? <Clock size={18} className="animate-pulse" /> : <Trash2 size={18} />}
                                         </button>
                                       </div>
                                     </>
                                   ) : (
-                                    <a href={url} target="_blank" rel="noopener noreferrer" className="flex flex-col items-center justify-center h-32 p-3 hover:bg-teal-50 transition-colors">
-                                      <FileText size={36} className="text-teal-600 mb-2" />
-                                      <span className="text-xs font-semibold text-gray-600">{type === 'pdf' ? 'PDF' : 'Word'}</span>
-                                      <span className="text-[10px] text-gray-500 mt-1">اضغط للتحميل/العرض</span>
-                                    </a>
+                                    <div className="relative flex flex-col items-center justify-center h-32 p-3 hover:bg-teal-50 transition-colors">
+                                      <a href={url} target="_blank" rel="noopener noreferrer" className="flex flex-col items-center justify-center flex-1">
+                                        <FileText size={36} className="text-teal-600 mb-2" />
+                                        <span className="text-xs font-semibold text-gray-600">{type === 'pdf' ? 'PDF' : 'Word'}</span>
+                                        <span className="text-[10px] text-gray-500 mt-1">اضغط للتحميل/العرض</span>
+                                      </a>
+                                      <button
+                                        onClick={() => handleDeleteDocument(key)}
+                                        disabled={deletingDocKey === key}
+                                        className="absolute top-1 left-1 p-1.5 bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:opacity-50"
+                                        title="حذف المستند"
+                                      >
+                                        {deletingDocKey === key ? <Clock size={14} className="animate-pulse" /> : <Trash2 size={14} />}
+                                      </button>
+                                    </div>
                                   )}
                                   <p className="absolute bottom-0 inset-x-0 bg-black/60 text-white text-[10px] py-1 text-center truncate px-1">
                                     {docLabel}
@@ -1428,57 +1639,44 @@ export const Providers = () => {
                               );
                             })}
                           </div>
-                        </div>
-                      )}
-
-                      {/* Temporary Blocks Section */}
-                      <div className="bg-orange-50 p-6 rounded-2xl border border-orange-200">
-                        <h3 className="font-bold text-orange-800 mb-4 flex items-center gap-2">
-                          <Clock size={18} />
-                          الحظر المؤقت النشط (ساعة واحدة)
-                        </h3>
-                        {loadingBlocks ? (
-                          <p className="text-gray-500 text-sm">جاري التحميل...</p>
-                        ) : blocksError ? (
-                          <div className="p-3 bg-red-100 border border-red-200 rounded-lg">
-                            <p className="text-red-700 text-xs font-bold mb-1 flex items-center gap-1">
-                              <AlertCircle size={14} />
-                              فشل تحميل السجلات
-                            </p>
-                            <p className="text-red-600 text-[10px] break-words">{blocksError}</p>
-                            {blocksError.includes('index') && (
-                              <p className="mt-2 text-[10px] text-gray-600 italic">
-                                * يتطلب هذا الإجراء إنشاء فهرس (Index) في Firestore. يرجى مراجعة Console الخاص بـ Firebase.
-                              </p>
-                            )}
-                          </div>
-                        ) : providerBlocks.length === 0 ? (
-                          <p className="text-gray-500 text-sm italic">لا يوجد حظر نشط حالياً لهذا المزود من أي عميل.</p>
-                        ) : (
-                          <div className="space-y-3">
-                            {providerBlocks.map((block) => (
-                              <div key={block.id} className="bg-white p-4 rounded-xl border border-orange-100 flex items-center justify-between shadow-sm">
-                                <div className="flex items-center gap-3">
-                                  <div className="w-10 h-10 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center font-bold">
-                                    {block.customerId.substring(0, 2).toUpperCase()}
-                                  </div>
-                                  <div>
-                                    <p className="text-sm font-bold text-gray-800">معرف العميل: {block.customerId}</p>
-                                    <p className="text-[10px] text-gray-500">
-                                      تنتهي الصلاحية: {block.blockedUntil ? (block.blockedUntil.toDate ? format(block.blockedUntil.toDate(), 'HH:mm:ss', { locale: ar }) : format(new Date(block.blockedUntil), 'HH:mm:ss', { locale: ar })) : '-'}
-                                    </p>
-                                  </div>
-                                </div>
-                                <button
-                                  onClick={() => handleUnblock(block.customerId)}
-                                  className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-all text-xs font-bold shadow-md"
-                                >
-                                  إلغاء الحظر
-                                </button>
-                              </div>
-                            ))}
-                          </div>
                         )}
+                        <div className="bg-teal-50 border border-teal-200 rounded-xl p-4">
+                          <h4 className="font-semibold text-teal-800 mb-3 flex items-center gap-2">
+                            <Plus size={18} />
+                            إضافة مستند أو صورة
+                          </h4>
+                          <form onSubmit={handleAddDocument} className="flex flex-col sm:flex-row gap-3 items-end">
+                            <div className="flex-1 min-w-0">
+                              <label className="block text-xs font-semibold text-gray-600 mb-1">نوع المستند</label>
+                              <select
+                                value={addDocType}
+                                onChange={(e) => setAddDocType(e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-sm"
+                              >
+                                {DOCUMENT_TYPE_OPTIONS.map((opt) => (
+                                  <option key={opt.key} value={opt.key}>{opt.label}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <label className="block text-xs font-semibold text-gray-600 mb-1">الملف (صورة أو PDF أو Word)</label>
+                              <input
+                                type="file"
+                                accept="image/*,.pdf,.doc,.docx"
+                                onChange={(e) => setAddDocFile(e.target.files?.[0] || null)}
+                                className="w-full text-sm text-gray-600 file:mr-2 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-teal-100 file:text-teal-700 file:font-semibold"
+                              />
+                              {addDocFile && <span className="text-xs text-gray-500 mt-1 block truncate">{addDocFile.name}</span>}
+                            </div>
+                            <button
+                              type="submit"
+                              disabled={uploadingDocument || !addDocFile}
+                              className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50 font-semibold whitespace-nowrap"
+                            >
+                              {uploadingDocument ? 'جاري الرفع...' : 'رفع'}
+                            </button>
+                          </form>
+                        </div>
                       </div>
                     </div>
                   )}

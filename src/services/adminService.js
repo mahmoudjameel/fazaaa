@@ -42,19 +42,28 @@ export const createManualProvider = async (providerData) => {
     const providersRef = collection(db, 'providers');
 
     // تنسيق رقم الهاتف (يجب أن يكون 9665XXXXXXXX)
-    let phone = providerData.phone.replace(/[^0-9]/g, '');
+    let phone = (providerData.phone || '').replace(/[^0-9]/g, '');
     if (phone.startsWith('05')) {
       phone = '966' + phone.substring(1);
-    } else if (phone.startsWith('5')) {
+    } else if (phone.startsWith('5') && !phone.startsWith('966')) {
       phone = '966' + phone;
     } else if (!phone.startsWith('966')) {
       phone = '966' + phone;
     }
 
-    // التحقق من تكرار رقم الجوال
-    const q = query(collection(db, 'providers'), where('phone', '==', phone));
-    const querySnapshot = await getDocs(q);
-    if (!querySnapshot.empty) {
+    // التحقق من تكرار رقم الجوال (سواء مُخزَّن بصيغة 9665xxx أو 05xxx أو 5xxx)
+    const canonical = phone;
+    const withZero = canonical.startsWith('966') ? '0' + canonical.slice(3) : '';
+    const withoutCountry = canonical.startsWith('966') ? canonical.slice(3) : canonical;
+    const q1 = query(providersRef, where('phone', '==', canonical));
+    const q2 = withZero ? query(providersRef, where('phone', '==', withZero)) : null;
+    const q3 = withoutCountry ? query(providersRef, where('phone', '==', withoutCountry)) : null;
+    const [snap1, snap2, snap3] = await Promise.all([
+      getDocs(q1),
+      q2 ? getDocs(q2) : Promise.resolve({ empty: true }),
+      q3 ? getDocs(q3) : Promise.resolve({ empty: true }),
+    ]);
+    if (!snap1.empty || (snap2 && !snap2.empty) || (snap3 && !snap3.empty)) {
       return { success: false, error: 'duplicate_phone' };
     }
 
@@ -205,6 +214,118 @@ export const updateProviderServiceStatus = async (providerId, serviceId, status)
     return { success: true };
   } catch (error) {
     console.error('Update provider service status error:', error);
+    throw error;
+  }
+};
+
+/**
+ * تحديث بيانات المزود (الاسم، الهاتف، البريد، الجنسية، إلخ)
+ */
+export const updateProvider = async (providerId, data) => {
+  try {
+    const providerRef = doc(db, 'providers', providerId);
+    const providerSnap = await getDoc(providerRef);
+    if (!providerSnap.exists()) {
+      throw new Error('المزود غير موجود');
+    }
+    const updates = {
+      updatedAt: new Date().toISOString(),
+    };
+    if (data.firstName !== undefined) updates.firstName = data.firstName;
+    if (data.lastName !== undefined) updates.lastName = data.lastName;
+    if (data.fullName !== undefined) {
+      updates.fullName = data.fullName;
+    } else if (data.firstName !== undefined || data.lastName !== undefined) {
+      const current = providerSnap.data();
+      const first = data.firstName !== undefined ? data.firstName : current.firstName;
+      const last = data.lastName !== undefined ? data.lastName : current.lastName;
+      updates.fullName = [first, last].filter(Boolean).join(' ').trim() || current.fullName || 'مزود';
+    }
+    if (data.phone !== undefined) updates.phone = data.phone;
+    if (data.email !== undefined) updates.email = data.email;
+    if (data.nationality !== undefined) updates.nationality = data.nationality;
+    await updateDoc(providerRef, updates);
+    return { success: true };
+  } catch (error) {
+    console.error('Update provider error:', error);
+    throw error;
+  }
+};
+
+/**
+ * حذف مستند/صورة واحدة من مستندات المزود
+ */
+export const removeProviderDocument = async (providerId, documentKey) => {
+  try {
+    const providerRef = doc(db, 'providers', providerId);
+    const providerSnap = await getDoc(providerRef);
+    if (!providerSnap.exists()) {
+      throw new Error('المزود غير موجود');
+    }
+    const providerData = providerSnap.data();
+    const documents = { ...(providerData.documents || {}) };
+    delete documents[documentKey];
+    await updateDoc(providerRef, {
+      documents,
+      updatedAt: new Date().toISOString(),
+    });
+    return { success: true };
+  } catch (error) {
+    console.error('Remove provider document error:', error);
+    throw error;
+  }
+};
+
+/**
+ * إضافة أو تحديث مستند/صورة للمزود
+ * @param {string} providerId
+ * @param {string} documentKey - مثلاً idImage, equipmentPhoto, licensePhoto, registrationPhoto, carPhotoFront, carPhotoSide
+ * @param {string|{url: string, type?: string}} value - رابط فقط أو { url, type: 'image'|'pdf'|'word' }
+ */
+export const addOrUpdateProviderDocument = async (providerId, documentKey, value) => {
+  try {
+    const providerRef = doc(db, 'providers', providerId);
+    const providerSnap = await getDoc(providerRef);
+    if (!providerSnap.exists()) {
+      throw new Error('المزود غير موجود');
+    }
+    const providerData = providerSnap.data();
+    const documents = { ...(providerData.documents || {}) };
+    documents[documentKey] = typeof value === 'string' ? value : value;
+    await updateDoc(providerRef, {
+      documents,
+      updatedAt: new Date().toISOString(),
+    });
+    return { success: true };
+  } catch (error) {
+    console.error('Add/update provider document error:', error);
+    throw error;
+  }
+};
+
+/**
+ * إزالة خدمة من مزود (حذف الخدمة من قائمة خدمات المزود)
+ */
+export const removeProviderService = async (providerId, serviceId) => {
+  try {
+    const providerRef = doc(db, 'providers', providerId);
+    const providerSnap = await getDoc(providerRef);
+    if (!providerSnap.exists()) {
+      throw new Error('المزود غير موجود');
+    }
+    const providerData = providerSnap.data();
+    const services = { ...(providerData.services || {}) };
+    delete services[serviceId];
+    // دعم المفتاح القديم serviceId إذا كان مستخدماً
+    const altKey = Object.keys(services).find(k => services[k]?.serviceId === serviceId);
+    if (altKey) delete services[altKey];
+    await updateDoc(providerRef, {
+      services,
+      updatedAt: new Date().toISOString(),
+    });
+    return { success: true };
+  } catch (error) {
+    console.error('Remove provider service error:', error);
     throw error;
   }
 };
@@ -438,28 +559,34 @@ export const getOrderById = async (orderId) => {
   }
 };
 
-// Statistics
+// Statistics - من مجموعة requests (الطلبات الفعلية في النظام)
+const ACTIVE_REQUEST_STATUSES = ['searching', 'accepted', 'assigned', 'en_route', 'arrived', 'in_progress', 'pending_legal_docs', 'arriving'];
+const CANCELLED_REQUEST_STATUSES = ['canceled_by_provider', 'canceled_by_provider_with_reason', 'canceled_by_client', 'canceled_by_client_with_reason', 'timed_out'];
+
 export const getDashboardStats = async () => {
   try {
-    const [providersSnapshot, ordersSnapshot] = await Promise.all([
+    const [providersSnapshot, requestsSnapshot] = await Promise.all([
       getDocs(collection(db, 'providers')),
-      getDocs(collection(db, 'orders')),
+      getDocs(collection(db, 'requests')),
     ]);
 
     const providers = [];
-    const orders = [];
+    const requests = [];
 
     providersSnapshot.forEach((doc) => {
       providers.push({ ...doc.data(), id: doc.id });
     });
 
-    ordersSnapshot.forEach((doc) => {
-      orders.push({ id: doc.id, ...doc.data() });
+    requestsSnapshot.forEach((doc) => {
+      requests.push({ id: doc.id, ...doc.data() });
     });
+
+    const completed = requests.filter((o) => o.status === 'completed');
+    const activeOrders = requests.filter((o) => ACTIVE_REQUEST_STATUSES.includes(o.status));
+    const cancelledOrders = requests.filter((o) => CANCELLED_REQUEST_STATUSES.includes(o.status));
 
     const stats = {
       totalProviders: providers.length,
-      // استخدام approvalStatus بدلاً من status (دعم التسجيل بالهاتف)
       activeProviders: providers.filter((p) => {
         const approvalStatus = p.approvalStatus || p.status;
         return approvalStatus === 'approved' && p.isOnline;
@@ -468,19 +595,17 @@ export const getDashboardStats = async () => {
         const approvalStatus = p.approvalStatus || p.status;
         return approvalStatus === 'pending';
       }).length,
-      totalOrders: orders.length,
-      completedOrders: orders.filter((o) => o.status === 'completed').length,
-      activeOrders: orders.filter((o) => ['searching', 'accepted', 'arriving'].includes(o.status)).length,
-      totalRevenue: orders
-        .filter((o) => o.status === 'completed')
-        .reduce((sum, o) => sum + (o.price || 0), 0),
-      totalCommission: orders
-        .filter((o) => o.status === 'completed')
-        .reduce((sum, o) => sum + (o.commission || 0), 0),
-      todayOrders: orders.filter((o) => {
-        const today = new Date();
-        const orderDate = new Date(o.createdAt);
-        return orderDate.toDateString() === today.toDateString();
+      totalOrders: requests.length,
+      completedOrders: completed.length,
+      activeOrders: activeOrders.length,
+      cancelledOrders: cancelledOrders.length,
+      totalRevenue: completed.reduce((sum, o) => sum + (Number(o.price) || Number(o.servicePrice) || 0), 0),
+      totalCommission: completed.reduce((sum, o) => sum + (Number(o.commission) || 0), 0),
+      todayOrders: requests.filter((o) => {
+        const created = o.createdAt;
+        if (!created) return false;
+        const orderDate = created?.toMillis ? new Date(created.toMillis()) : new Date(created?.seconds ? created.seconds * 1000 : created);
+        return orderDate.toDateString() === new Date().toDateString();
       }).length,
     };
 

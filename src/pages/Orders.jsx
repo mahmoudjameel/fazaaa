@@ -113,6 +113,14 @@ export const Orders = () => {
     return () => unsubscribe();
   }, [location.search]);
 
+  // فتح تفاصيل طلب محدد عند القدوم من لوحة التحكم (النشاط الأخير)
+  useEffect(() => {
+    const orderId = new URLSearchParams(location.search).get('orderId');
+    if (!orderId || requests.length === 0) return;
+    const req = requests.find((r) => r.id === orderId);
+    if (req) setSelectedRequest(req);
+  }, [location.search, requests]);
+
   const fetchCities = async () => {
     try {
       const querySnapshot = await getDocs(collection(db, 'cities'));

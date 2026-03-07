@@ -131,9 +131,13 @@ export const AddProvider = () => {
                 documents: documentUrls
             });
 
-            if (!result.success && result.error === 'duplicate_phone') {
+            if (!result.success) {
                 setIsUploading(false);
-                alert('رقم الجوال هذا مستخدم بالفعل لمزود آخر');
+                if (result.error === 'duplicate_phone') {
+                    alert('المزود مسجل مسبقاً. رقم الجوال هذا مستخدم لمزود آخر.');
+                    return;
+                }
+                alert(result.error || 'فشل إضافة المزود');
                 return;
             }
 
@@ -206,21 +210,23 @@ export const AddProvider = () => {
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div>
-                                <label className="block text-sm font-semibold text-gray-700 mb-2">رقم الهاتف * (بدون +966)</label>
-                                <div className="relative">
+                                <label className="block text-sm font-semibold text-gray-700 mb-2">رقم الهاتف *</label>
+                                <div className="flex items-stretch rounded-xl border-2 border-gray-100 overflow-hidden bg-gray-50 focus-within:border-blue-400 focus-within:bg-white transition-all" dir="ltr">
+                                    <span className="flex items-center px-4 bg-gray-100 border-l-2 border-gray-200 text-gray-700 font-bold text-lg" aria-label="مفتاح الدولة">
+                                        +966
+                                    </span>
                                     <input
                                         type="tel"
                                         required
                                         value={providerFormData.phone}
-                                        onChange={(e) => setProviderFormData({ ...providerFormData, phone: e.target.value })}
-                                        className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-xl focus:border-blue-400 focus:outline-none transition-all text-left pr-16"
+                                        onChange={(e) => setProviderFormData({ ...providerFormData, phone: e.target.value.replace(/[^0-9]/g, '') })}
+                                        className="flex-1 min-w-0 px-4 py-3 bg-transparent border-0 focus:outline-none focus:ring-0"
                                         placeholder="5XXXXXXXX"
                                         dir="ltr"
+                                        maxLength={9}
                                     />
-                                    <div className="absolute right-0 top-0 bottom-0 flex items-center px-4 bg-gray-100 rounded-r-xl border-l-2 border-gray-100 text-gray-500 font-bold" dir="ltr">
-                                        +966
-                                    </div>
                                 </div>
+                                <p className="text-xs text-gray-500 mt-1">أدخل الرقم بدون مفتاح الدولة (مثال: 512345678 أو 0512345678)</p>
                             </div>
                             <div>
                                 <label className="block text-sm font-semibold text-gray-700 mb-2">الجنسية (اختياري)</label>
