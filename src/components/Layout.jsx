@@ -22,6 +22,7 @@ import {
   UserPlus,
   Bell,
   ImageIcon,
+  Ticket,
 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
@@ -33,27 +34,21 @@ export const Layout = () => {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [pendingReviewCount, setPendingReviewCount] = useState(0);
+  const [openTicketsCount, setOpenTicketsCount] = useState(0);
   const lastCountRef = useRef(0);
-  const audioRef = useRef(new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3')); // تنبيه افتراضي
+  const audioRef = useRef(new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3'));
 
   useEffect(() => {
-    // طلب صلاحية الإشعارات
     if ('Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission();
     }
 
-    // الاستماع للطلبات التي تحتاج مراجعة
     const q = query(collection(db, 'requests'), where('status', '==', 'pending_review'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const count = snapshot.size;
       setPendingReviewCount(count);
-
-      // إذا زاد العدد، نقوم بالتنبيه
       if (count > lastCountRef.current) {
-        // تنبيه صوتي
         audioRef.current.play().catch(e => console.log('Audio play failed:', e));
-
-        // تنبيه متصفح
         if ('Notification' in window && Notification.permission === 'granted') {
           new Notification('فزّاعين: طلب جديد يحتاج مراجعة', {
             body: `هناك ${count} طلبات بانتظار مراجعتك الآن.`,
@@ -64,7 +59,12 @@ export const Layout = () => {
       lastCountRef.current = count;
     });
 
-    return () => unsubscribe();
+    const tq = query(collection(db, 'support_tickets'), where('status', '==', 'open'));
+    const unsubTickets = onSnapshot(tq, (snapshot) => {
+      setOpenTicketsCount(snapshot.size);
+    });
+
+    return () => { unsubscribe(); unsubTickets(); };
   }, []);
 
   useEffect(() => {
@@ -184,6 +184,14 @@ export const Layout = () => {
       label: 'بيانات مديري المدن',
       color: 'from-cyan-500 to-cyan-600',
       category: 'settings',
+    },
+    {
+      id: 'support_tickets',
+      path: '/support-tickets',
+      icon: Ticket,
+      label: 'تذاكر الدعم الفني',
+      color: 'from-emerald-400 to-emerald-600',
+      category: 'management',
     },
     {
       id: 'complaints',
@@ -367,7 +375,7 @@ export const Layout = () => {
             return (
               <div key={category} className="mb-4 sm:mb-6">
                 {sidebarOpen && (
-                  <div className="px-2 sm:px-4 mb-2 sm:mb-3">
+                  <div className="px-2 sm:px-4 mb-2 sm:mb-3 text-start">
                     <h3 className="text-[10px] sm:text-xs font-bold text-text-secondary uppercase tracking-wider">
                       {categoryLabels[category]}
                     </h3>
@@ -384,9 +392,9 @@ export const Layout = () => {
                           navigate(item.path);
                           if (isMobile) setSidebarOpen(false);
                         }}
-                        className={`w-full flex items-center gap-2 sm:gap-3 px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 rounded-lg sm:rounded-xl transition-all duration-200 group relative ${isActive
+                        className={`w-full flex items-center gap-3 md:gap-4 px-3 sm:px-4 md:px-5 py-2.5 sm:py-3 md:py-3.5 rounded-lg sm:rounded-xl transition-all duration-200 group relative ${isActive
                           ? `bg-gradient-to-r ${item.color} text-white shadow-medium`
-                          : 'text-text-secondary hover:bg-background-light hover:text-text-primary'
+                          : 'text-text-secondary hover:bg-gray-100/80 hover:text-text-primary'
                           }`}
                         title={!sidebarOpen ? item.label : ''}
                       >
@@ -401,7 +409,7 @@ export const Layout = () => {
                         {sidebarOpen && (
                           <>
                             <span
-                              className={`flex-1 text-right font-semibold text-sm sm:text-base truncate ${isActive ? 'text-white' : 'text-text-primary'
+                              className={`flex-1 text-start font-semibold text-sm sm:text-sm md:text-base truncate ${isActive ? 'text-white' : 'text-text-primary'
                                 }`}
                             >
                               {item.label}
@@ -409,6 +417,11 @@ export const Layout = () => {
                             {item.id === 'orders' && pendingReviewCount > 0 && (
                               <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${isActive ? 'bg-white text-teal-600' : 'bg-red-500 text-white animate-pulse shadow-md'}`}>
                                 {pendingReviewCount}
+                              </span>
+                            )}
+                            {item.id === 'support_tickets' && openTicketsCount > 0 && (
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${isActive ? 'bg-white text-emerald-600' : 'bg-emerald-500 text-white shadow-md'}`}>
+                                {openTicketsCount}
                               </span>
                             )}
                             {isActive && (
@@ -434,7 +447,7 @@ export const Layout = () => {
         <div className="p-2 sm:p-3 md:p-4 border-t border-border-light bg-background-light flex-shrink-0">
           <button
             onClick={handleLogout}
-            className="w-full flex items-center justify-center sm:justify-start gap-2 sm:gap-3 px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 rounded-lg sm:rounded-xl text-status-error hover:bg-red-50 transition-all duration-200 group font-semibold text-sm sm:text-base"
+            className="w-full flex items-center justify-center sm:justify-start gap-3 md:gap-4 px-3 sm:px-4 md:px-5 py-2.5 sm:py-3 md:py-3.5 rounded-lg sm:rounded-xl text-status-error hover:bg-red-50 transition-all duration-200 group font-semibold text-sm sm:text-sm md:text-base"
             title={!sidebarOpen ? 'تسجيل الخروج' : ''}
           >
             <LogOut
@@ -447,7 +460,7 @@ export const Layout = () => {
 
       {/* Main Content */}
       <main className="flex-1 overflow-auto bg-background-light">
-        <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto w-full">
+        <div className="p-3 pt-16 sm:p-4 sm:pt-16 md:p-6 md:pt-16 lg:p-8 max-w-7xl mx-auto w-full">
           <Outlet />
         </div>
       </main>

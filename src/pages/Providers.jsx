@@ -98,6 +98,7 @@ export const Providers = () => {
   const [loadingWallet, setLoadingWallet] = useState(false);
   const [orderStats, setOrderStats] = useState(null);
   const [loadingStats, setLoadingStats] = useState(false);
+  const [ordersFilter, setOrdersFilter] = useState('all');
   const [walletAdjustment, setWalletAdjustment] = useState({ amount: '', type: 'addition', reason: '' });
   const [walletAmountError, setWalletAmountError] = useState('');
   const [isAdjustingWallet, setIsAdjustingWallet] = useState(false);
@@ -211,6 +212,7 @@ export const Providers = () => {
   const fetchOrderStats = async () => {
     if (!selectedProvider) return;
     setLoadingStats(true);
+    setOrdersFilter('all');
     try {
       const result = await getProviderOrderStats(selectedProvider.id);
       if (result.success) {
@@ -1813,84 +1815,124 @@ export const Providers = () => {
 
                   {activeTab === 'orders' && (
                     <div className="space-y-6 animate-in fade-in duration-300">
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <div className="bg-blue-50 p-5 rounded-2xl border border-blue-100">
-                          <p className="text-blue-600 text-xs font-bold mb-1">إجمالي الطلبات</p>
-                          <h4 className="text-2xl font-black text-blue-700">{orderStats?.total || 0}</h4>
-                        </div>
-                        <div className="bg-green-50 p-5 rounded-2xl border border-green-100">
-                          <p className="text-green-600 text-xs font-bold mb-1">مكتملة</p>
-                          <h4 className="text-2xl font-black text-green-700">{orderStats?.completed || 0}</h4>
-                        </div>
-                        <div className="bg-red-50 p-5 rounded-2xl border border-red-100">
-                          <p className="text-red-600 text-xs font-bold mb-1">ملغاة</p>
-                          <h4 className="text-2xl font-black text-red-700">{orderStats?.cancelled || 0}</h4>
-                        </div>
-                        <div className="bg-purple-50 p-5 rounded-2xl border border-purple-100">
-                          <p className="text-purple-600 text-xs font-bold mb-1">نسبة الإنجاز</p>
-                          <h4 className="text-2xl font-black text-purple-700">
-                            {orderStats?.total ? Math.round((orderStats.completed / orderStats.total) * 100) : 0}%
-                          </h4>
-                        </div>
-                      </div>
+                      {(() => {
+                        const CANCELLED_STATUSES = ['canceled_by_provider', 'canceled_by_provider_with_reason', 'canceled_by_client', 'canceled_by_client_with_reason', 'timed_out'];
+                        const ACTIVE_STATUSES = ['searching', 'accepted', 'assigned', 'en_route', 'arrived', 'in_progress', 'pending_legal_docs', 'arriving', 'pending_client_confirmation', 'pending_review'];
 
-                      <div>
-                        <h4 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
-                          <Clock size={18} className="text-gray-500" />
-                          آخر الطلبات المسندة
-                        </h4>
-                        <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-                          <table className="w-full text-sm">
-                            <thead className="bg-gray-50">
-                              <tr>
-                                <th className="px-4 py-3 text-right">رقم الطلب</th>
-                                <th className="px-4 py-3 text-right">الخدمة</th>
-                                <th className="px-4 py-3 text-right">التاريخ</th>
-                                <th className="px-4 py-3 text-right">الحالة</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-100">
-                              {loadingStats ? (
-                                <tr><td colSpan="4" className="text-center py-8 text-gray-400">جاري التحميل...</td></tr>
-                              ) : orderStats?.orders.length === 0 ? (
-                                <tr><td colSpan="4" className="text-center py-8 text-gray-400">لا توجد طلبات مسجلة</td></tr>
-                              ) : (
-                                orderStats?.orders.slice(0, 10).map((order) => (
-                                  <tr key={order.id} className="hover:bg-gray-50 transition-colors">
-                                    <td className="px-4 py-3 font-mono text-gray-500">{order.orderNumber != null ? order.orderNumber : (order.id ? `#${order.id.substring(0, 8)}` : '—')}</td>
-                                    <td className="px-4 py-3 font-bold text-gray-800">{order.serviceType}</td>
-                                    <td className="px-4 py-3 text-gray-600">
-                                      {order.createdAt ? format(order.createdAt.toDate ? order.createdAt.toDate() : new Date(order.createdAt), 'dd/MM/yyyy HH:mm', { locale: ar }) : '-'}
-                                    </td>
-                                    <td className="px-4 py-3">
-                                      {(() => {
-                                        const badges = {
-                                          completed: { text: 'مكتمل', color: 'bg-green-100 text-green-700' },
-                                          pending_client_confirmation: { text: 'بانتظار تأكيد العميل', color: 'bg-yellow-100 text-yellow-700' },
-                                          pending_review: { text: 'قيد المراجعة', color: 'bg-amber-100 text-amber-700' },
-                                          searching: { text: 'جاري البحث', color: 'bg-blue-100 text-blue-700' },
-                                          assigned: { text: 'مقبول', color: 'bg-teal-100 text-teal-700' },
-                                          en_route: { text: 'في الطريق', color: 'bg-blue-100 text-blue-700' },
-                                          arrived: { text: 'وصل', color: 'bg-purple-100 text-purple-700' },
-                                          in_progress: { text: 'قيد التنفيذ', color: 'bg-orange-100 text-orange-700' },
-                                          canceled_by_client: { text: 'ملغي من العميل', color: 'bg-red-100 text-red-700' },
-                                          canceled_by_provider: { text: 'ملغي من المزود', color: 'bg-red-100 text-red-700' },
-                                        };
+                        const allOrders = orderStats?.orders || [];
+                        const filteredOrders = ordersFilter === 'completed'
+                          ? allOrders.filter(o => o.status === 'completed')
+                          : ordersFilter === 'cancelled'
+                            ? allOrders.filter(o => CANCELLED_STATUSES.includes(o.status))
+                            : ordersFilter === 'active'
+                              ? allOrders.filter(o => ACTIVE_STATUSES.includes(o.status))
+                              : allOrders;
+
+                        const badges = {
+                          completed: { text: 'مكتمل', color: 'bg-green-100 text-green-700' },
+                          pending_client_confirmation: { text: 'بانتظار تأكيد العميل', color: 'bg-yellow-100 text-yellow-700' },
+                          pending_review: { text: 'قيد المراجعة', color: 'bg-amber-100 text-amber-700' },
+                          searching: { text: 'جاري البحث', color: 'bg-blue-100 text-blue-700' },
+                          assigned: { text: 'مقبول', color: 'bg-teal-100 text-teal-700' },
+                          en_route: { text: 'في الطريق', color: 'bg-blue-100 text-blue-700' },
+                          arrived: { text: 'وصل', color: 'bg-purple-100 text-purple-700' },
+                          in_progress: { text: 'قيد التنفيذ', color: 'bg-orange-100 text-orange-700' },
+                          pending_legal_docs: { text: 'بانتظار السند', color: 'bg-orange-100 text-orange-700' },
+                          canceled_by_client: { text: 'ملغي من العميل', color: 'bg-red-100 text-red-700' },
+                          canceled_by_provider: { text: 'ملغي من المزود', color: 'bg-red-100 text-red-700' },
+                          canceled_by_client_with_reason: { text: 'ملغي', color: 'bg-red-100 text-red-700' },
+                          canceled_by_provider_with_reason: { text: 'ملغي', color: 'bg-red-100 text-red-700' },
+                          timed_out: { text: 'انتهت المهلة', color: 'bg-purple-100 text-purple-700' },
+                        };
+
+                        return (
+                          <>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                              <button
+                                type="button"
+                                onClick={() => setOrdersFilter(ordersFilter === 'all' ? 'all' : 'all')}
+                                className={`p-5 rounded-2xl text-right transition-all border-2 ${ordersFilter === 'all' ? 'border-blue-400 ring-2 ring-blue-200 bg-blue-50' : 'border-blue-100 bg-blue-50 hover:border-blue-300'}`}
+                              >
+                                <p className="text-blue-600 text-xs font-bold mb-1">إجمالي الطلبات</p>
+                                <h4 className="text-2xl font-black text-blue-700">{orderStats?.total || 0}</h4>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setOrdersFilter(ordersFilter === 'completed' ? 'all' : 'completed')}
+                                className={`p-5 rounded-2xl text-right transition-all border-2 ${ordersFilter === 'completed' ? 'border-green-400 ring-2 ring-green-200 bg-green-50' : 'border-green-100 bg-green-50 hover:border-green-300'}`}
+                              >
+                                <p className="text-green-600 text-xs font-bold mb-1">مكتملة</p>
+                                <h4 className="text-2xl font-black text-green-700">{orderStats?.completed || 0}</h4>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setOrdersFilter(ordersFilter === 'cancelled' ? 'all' : 'cancelled')}
+                                className={`p-5 rounded-2xl text-right transition-all border-2 ${ordersFilter === 'cancelled' ? 'border-red-400 ring-2 ring-red-200 bg-red-50' : 'border-red-100 bg-red-50 hover:border-red-300'}`}
+                              >
+                                <p className="text-red-600 text-xs font-bold mb-1">ملغاة</p>
+                                <h4 className="text-2xl font-black text-red-700">{orderStats?.cancelled || 0}</h4>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setOrdersFilter(ordersFilter === 'active' ? 'all' : 'active')}
+                                className={`p-5 rounded-2xl text-right transition-all border-2 ${ordersFilter === 'active' ? 'border-purple-400 ring-2 ring-purple-200 bg-purple-50' : 'border-purple-100 bg-purple-50 hover:border-purple-300'}`}
+                              >
+                                <p className="text-purple-600 text-xs font-bold mb-1">نسبة الإنجاز</p>
+                                <h4 className="text-2xl font-black text-purple-700">
+                                  {orderStats?.total ? Math.round((orderStats.completed / orderStats.total) * 100) : 0}%
+                                </h4>
+                              </button>
+                            </div>
+
+                            <div>
+                              <h4 className="font-bold text-gray-800 mb-4 flex items-center justify-between">
+                                <span className="flex items-center gap-2">
+                                  <Clock size={18} className="text-gray-500" />
+                                  {ordersFilter === 'all' ? 'كل الطلبات' : ordersFilter === 'completed' ? 'الطلبات المكتملة' : ordersFilter === 'cancelled' ? 'الطلبات الملغاة' : 'نسبة الإنجاز'}
+                                </span>
+                                <span className="text-sm font-normal text-gray-400">({filteredOrders.length})</span>
+                              </h4>
+                              <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+                                <table className="w-full text-sm">
+                                  <thead className="bg-gray-50">
+                                    <tr>
+                                      <th className="px-4 py-3 text-right">رقم الطلب</th>
+                                      <th className="px-4 py-3 text-right">الخدمة</th>
+                                      <th className="px-4 py-3 text-right">التاريخ</th>
+                                      <th className="px-4 py-3 text-right">الحالة</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-gray-100">
+                                    {loadingStats ? (
+                                      <tr><td colSpan="4" className="text-center py-8 text-gray-400">جاري التحميل...</td></tr>
+                                    ) : filteredOrders.length === 0 ? (
+                                      <tr><td colSpan="4" className="text-center py-8 text-gray-400">لا توجد طلبات مسجلة</td></tr>
+                                    ) : (
+                                      filteredOrders.map((order) => {
                                         const badge = badges[order.status] || { text: order.status, color: 'bg-gray-100 text-gray-700' };
                                         return (
-                                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${badge.color}`}>
-                                            {badge.text}
-                                          </span>
+                                          <tr key={order.id} className="hover:bg-gray-50 transition-colors">
+                                            <td className="px-4 py-3 font-mono text-gray-500">{order.orderNumber != null ? order.orderNumber : (order.id ? `#${order.id.substring(0, 8)}` : '—')}</td>
+                                            <td className="px-4 py-3 font-bold text-gray-800">{order.serviceName || order.serviceType || '-'}</td>
+                                            <td className="px-4 py-3 text-gray-600">
+                                              {order.createdAt ? format(order.createdAt.toDate ? order.createdAt.toDate() : new Date(order.createdAt?.seconds ? order.createdAt.seconds * 1000 : order.createdAt), 'dd/MM/yyyy HH:mm', { locale: ar }) : '-'}
+                                            </td>
+                                            <td className="px-4 py-3">
+                                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${badge.color}`}>
+                                                {badge.text}
+                                              </span>
+                                            </td>
+                                          </tr>
                                         );
-                                      })()}
-                                    </td>
-                                  </tr>
-                                ))
-                              )}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
+                                      })
+                                    )}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          </>
+                        );
+                      })()}
                     </div>
                   )}
                 </div>

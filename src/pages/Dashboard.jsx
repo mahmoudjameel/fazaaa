@@ -52,84 +52,89 @@ export const Dashboard = () => {
     );
   }
 
+  const changeColor = (val) => {
+    if (!val) return 'text-gray-500';
+    return val.startsWith('-') ? 'text-status-error' : 'text-status-success';
+  };
+
   const statCards = [
     {
       title: 'إجمالي المزودين',
-      value: stats?.totalProviders || 0,
+      value: stats?.totalProviders ?? 0,
       icon: Users,
       gradient: 'from-primary-green to-green-600',
       bgColor: 'bg-green-50',
-      change: '+12%',
+      change: `${stats?.totalProviders ?? 0}`,
       changeColor: 'text-status-success',
       link: '/providers'
     },
     {
       title: 'المزودون النشطون',
-      value: stats?.activeProviders || 0,
+      value: stats?.activeProviders ?? 0,
       icon: CheckCircle,
       gradient: 'from-primary-teal to-teal-600',
       bgColor: 'bg-teal-50',
-      change: '+5%',
+      change: `${stats?.activeProviders ?? 0} متصل`,
       changeColor: 'text-status-success',
       link: '/providers?status=active'
     },
     {
       title: 'إجمالي الطلبات',
-      value: stats?.totalOrders || 0,
+      value: stats?.totalOrders ?? 0,
       icon: ShoppingBag,
       gradient: 'from-primary-blue to-blue-600',
       bgColor: 'bg-blue-50',
-      change: '+23%',
-      changeColor: 'text-status-success',
+      change: stats?.changeOrders || '0%',
+      changeColor: changeColor(stats?.changeOrders),
       link: '/orders'
     },
     {
       title: 'طلبات مكتملة',
-      value: stats?.completedOrders || 0,
+      value: stats?.completedOrders ?? 0,
       icon: CheckCircle,
       gradient: 'from-green-500 to-green-600',
       bgColor: 'bg-green-50',
-      change: '+15%',
-      changeColor: 'text-status-success',
+      change: stats?.changeCompleted || '0%',
+      changeColor: changeColor(stats?.changeCompleted),
       link: '/orders?status=completed'
     },
     {
       title: 'طلبات ملغاة',
-      value: stats?.cancelledOrders ?? Math.max(0, (stats?.totalOrders || 0) - (stats?.completedOrders || 0) - (stats?.activeOrders || 0)),
+      value: stats?.cancelledOrders ?? 0,
       icon: XCircle,
       gradient: 'from-red-500 to-red-600',
       bgColor: 'bg-red-50',
-      change: '+5%',
-      changeColor: 'text-status-error',
+      change: stats?.changeCancelled || '0%',
+      changeColor: changeColor(stats?.changeCancelled),
       link: '/orders?status=cancelled'
     },
     {
       title: 'طلبات قيد التنفيذ',
-      value: stats?.activeOrders || 0,
+      value: stats?.activeOrders ?? 0,
       icon: TrendingUp,
       gradient: 'from-purple-500 to-purple-600',
       bgColor: 'bg-purple-50',
-      change: '+3%',
+      change: `${stats?.todayOrders ?? 0} اليوم`,
       changeColor: 'text-status-success',
       link: '/orders?status=active'
     },
     {
       title: 'الإيرادات',
-      value: `${(stats?.totalRevenue || 0).toLocaleString()} ر.س`,
+      value: `${(stats?.totalRevenue ?? 0).toLocaleString()} ر.س`,
       icon: DollarSign,
       gradient: 'from-primary-yellow to-yellow-600',
       bgColor: 'bg-yellow-50',
-      change: '+18%',
-      changeColor: 'text-status-success',
+      change: stats?.changeRevenue || '0%',
+      changeColor: changeColor(stats?.changeRevenue),
     },
     {
       title: 'إجمالي العمولات',
-      value: `${(stats?.totalCommission || 0).toLocaleString()} ر.س`,
+      value: `${(stats?.totalCommission ?? 0).toLocaleString()} ر.س`,
       icon: TrendingUp,
       gradient: 'from-primary-orange to-red-600',
       bgColor: 'bg-orange-50',
-      change: '+12%',
-      changeColor: 'text-status-success',
+      change: stats?.changeCommission || '0%',
+      changeColor: changeColor(stats?.changeCommission),
     },
   ];
 

@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Save, FileText, Info } from 'lucide-react';
+import { Save, FileText, Info, Phone } from 'lucide-react';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 
 export default function AppSettings() {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
-    const [activeTab, setActiveTab] = useState('terms'); // 'terms' or 'about'
+    const [activeTab, setActiveTab] = useState('terms');
 
     const [terms, setTerms] = useState({
         title: 'الشروط والأحكام',
@@ -18,6 +18,11 @@ export default function AppSettings() {
         title: 'من نحن',
         content: '',
         lastUpdated: null,
+    });
+
+    const [support, setSupport] = useState({
+        whatsappNumber: '966551780608',
+        whatsappDisplay: '+966 55 178 0608',
     });
 
     useEffect(() => {
@@ -40,6 +45,13 @@ export default function AppSettings() {
             if (aboutSnap.exists()) {
                 setAbout(aboutSnap.data());
             }
+
+            // Load Support settings
+            const supportRef = doc(db, 'settings', 'support');
+            const supportSnap = await getDoc(supportRef);
+            if (supportSnap.exists()) {
+                setSupport(prev => ({ ...prev, ...supportSnap.data() }));
+            }
         } catch (error) {
             console.error('Error loading settings:', error);
         } finally {
@@ -57,13 +69,20 @@ export default function AppSettings() {
                     lastUpdated: new Date().toISOString(),
                 });
                 alert('تم حفظ الشروط والأحكام بنجاح');
-            } else {
+            } else if (activeTab === 'about') {
                 const docRef = doc(db, 'settings', 'aboutUs');
                 await setDoc(docRef, {
                     ...about,
                     lastUpdated: new Date().toISOString(),
                 });
                 alert('تم حفظ بيانات "من نحن" بنجاح');
+            } else if (activeTab === 'support') {
+                const docRef = doc(db, 'settings', 'support');
+                await setDoc(docRef, {
+                    ...support,
+                    lastUpdated: new Date().toISOString(),
+                });
+                alert('تم حفظ إعدادات الدعم بنجاح');
             }
             loadData();
         } catch (error) {
@@ -112,10 +131,20 @@ export default function AppSettings() {
                     <Info className="w-4 h-4" />
                     من نحن
                 </button>
+                <button
+                    onClick={() => setActiveTab('support')}
+                    className={`flex items-center gap-2 px-6 py-2 rounded-lg font-bold transition-all ${activeTab === 'support'
+                            ? 'bg-teal-600 text-white shadow-md'
+                            : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
+                        }`}
+                >
+                    <Phone className="w-4 h-4" />
+                    إعدادات الدعم
+                </button>
             </div>
 
             <div className="bg-white rounded-lg shadow-md">
-                {activeTab === 'terms' ? (
+                {activeTab === 'terms' && (
                     <>
                         <div className="p-6 border-b border-gray-200">
                             <label className="flex items-center text-sm font-medium text-gray-700 mb-2">
@@ -147,7 +176,8 @@ export default function AppSettings() {
                             />
                         </div>
                     </>
-                ) : (
+                )}
+                {activeTab === 'about' && (
                     <>
                         <div className="p-6 border-b border-gray-200">
                             <label className="flex items-center text-sm font-medium text-gray-700 mb-2">
@@ -180,21 +210,59 @@ export default function AppSettings() {
                         </div>
                     </>
                 )}
-
-                {/* Last Updated Info */}
-                {(activeTab === 'terms' ? terms.lastUpdated : about.lastUpdated) && (
-                    <div className="px-6 py-3 bg-gray-50 border-t border-gray-200">
-                        <p className="text-sm text-gray-600">
-                            آخر تحديث: {new Date(activeTab === 'terms' ? terms.lastUpdated : about.lastUpdated).toLocaleString('ar-SA', {
-                                year: 'numeric',
-                                month: 'long',
-                                day: 'numeric',
-                                hour: '2-digit',
-                                minute: '2-digit'
-                            })}
-                        </p>
+                {activeTab === 'support' && (
+                    <div className="p-6 space-y-6">
+                        <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-2">
+                            <div className="flex items-center gap-2 mb-1">
+                                <Phone className="w-5 h-5 text-green-600" />
+                                <h3 className="font-bold text-green-800">رقم واتساب الدعم</h3>
+                            </div>
+                            <p className="text-sm text-green-700">هذا الرقم سيظهر في شاشة الدعم في تطبيق العميل</p>
+                        </div>
+                        <div>
+                            <label className="flex items-center text-sm font-medium text-gray-700 mb-2">
+                                رقم الواتساب (بدون + وبالكود الدولي)
+                            </label>
+                            <input
+                                type="text"
+                                value={support.whatsappNumber}
+                                onChange={(e) => setSupport(prev => ({ ...prev, whatsappNumber: e.target.value }))}
+                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                                placeholder="مثال: 966551780608"
+                                dir="ltr"
+                                style={{ textAlign: 'left' }}
+                            />
+                            <p className="text-xs text-gray-400 mt-1">مثال: 966551780608 (بدون + أو مسافات)</p>
+                        </div>
+                        <div>
+                            <label className="flex items-center text-sm font-medium text-gray-700 mb-2">
+                                الرقم كما يظهر للعميل
+                            </label>
+                            <input
+                                type="text"
+                                value={support.whatsappDisplay}
+                                onChange={(e) => setSupport(prev => ({ ...prev, whatsappDisplay: e.target.value }))}
+                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                                placeholder="مثال: +966 55 178 0608"
+                                dir="ltr"
+                                style={{ textAlign: 'left' }}
+                            />
+                            <p className="text-xs text-gray-400 mt-1">الصيغة التي ستظهر في التطبيق</p>
+                        </div>
                     </div>
                 )}
+
+                {/* Last Updated Info */}
+                {(() => {
+                    const lu = activeTab === 'terms' ? terms.lastUpdated : activeTab === 'about' ? about.lastUpdated : support.lastUpdated;
+                    return lu ? (
+                        <div className="px-6 py-3 bg-gray-50 border-t border-gray-200">
+                            <p className="text-sm text-gray-600">
+                                آخر تحديث: {new Date(lu).toLocaleString('ar-SA', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                            </p>
+                        </div>
+                    ) : null;
+                })()}
 
                 {/* Save Button */}
                 <div className="p-6 border-t border-gray-200 flex justify-between items-center">
@@ -209,23 +277,25 @@ export default function AppSettings() {
                 </div>
             </div>
 
-            {/* Preview Section */}
-            <div className="mt-6 bg-white rounded-lg shadow-md">
-                <div className="p-6 border-b border-gray-200">
-                    <h2 className="text-lg font-bold text-gray-900">معاينة</h2>
-                    <p className="text-sm text-gray-600 mt-1">كيف سيظهر المحتوى في التطبيق</p>
-                </div>
-                <div className="p-6 bg-gray-50">
-                    <div className="bg-white p-8 rounded-xl shadow-inner max-w-2xl mx-auto border border-gray-200">
-                        <h3 className="text-2xl font-black text-teal-600 mb-6 text-center border-b-2 border-teal-500 pb-2 inline-block">
-                            {activeTab === 'terms' ? terms.title : about.title}
-                        </h3>
-                        <div className="text-gray-700 whitespace-pre-wrap leading-relaxed text-right" dir="rtl">
-                            {(activeTab === 'terms' ? terms.content : about.content) || 'لا يوجد محتوى بعد...'}
+            {/* Preview Section - only for terms and about */}
+            {activeTab !== 'support' && (
+                <div className="mt-6 bg-white rounded-lg shadow-md">
+                    <div className="p-6 border-b border-gray-200">
+                        <h2 className="text-lg font-bold text-gray-900">معاينة</h2>
+                        <p className="text-sm text-gray-600 mt-1">كيف سيظهر المحتوى في التطبيق</p>
+                    </div>
+                    <div className="p-6 bg-gray-50">
+                        <div className="bg-white p-8 rounded-xl shadow-inner max-w-2xl mx-auto border border-gray-200">
+                            <h3 className="text-2xl font-black text-teal-600 mb-6 text-center border-b-2 border-teal-500 pb-2 inline-block">
+                                {activeTab === 'terms' ? terms.title : about.title}
+                            </h3>
+                            <div className="text-gray-700 whitespace-pre-wrap leading-relaxed text-right" dir="rtl">
+                                {(activeTab === 'terms' ? terms.content : about.content) || 'لا يوجد محتوى بعد...'}
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
+            )}
         </div>
     );
 }

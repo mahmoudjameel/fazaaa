@@ -559,34 +559,76 @@ export const getOrderById = async (orderId) => {
   }
 };
 
-// Statistics - من مجموعة requests (الطلبات الفعلية في النظام)
+// Statistics - من مجموعتي requests و orders
 const ACTIVE_REQUEST_STATUSES = ['searching', 'accepted', 'assigned', 'en_route', 'arrived', 'in_progress', 'pending_legal_docs', 'arriving'];
 const CANCELLED_REQUEST_STATUSES = ['canceled_by_provider', 'canceled_by_provider_with_reason', 'canceled_by_client', 'canceled_by_client_with_reason', 'timed_out'];
 
+function toDate(ts) {
+  if (!ts) return null;
+  if (ts.toMillis) return new Date(ts.toMillis());
+  if (ts.toDate) return ts.toDate();
+  if (ts.seconds) return new Date(ts.seconds * 1000);
+  const d = new Date(ts);
+  return isNaN(d.getTime()) ? null : d;
+}
+
 export const getDashboardStats = async () => {
   try {
-    const [providersSnapshot, requestsSnapshot] = await Promise.all([
+    const [providersSnapshot, requestsSnapshot, ordersSnapshot, customersSnapshot] = await Promise.all([
       getDocs(collection(db, 'providers')),
       getDocs(collection(db, 'requests')),
+      getDocs(collection(db, 'orders')),
+      getDocs(collection(db, 'customers')),
     ]);
 
     const providers = [];
-    const requests = [];
+    providersSnapshot.forEach((doc) => providers.push({ ...doc.data(), id: doc.id }));
 
-    providersSnapshot.forEach((doc) => {
-      providers.push({ ...doc.data(), id: doc.id });
+    const customers = [];
+    customersSnapshot.forEach((doc) => customers.push({ ...doc.data(), id: doc.id }));
+
+    // دمج الطلبات من المجموعتين (requests + orders) بدون تكرار
+    const allOrdersMap = new Map();
+    requestsSnapshot.forEach((doc) => allOrdersMap.set(doc.id, { id: doc.id, ...doc.data() }));
+    ordersSnapshot.forEach((doc) => {
+      if (!allOrdersMap.has(doc.id)) allOrdersMap.set(doc.id, { id: doc.id, ...doc.data() });
     });
+    const allOrders = Array.from(allOrdersMap.values());
 
-    requestsSnapshot.forEach((doc) => {
-      requests.push({ id: doc.id, ...doc.data() });
-    });
+    const completed = allOrders.filter((o) => o.status === 'completed');
+    const activeOrders = allOrders.filter((o) => ACTIVE_REQUEST_STATUSES.includes(o.status));
+    const cancelledOrders = allOrders.filter((o) => CANCELLED_REQUEST_STATUSES.includes(o.status));
 
-    const completed = requests.filter((o) => o.status === 'completed');
-    const activeOrders = requests.filter((o) => ACTIVE_REQUEST_STATUSES.includes(o.status));
-    const cancelledOrders = requests.filter((o) => CANCELLED_REQUEST_STATUSES.includes(o.status));
+    const now = new Date();
+    const todayStr = now.toDateString();
+    const yesterday = new Date(now); yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toDateString();
+
+    const todayOrders = allOrders.filter((o) => { const d = toDate(o.createdAt); return d && d.toDateString() === todayStr; });
+    const yesterdayOrders = allOrders.filter((o) => { const d = toDate(o.createdAt); return d && d.toDateString() === yesterdayStr; });
+
+    const todayCompleted = todayOrders.filter((o) => o.status === 'completed');
+    const yesterdayCompleted = yesterdayOrders.filter((o) => o.status === 'completed');
+
+    const todayCancelled = todayOrders.filter((o) => CANCELLED_REQUEST_STATUSES.includes(o.status));
+    const yesterdayCancelled = yesterdayOrders.filter((o) => CANCELLED_REQUEST_STATUSES.includes(o.status));
+
+    const todayRevenue = todayCompleted.reduce((s, o) => s + (Number(o.price) || Number(o.servicePrice) || 0), 0);
+    const yesterdayRevenue = yesterdayCompleted.reduce((s, o) => s + (Number(o.price) || Number(o.servicePrice) || 0), 0);
+
+    const todayCommission = todayCompleted.reduce((s, o) => s + (Number(o.commission) || 0), 0);
+    const yesterdayCommission = yesterdayCompleted.reduce((s, o) => s + (Number(o.commission) || 0), 0);
+
+    const calcChange = (current, previous) => {
+      if (previous === 0 && current === 0) return '0%';
+      if (previous === 0) return `+${current}`;
+      const pct = Math.round(((current - previous) / previous) * 100);
+      return pct >= 0 ? `+${pct}%` : `${pct}%`;
+    };
 
     const stats = {
       totalProviders: providers.length,
+      totalCustomers: customers.length,
       activeProviders: providers.filter((p) => {
         const approvalStatus = p.approvalStatus || p.status;
         return approvalStatus === 'approved' && p.isOnline;
@@ -595,18 +637,20 @@ export const getDashboardStats = async () => {
         const approvalStatus = p.approvalStatus || p.status;
         return approvalStatus === 'pending';
       }).length,
-      totalOrders: requests.length,
+      totalOrders: allOrders.length,
       completedOrders: completed.length,
       activeOrders: activeOrders.length,
       cancelledOrders: cancelledOrders.length,
       totalRevenue: completed.reduce((sum, o) => sum + (Number(o.price) || Number(o.servicePrice) || 0), 0),
       totalCommission: completed.reduce((sum, o) => sum + (Number(o.commission) || 0), 0),
-      todayOrders: requests.filter((o) => {
-        const created = o.createdAt;
-        if (!created) return false;
-        const orderDate = created?.toMillis ? new Date(created.toMillis()) : new Date(created?.seconds ? created.seconds * 1000 : created);
-        return orderDate.toDateString() === new Date().toDateString();
-      }).length,
+      todayOrders: todayOrders.length,
+      // نسب التغيير (اليوم مقارنة بالأمس)
+      changeProviders: calcChange(providers.length, providers.length),
+      changeOrders: calcChange(todayOrders.length, yesterdayOrders.length),
+      changeCompleted: calcChange(todayCompleted.length, yesterdayCompleted.length),
+      changeCancelled: calcChange(todayCancelled.length, yesterdayCancelled.length),
+      changeRevenue: calcChange(todayRevenue, yesterdayRevenue),
+      changeCommission: calcChange(todayCommission, yesterdayCommission),
     };
 
     return { success: true, stats };
@@ -1081,22 +1125,42 @@ export const adjustProviderWallet = async (providerId, amount, type, reason) => 
  */
 export const getProviderOrderStats = async (providerId) => {
   try {
-    const requestsRef = collection(db, 'requests');
-    const q = query(requestsRef, where('providerId', '==', providerId));
-    const querySnapshot = await getDocs(q);
+    const allOrders = new Map();
+
+    try {
+      const q1 = query(collection(db, 'requests'), where('providerId', '==', providerId));
+      const snap1 = await getDocs(q1);
+      snap1.forEach((d) => allOrders.set(d.id, { id: d.id, ...d.data() }));
+    } catch (e) { console.warn('requests query:', e.message); }
+
+    try {
+      const q2 = query(collection(db, 'orders'), where('providerId', '==', providerId));
+      const snap2 = await getDocs(q2);
+      snap2.forEach((d) => { if (!allOrders.has(d.id)) allOrders.set(d.id, { id: d.id, ...d.data() }); });
+    } catch (e) { console.warn('orders query:', e.message); }
+
+    const CANCELLED_STATUSES = ['canceled_by_provider', 'canceled_by_provider_with_reason', 'canceled_by_client', 'canceled_by_client_with_reason', 'timed_out'];
+    const ACTIVE_STATUSES = ['searching', 'accepted', 'assigned', 'en_route', 'arrived', 'in_progress', 'pending_legal_docs', 'arriving', 'pending_client_confirmation', 'pending_review'];
 
     let completed = 0;
     let cancelled = 0;
+    let active = 0;
     const orders = [];
 
-    querySnapshot.forEach((doc) => {
-      const data = doc.data();
+    allOrders.forEach((data) => {
       if (data.status === 'completed') completed++;
-      if (data.status?.includes('canceled')) cancelled++;
-      orders.push({ id: doc.id, ...data });
+      else if (CANCELLED_STATUSES.includes(data.status)) cancelled++;
+      else if (ACTIVE_STATUSES.includes(data.status)) active++;
+      orders.push(data);
     });
 
-    return { success: true, completed, cancelled, total: orders.length, orders };
+    orders.sort((a, b) => {
+      const tA = a.createdAt?.toMillis ? a.createdAt.toMillis() : a.createdAt?.seconds ? a.createdAt.seconds * 1000 : 0;
+      const tB = b.createdAt?.toMillis ? b.createdAt.toMillis() : b.createdAt?.seconds ? b.createdAt.seconds * 1000 : 0;
+      return tB - tA;
+    });
+
+    return { success: true, completed, cancelled, active, total: orders.length, orders };
   } catch (error) {
     console.error('Get provider order stats error:', error);
     throw error;

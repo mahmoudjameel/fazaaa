@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Search,
@@ -40,6 +40,166 @@ import { ar } from 'date-fns/locale';
 import { collection, getDocs, doc, getDoc, updateDoc, query, orderBy, where, limit } from 'firebase/firestore';
 import { db } from '../services/firebase';
 
+const MapPickerWidget = ({ coordinates, onLocationSelect }) => {
+  const mapContainerRef = useRef(null);
+  const mapInstanceRef = useRef(null);
+  const markerRef = useRef(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [suggestions, setSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const searchTimerRef = useRef(null);
+  const suggestionsRef = useRef(null);
+
+  const reverseGeocode = useCallback(async (lat, lng) => {
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=ar`
+      );
+      const data = await res.json();
+      return data.display_name || '';
+    } catch {
+      return '';
+    }
+  }, []);
+
+  const placeMarker = useCallback((lat, lng, map) => {
+    if (markerRef.current) {
+      markerRef.current.setLatLng([lat, lng]);
+    } else {
+      markerRef.current = window.L.marker([lat, lng], { draggable: true }).addTo(map);
+      markerRef.current.on('dragend', async () => {
+        const pos = markerRef.current.getLatLng();
+        const addr = await reverseGeocode(pos.lat, pos.lng);
+        onLocationSelect({ latitude: pos.lat, longitude: pos.lng }, addr);
+      });
+    }
+    map.setView([lat, lng], map.getZoom() < 13 ? 15 : map.getZoom());
+  }, [onLocationSelect, reverseGeocode]);
+
+  useEffect(() => {
+    if (!mapContainerRef.current || mapInstanceRef.current) return;
+
+    const defaultLat = coordinates?.latitude || 24.7136;
+    const defaultLng = coordinates?.longitude || 46.6753;
+
+    const map = window.L.map(mapContainerRef.current, {
+      center: [defaultLat, defaultLng],
+      zoom: coordinates ? 15 : 6,
+      zoomControl: true,
+    });
+
+    window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap',
+      maxZoom: 19,
+    }).addTo(map);
+
+    mapInstanceRef.current = map;
+
+    if (coordinates) {
+      placeMarker(defaultLat, defaultLng, map);
+    }
+
+    map.on('click', async (e) => {
+      const { lat, lng } = e.latlng;
+      placeMarker(lat, lng, map);
+      const addr = await reverseGeocode(lat, lng);
+      onLocationSelect({ latitude: lat, longitude: lng }, addr);
+    });
+
+    setTimeout(() => map.invalidateSize(), 200);
+
+    return () => {
+      map.remove();
+      mapInstanceRef.current = null;
+      markerRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (suggestionsRef.current && !suggestionsRef.current.contains(e.target)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleSearch = (value) => {
+    setSearchQuery(value);
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    if (!value.trim() || value.trim().length < 2) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+    searchTimerRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(value)}&format=json&addressdetails=1&limit=6&accept-language=ar&countrycodes=sa`
+        );
+        const data = await res.json();
+        setSuggestions(data);
+        setShowSuggestions(data.length > 0);
+      } catch {
+        setSuggestions([]);
+        setShowSuggestions(false);
+      }
+    }, 400);
+  };
+
+  const handleSelectSuggestion = (item) => {
+    const lat = parseFloat(item.lat);
+    const lng = parseFloat(item.lon);
+    if (mapInstanceRef.current) {
+      placeMarker(lat, lng, mapInstanceRef.current);
+    }
+    onLocationSelect({ latitude: lat, longitude: lng }, item.display_name || '');
+    setSearchQuery(item.display_name || '');
+    setShowSuggestions(false);
+    setSuggestions([]);
+  };
+
+  return (
+    <div className="border-2 border-teal-200 rounded-xl overflow-hidden">
+      <div className="p-3 bg-teal-50 relative" ref={suggestionsRef}>
+        <div className="relative">
+          <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none z-10" size={16} />
+          <input
+            type="text"
+            placeholder="ابحث عن مكان... (مثلاً: الرياض، جدة، حي العليا)"
+            value={searchQuery}
+            onChange={(e) => handleSearch(e.target.value)}
+            onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
+            className="w-full pr-10 pl-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:border-teal-400 outline-none bg-white"
+            dir="rtl"
+          />
+        </div>
+        {showSuggestions && suggestions.length > 0 && (
+          <div className="absolute left-3 right-3 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto">
+            {suggestions.map((item, idx) => (
+              <button
+                key={item.place_id || idx}
+                type="button"
+                onClick={() => handleSelectSuggestion(item)}
+                className="w-full text-right px-4 py-3 hover:bg-teal-50 transition-colors border-b border-gray-100 last:border-0 flex items-start gap-2"
+              >
+                <MapPin size={14} className="text-teal-500 mt-1 shrink-0" />
+                <span className="text-sm text-gray-700 leading-relaxed">{item.display_name}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <div ref={mapContainerRef} className="w-full h-80" style={{ zIndex: 0 }} />
+      <div className="px-3 py-2 bg-gray-50 text-xs text-gray-500 flex items-center gap-1">
+        <MapPin size={12} />
+        انقر على الخريطة لتحديد الموقع، أو اسحب المؤشر، أو ابحث في مربع البحث
+      </div>
+    </div>
+  );
+};
+
 export const Orders = () => {
   const location = useLocation();
   const [requests, setRequests] = useState([]);
@@ -55,6 +215,9 @@ export const Orders = () => {
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState(null);
   const [loadingProvider, setLoadingProvider] = useState(false);
+  const [providerOrders, setProviderOrders] = useState([]);
+  const [loadingProviderOrders, setLoadingProviderOrders] = useState(false);
+  const [activityFilter, setActivityFilter] = useState('all');
   const [mainServices, setMainServices] = useState([]);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [loadingCustomer, setLoadingCustomer] = useState(false);
@@ -70,11 +233,14 @@ export const Orders = () => {
   const [newOrderData, setNewOrderData] = useState({
     serviceId: '',
     serviceName: '',
+    serviceCategory: '',
     price: '',
     location: '',
+    coordinates: null,
     cityId: '',
     notes: ''
   });
+  const [showMapPicker, setShowMapPicker] = useState(false);
 
   // Edit Order State
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -146,12 +312,21 @@ export const Orders = () => {
       const servicesRef = collection(db, 'emergency-services');
       const querySnapshot = await getDocs(servicesRef);
       const servicesList = [];
-      querySnapshot.forEach((doc) => {
+      querySnapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        const subServices = (data.subServices || []).map((sub, i) => ({
+          id: sub.id || `sub-${docSnap.id}-${i}`,
+          name: sub.name || '',
+          price: sub.price || 0,
+          parentServiceId: docSnap.id,
+          parentServiceName: data.name || '',
+        }));
         servicesList.push({
-          id: doc.id,
-          serviceId: doc.data().id || doc.id,
-          name: doc.data().name || '',
-          ...doc.data()
+          id: docSnap.id,
+          serviceId: data.id || docSnap.id,
+          name: data.name || '',
+          subServices,
+          ...data
         });
       });
       setMainServices(servicesList);
@@ -273,6 +448,7 @@ export const Orders = () => {
       const result = await getProviderById(providerId);
       if (result.success) {
         setSelectedProvider(result.provider);
+        fetchProviderOrders(providerId);
       } else {
         alert(result.error || 'فشل جلب بيانات المزود');
       }
@@ -281,6 +457,60 @@ export const Orders = () => {
       alert('حدث خطأ أثناء جلب بيانات المزود: ' + error.message);
     } finally {
       setLoadingProvider(false);
+    }
+  };
+
+  const fetchProviderOrders = async (providerId) => {
+    setLoadingProviderOrders(true);
+    setActivityFilter('all');
+    try {
+      const allOrders = new Map();
+
+      // 1) من الطلبات المحملة حالياً في الصفحة
+      requests.forEach(req => {
+        if (req.providerId === providerId) {
+          allOrders.set(req.id, req);
+        } else if (Array.isArray(req.history) && req.history.some(h => h.providerId === providerId)) {
+          allOrders.set(req.id, req);
+        }
+      });
+
+      // 2) جلب من requests collection
+      try {
+        const q1 = query(collection(db, 'requests'), where('providerId', '==', providerId));
+        const snap1 = await getDocs(q1);
+        snap1.docs.forEach(d => {
+          if (!allOrders.has(d.id)) allOrders.set(d.id, { id: d.id, ...d.data() });
+        });
+      } catch (e) {
+        console.warn('requests query failed:', e.message);
+      }
+
+      // 3) جلب من orders collection
+      try {
+        const q2 = query(collection(db, 'orders'), where('providerId', '==', providerId));
+        const snap2 = await getDocs(q2);
+        snap2.docs.forEach(d => {
+          if (!allOrders.has(d.id)) allOrders.set(d.id, { id: d.id, ...d.data() });
+        });
+      } catch (e) {
+        console.warn('orders query failed:', e.message);
+      }
+
+      const getTs = (item) => {
+        if (item.createdAt?.toMillis) return item.createdAt.toMillis();
+        if (item.createdAt?.seconds) return item.createdAt.seconds * 1000;
+        if (item.createdAt) return new Date(item.createdAt).getTime() || 0;
+        return 0;
+      };
+
+      const sorted = [...allOrders.values()].sort((a, b) => getTs(b) - getTs(a));
+      setProviderOrders(sorted);
+    } catch (error) {
+      console.error('Error fetching provider orders:', error);
+      setProviderOrders([]);
+    } finally {
+      setLoadingProviderOrders(false);
     }
   };
 
@@ -413,26 +643,49 @@ export const Orders = () => {
     }
 
     try {
-      const selectedService = services.find(s => s.id === newOrderData.serviceId);
+      let serviceName = newOrderData.serviceName;
+      let serviceCategory = newOrderData.serviceCategory || '';
+      if (!serviceName) {
+        const mainSvc = mainServices.find(s => s.id === newOrderData.serviceId);
+        if (mainSvc) {
+          serviceName = mainSvc.name;
+          serviceCategory = mainSvc.name;
+        } else {
+          for (const ms of mainServices) {
+            const sub = (ms.subServices || []).find(s => s.id === newOrderData.serviceId);
+            if (sub) {
+              serviceName = sub.name;
+              serviceCategory = ms.name;
+              break;
+            }
+          }
+        }
+      }
+
       const orderPayload = {
         customerId: selectedCustomerForOrder.id,
         customerName: selectedCustomerForOrder.name || `${selectedCustomerForOrder.firstName || ''} ${selectedCustomerForOrder.lastName || ''}`.trim(),
         customerPhone: selectedCustomerForOrder.phone,
         serviceId: newOrderData.serviceId,
-        serviceName: selectedService?.name || newOrderData.serviceName,
-        serviceType: selectedService?.id || '',
+        serviceName: serviceName || 'خدمة',
+        serviceCategory: serviceCategory,
+        serviceType: newOrderData.serviceId,
         price: Number(newOrderData.price),
+        servicePrice: Number(newOrderData.price),
         location: newOrderData.location,
+        coordinates: newOrderData.coordinates || null,
         cityId: newOrderData.cityId,
         notes: newOrderData.notes,
-        status: 'searching'
+        status: 'searching',
+        providerIdsToNotify: [],
+        source: 'admin_manual',
       };
 
       const result = await createManualOrder(orderPayload);
       if (result.success) {
         alert('تم إنشاء الطلب بنجاح');
         setIsManualModalOpen(false);
-        setNewOrderData({ serviceId: '', serviceName: '', price: '', location: '', cityId: '', notes: '' });
+        setNewOrderData({ serviceId: '', serviceName: '', serviceCategory: '', price: '', location: '', coordinates: null, cityId: '', notes: '' });
         setSelectedCustomerForOrder(null);
         setCustomerSearchTerm('');
       }
@@ -1250,7 +1503,18 @@ export const Orders = () => {
                 )}
                 <div>
                   <h3 className="font-semibold text-sm sm:text-base text-gray-700 mb-1 sm:mb-2">الموقع</h3>
-                  <p className="text-sm sm:text-base text-gray-800">{selectedRequest.location || 'غير محدد'}</p>
+                  <p className="text-sm sm:text-base text-gray-800 mb-2">{selectedRequest.location || 'غير محدد'}</p>
+                  {(selectedRequest.coordinates?.latitude || selectedRequest.coordinates?.lat) && (
+                    <a
+                      href={`https://www.google.com/maps?q=${selectedRequest.coordinates?.latitude || selectedRequest.coordinates?.lat},${selectedRequest.coordinates?.longitude || selectedRequest.coordinates?.lng}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-all text-sm font-semibold border border-blue-200"
+                    >
+                      <MapPin size={16} />
+                      فتح في خرائط جوجل
+                    </a>
+                  )}
                 </div>
                 <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-xl">
                   <div>
@@ -1989,46 +2253,78 @@ export const Orders = () => {
                         <h4 className="font-semibold text-sm sm:text-base text-gray-700">سجل نشاط المزود</h4>
                       </div>
 
-                      {(() => {
-                        const providerOrders = requests.filter(req =>
-                          req.providerId === selectedProvider.id ||
-                          (Array.isArray(req.history) && req.history.some(h => h.providerId === selectedProvider.id))
-                        );
+                      {loadingProviderOrders ? (
+                        <div className="text-center py-8 text-gray-400 text-sm">جاري تحميل سجل النشاط...</div>
+                      ) : (() => {
+                        const COMPLETED_STATUSES = ['completed'];
+                        const CANCELLED_STATUSES = ['canceled_by_provider', 'canceled_by_provider_with_reason', 'canceled_by_client', 'canceled_by_client_with_reason', 'timed_out'];
+                        const ACTIVE_STATUSES = ['searching', 'accepted', 'assigned', 'en_route', 'arrived', 'in_progress', 'pending_legal_docs', 'arriving', 'pending_client_confirmation', 'pending_review'];
 
                         const completed = providerOrders.filter(req =>
-                          req.status === 'completed' && req.providerId === selectedProvider.id
-                        ).length;
+                          COMPLETED_STATUSES.includes(req.status) && req.providerId === selectedProvider.id
+                        );
+                        const cancelled = providerOrders.filter(req => {
+                          if (CANCELLED_STATUSES.includes(req.status)) return true;
+                          return Array.isArray(req.history) && req.history.some(h =>
+                            h.providerId === selectedProvider.id &&
+                            (h.action === 'provider_cancellation' || CANCELLED_STATUSES.includes(h.status))
+                          );
+                        });
+                        const active = providerOrders.filter(req =>
+                          ACTIVE_STATUSES.includes(req.status) && req.providerId === selectedProvider.id
+                        );
 
-                        const canceledByProvider = providerOrders.filter(req =>
-                        (Array.isArray(req.history) && req.history.some(h =>
-                          h.providerId === selectedProvider.id &&
-                          (h.action === 'provider_cancellation' || h.status === 'canceled_by_provider' || h.status === 'canceled_by_provider_with_reason')
-                        ))
-                        ).length;
+                        const filteredList = activityFilter === 'completed' ? completed
+                          : activityFilter === 'cancelled' ? cancelled
+                          : activityFilter === 'active' ? active
+                          : providerOrders;
 
                         return (
                           <div className="space-y-4">
-                            {/* بطاقات الإحصائيات المصغرة */}
-                            <div className="grid grid-cols-3 gap-2 sm:gap-3">
-                              <div className="bg-blue-50 p-2 sm:p-3 rounded-lg text-center">
+                            <div className="grid grid-cols-4 gap-2 sm:gap-3">
+                              <button
+                                type="button"
+                                onClick={() => setActivityFilter(activityFilter === 'all' ? 'all' : 'all')}
+                                className={`p-2 sm:p-3 rounded-lg text-center transition-all border-2 ${activityFilter === 'all' ? 'border-blue-400 ring-2 ring-blue-200 bg-blue-50' : 'border-transparent bg-blue-50 hover:border-blue-200'}`}
+                              >
                                 <p className="text-[10px] sm:text-xs text-blue-600 font-bold mb-1">إجمالي التفاعل</p>
                                 <p className="text-lg sm:text-xl font-black text-blue-800">{providerOrders.length}</p>
-                              </div>
-                              <div className="bg-green-50 p-2 sm:p-3 rounded-lg text-center">
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setActivityFilter(activityFilter === 'completed' ? 'all' : 'completed')}
+                                className={`p-2 sm:p-3 rounded-lg text-center transition-all border-2 ${activityFilter === 'completed' ? 'border-green-400 ring-2 ring-green-200 bg-green-50' : 'border-transparent bg-green-50 hover:border-green-200'}`}
+                              >
                                 <p className="text-[10px] sm:text-xs text-green-600 font-bold mb-1">مكتملة</p>
-                                <p className="text-lg sm:text-xl font-black text-green-800">{completed}</p>
-                              </div>
-                              <div className="bg-red-50 p-2 sm:p-3 rounded-lg text-center">
-                                <p className="text-[10px] sm:text-xs text-red-600 font-bold mb-1">اعتذار/إلغاء</p>
-                                <p className="text-lg sm:text-xl font-black text-red-800">{canceledByProvider}</p>
-                              </div>
+                                <p className="text-lg sm:text-xl font-black text-green-800">{completed.length}</p>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setActivityFilter(activityFilter === 'cancelled' ? 'all' : 'cancelled')}
+                                className={`p-2 sm:p-3 rounded-lg text-center transition-all border-2 ${activityFilter === 'cancelled' ? 'border-red-400 ring-2 ring-red-200 bg-red-50' : 'border-transparent bg-red-50 hover:border-red-200'}`}
+                              >
+                                <p className="text-[10px] sm:text-xs text-red-600 font-bold mb-1">ملغية/اعتذار</p>
+                                <p className="text-lg sm:text-xl font-black text-red-800">{cancelled.length}</p>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setActivityFilter(activityFilter === 'active' ? 'all' : 'active')}
+                                className={`p-2 sm:p-3 rounded-lg text-center transition-all border-2 ${activityFilter === 'active' ? 'border-orange-400 ring-2 ring-orange-200 bg-orange-50' : 'border-transparent bg-orange-50 hover:border-orange-200'}`}
+                              >
+                                <p className="text-[10px] sm:text-xs text-orange-600 font-bold mb-1">نشطة</p>
+                                <p className="text-lg sm:text-xl font-black text-orange-800">{active.length}</p>
+                              </button>
                             </div>
 
-                            {/* قائمة آخر الطلبات */}
                             <div className="space-y-2">
-                              <h5 className="text-[10px] sm:text-xs font-bold text-gray-400 uppercase tracking-wider">آخر النشاطات ({Math.min(providerOrders.length, 5)})</h5>
-                              {providerOrders.length > 0 ? (
-                                providerOrders.slice(0, 5).map((order, idx) => {
+                              <h5 className="text-[10px] sm:text-xs font-bold text-gray-400 uppercase tracking-wider">
+                                {activityFilter === 'all' ? `كل النشاطات (${filteredList.length})` :
+                                 activityFilter === 'completed' ? `المكتملة (${filteredList.length})` :
+                                 activityFilter === 'cancelled' ? `الملغية/الاعتذار (${filteredList.length})` :
+                                 `النشطة (${filteredList.length})`}
+                              </h5>
+                              {filteredList.length > 0 ? (
+                                filteredList.slice(0, 10).map((order, idx) => {
                                   let statusText = getStatusBadge(order.status).text;
                                   let statusColor = getStatusBadge(order.status).color;
 
@@ -2037,26 +2333,46 @@ export const Orders = () => {
                                     (h.action === 'provider_cancellation' || h.status === 'canceled_by_provider' || h.status === 'canceled_by_provider_with_reason')
                                   );
 
-                                  if (didCancelThis && order.status !== 'canceled_by_provider' && order.status !== 'canceled_by_provider_with_reason') {
+                                  if (didCancelThis && order.providerId !== selectedProvider.id) {
                                     statusText = "تم الاعتذار عنه";
                                     statusColor = "bg-red-100 text-red-700";
                                   }
 
+                                  const orderDate = order.createdAt?.toMillis
+                                    ? new Date(order.createdAt.toMillis())
+                                    : order.createdAt?.seconds
+                                      ? new Date(order.createdAt.seconds * 1000)
+                                      : order.createdAt ? new Date(order.createdAt) : null;
+
                                   return (
-                                    <div key={idx} className="flex items-center justify-between p-2 hover:bg-gray-50 rounded-lg border border-gray-50 transition-colors">
+                                    <div
+                                      key={order.id || idx}
+                                      className="flex items-center justify-between p-2.5 hover:bg-gray-50 rounded-lg border border-gray-100 transition-colors cursor-pointer"
+                                      onClick={() => {
+                                        const found = requests.find(r => r.id === order.id);
+                                        if (found) {
+                                          setSelectedRequest(found);
+                                          setSelectedProvider(null);
+                                        }
+                                      }}
+                                    >
                                       <div className="flex-1 min-w-0 pr-2">
-                                        <p className="text-xs sm:text-sm font-bold text-gray-800 truncate">{order.serviceName || order.serviceType}</p>
+                                        <p className="text-xs sm:text-sm font-bold text-gray-800 truncate">{order.serviceName || order.serviceType || 'خدمة'}</p>
                                         <div className="flex items-center gap-2 mt-1">
-                                          <span className="text-[10px] text-gray-500">
-                                            {order.createdAt && format(
-                                              order.createdAt?.toMillis ? new Date(order.createdAt.toMillis()) : new Date(order.createdAt),
-                                              'dd MMM, HH:mm',
-                                              { locale: ar }
-                                            )}
-                                          </span>
+                                          {order.location && (
+                                            <span className="text-[10px] text-gray-400 truncate max-w-[120px]">{order.location}</span>
+                                          )}
+                                          {orderDate && (
+                                            <span className="text-[10px] text-gray-500">
+                                              {format(orderDate, 'dd MMM, HH:mm', { locale: ar })}
+                                            </span>
+                                          )}
+                                          {order.price && (
+                                            <span className="text-[10px] text-teal-600 font-bold">{order.price} ر.س</span>
+                                          )}
                                         </div>
                                       </div>
-                                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${statusColor}`}>
+                                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap ${statusColor}`}>
                                         {statusText}
                                       </span>
                                     </div>
@@ -2064,6 +2380,11 @@ export const Orders = () => {
                                 })
                               ) : (
                                 <p className="text-center py-4 text-xs text-gray-400 italic">لا يوجد سجل طلبات متاح</p>
+                              )}
+                              {filteredList.length > 10 && (
+                                <p className="text-center text-xs text-gray-400 pt-1">
+                                  يعرض 10 من أصل {filteredList.length} طلب
+                                </p>
                               )}
                             </div>
                           </div>
@@ -2196,46 +2517,118 @@ export const Orders = () => {
                 </div>
 
                 {/* Service Details Section */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="block text-sm font-semibold text-gray-700">نوع الخدمة</label>
-                    <select
-                      required
-                      value={newOrderData.serviceId}
-                      onChange={(e) => setNewOrderData({ ...newOrderData, serviceId: e.target.value })}
-                      className="w-full px-4 py-3 border-2 border-gray-100 rounded-xl focus:border-primary-teal outline-none transition-all"
-                    >
-                      <option value="">اختر الخدمة...</option>
-                      {services.map(service => (
-                        <option key={service.id} value={service.id}>{service.name}</option>
-                      ))}
-                    </select>
+                <div className="space-y-3">
+                  <label className="block text-sm font-semibold text-gray-700">اختر الخدمة</label>
+                  <div className="space-y-3 max-h-64 overflow-y-auto border border-gray-100 rounded-xl p-3">
+                    {mainServices.filter(s => s.isActive !== false).map(service => (
+                      <div key={service.id} className="space-y-1">
+                        {/* الخدمة الرئيسية كعنوان قابل للاختيار */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setNewOrderData({
+                              ...newOrderData,
+                              serviceId: service.id,
+                              serviceName: service.name,
+                              serviceCategory: service.name,
+                              price: ''
+                            });
+                          }}
+                          className={`w-full text-right px-4 py-3 rounded-xl font-bold transition-all flex items-center justify-between ${newOrderData.serviceId === service.id ? 'bg-teal-500 text-white shadow-md' : 'bg-gray-50 text-gray-800 hover:bg-teal-50'}`}
+                        >
+                          <span className="text-xs opacity-70">{service.subServices?.length || 0} خدمة فرعية</span>
+                          <span>{service.name}</span>
+                        </button>
+                        {/* الخدمات الفرعية */}
+                        {service.subServices && service.subServices.length > 0 && (
+                          <div className="mr-4 space-y-1">
+                            {service.subServices.map(sub => (
+                              <button
+                                key={sub.id}
+                                type="button"
+                                onClick={() => {
+                                  setNewOrderData({
+                                    ...newOrderData,
+                                    serviceId: sub.id,
+                                    serviceName: sub.name,
+                                    serviceCategory: service.name,
+                                    price: sub.price ? String(sub.price) : newOrderData.price
+                                  });
+                                }}
+                                className={`w-full text-right px-4 py-2.5 rounded-lg text-sm transition-all flex items-center justify-between ${newOrderData.serviceId === sub.id ? 'bg-teal-100 text-teal-800 border-2 border-teal-400 font-bold' : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-100'}`}
+                              >
+                                {sub.price > 0 && <span className="text-xs font-semibold text-green-600">{sub.price} ر.س</span>}
+                                <span>{sub.name}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
                   </div>
-                  <div className="space-y-2">
-                    <label className="block text-sm font-semibold text-gray-700">السعر (ر.س)</label>
-                    <input
-                      type="number"
-                      required
-                      placeholder="0.00"
-                      value={newOrderData.price}
-                      onChange={(e) => setNewOrderData({ ...newOrderData, price: e.target.value })}
-                      className="w-full px-4 py-3 border-2 border-gray-100 rounded-xl focus:border-primary-teal outline-none transition-all"
-                    />
-                  </div>
+                  {newOrderData.serviceId && (
+                    <p className="text-xs text-teal-700 bg-teal-50 px-3 py-2 rounded-lg">
+                      المحدد: <strong>{newOrderData.serviceName}</strong>
+                      {newOrderData.serviceCategory && newOrderData.serviceCategory !== newOrderData.serviceName && (
+                        <span className="text-gray-500"> ({newOrderData.serviceCategory})</span>
+                      )}
+                    </p>
+                  )}
                 </div>
 
                 <div className="space-y-2">
+                  <label className="block text-sm font-semibold text-gray-700">السعر (ر.س)</label>
+                  <input
+                    type="number"
+                    required
+                    placeholder="0.00"
+                    value={newOrderData.price}
+                    onChange={(e) => setNewOrderData({ ...newOrderData, price: e.target.value })}
+                    className="w-full px-4 py-3 border-2 border-gray-100 rounded-xl focus:border-primary-teal outline-none transition-all"
+                  />
+                </div>
+
+                {/* الموقع - خريطة تفاعلية + بحث مع اقتراحات */}
+                <div className="space-y-2">
                   <label className="block text-sm font-semibold text-gray-700">الموقع</label>
-                  <div className="relative">
-                    <MapPin className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                    <input
-                      type="text"
-                      placeholder="أدخل الموقع يدوياً..."
-                      value={newOrderData.location}
-                      onChange={(e) => setNewOrderData({ ...newOrderData, location: e.target.value })}
-                      className="w-full pr-10 pl-4 py-3 border-2 border-gray-100 rounded-xl focus:border-primary-teal outline-none transition-all"
-                    />
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <MapPin className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                      <input
+                        type="text"
+                        placeholder="اكتب العنوان أو اختر من الخريطة..."
+                        value={newOrderData.location}
+                        onChange={(e) => setNewOrderData({ ...newOrderData, location: e.target.value })}
+                        className="w-full pr-10 pl-4 py-3 border-2 border-gray-100 rounded-xl focus:border-primary-teal outline-none transition-all"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowMapPicker(!showMapPicker)}
+                      className={`px-4 py-3 rounded-xl font-semibold transition-all flex items-center gap-2 whitespace-nowrap ${showMapPicker ? 'bg-teal-500 text-white' : 'bg-teal-50 text-teal-700 hover:bg-teal-100 border border-teal-200'}`}
+                    >
+                      <Target size={18} />
+                      الخريطة
+                    </button>
                   </div>
+                  {newOrderData.coordinates && (
+                    <p className="text-xs text-green-700 bg-green-50 px-3 py-1.5 rounded-lg flex items-center gap-1">
+                      <CheckCircle size={14} />
+                      تم تحديد الإحداثيات: {newOrderData.coordinates.latitude.toFixed(5)}, {newOrderData.coordinates.longitude.toFixed(5)}
+                    </p>
+                  )}
+                  {showMapPicker && (
+                    <MapPickerWidget
+                      coordinates={newOrderData.coordinates}
+                      onLocationSelect={(coords, address) => {
+                        setNewOrderData(prev => ({
+                          ...prev,
+                          coordinates: coords,
+                          location: address || prev.location || `${coords.latitude.toFixed(5)}, ${coords.longitude.toFixed(5)}`
+                        }));
+                      }}
+                    />
+                  )}
                 </div>
 
                 <div className="space-y-2">

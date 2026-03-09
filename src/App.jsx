@@ -19,6 +19,7 @@ import ProviderProfileRequests from './pages/ProviderProfileRequests';
 import AppSettings from './pages/AppSettings';
 import Admins from './pages/Admins';
 import Banners from './pages/Banners';
+import { SupportTickets } from './pages/SupportTickets';
 import { AddProvider } from './pages/AddProvider';
 import { Login } from './pages/Login';
 
@@ -88,6 +89,7 @@ function App() {
           <Route path="provider-profile-requests" element={<ProviderProfileRequests />} />
           <Route path="app-settings" element={<AppSettings />} />
           <Route path="banners" element={<Banners />} />
+          <Route path="support-tickets" element={<SupportTickets />} />
           <Route path="admins" element={<Admins />} />
         </Route>
       </Routes>
