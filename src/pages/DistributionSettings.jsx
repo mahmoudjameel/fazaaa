@@ -5,44 +5,19 @@ import { db } from '../services/firebase';
 
 export const DistributionSettings = () => {
   const [settings, setSettings] = useState({
-    autoAssignment: {
-      enabled: true,
-      maxDistance: 50,
-      maxProvidersPerOrder: 3,
-      priorityRadius: 10,
-      responseTimeout: 300
-    },
-    pricing: {
-      baseFee: 10,
-      commissionRate: 0.15,
-      vipCommissionRate: 0.10,
-      emergencyFee: 25,
-      nightFee: 15,
-      minimumOrderAmount: 50,
-      providerCommissionPerOrder: 5
-    },
-    serviceAreas: {
-      defaultRadius: 50,
-      vipRadius: 100,
-      emergencyRadius: 200,
-      expansionEnabled: false
-    },
-    notifications: {
-      smsEnabled: true,
-      emailEnabled: true,
-      pushEnabled: true,
-      adminNotifications: true
-    },
-    workingHours: {
-      start: "06:00",
-      end: "23:00",
-      weekendEnabled: true,
-      emergency24h: true
-    }
+    vipEnabled: true,
+    searchStages: [
+      { id: 1, type: 'vip', minRadius: 0, maxRadius: 6, waitTime: 20 },
+      { id: 2, type: 'all', minRadius: 0, maxRadius: 4, waitTime: 20 },
+      { id: 3, type: 'all', minRadius: 4, maxRadius: 7, waitTime: 20 },
+      { id: 4, type: 'all', minRadius: 7, maxRadius: 10, waitTime: 20 },
+      { id: 5, type: 'all', minRadius: 10, maxRadius: 13, waitTime: 20 },
+      { id: 6, type: 'all', minRadius: 13, maxRadius: 16, waitTime: 20 },
+      { id: 7, type: 'all', minRadius: 16, maxRadius: 19, waitTime: 20 }
+    ]
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState('assignment');
 
   useEffect(() => {
     fetchSettings();
@@ -54,7 +29,11 @@ export const DistributionSettings = () => {
       const settingsSnap = await getDoc(settingsRef);
       
       if (settingsSnap.exists()) {
-        setSettings(settingsSnap.data());
+        const data = settingsSnap.data();
+        setSettings({
+          vipEnabled: data.vipEnabled ?? true,
+          searchStages: data.searchStages || []
+        });
       }
     } catch (error) {
       console.error('Error fetching settings:', error);
@@ -68,7 +47,8 @@ export const DistributionSettings = () => {
     try {
       const settingsRef = doc(db, 'settings', 'distribution');
       await updateDoc(settingsRef, {
-        ...settings,
+        vipEnabled: settings.vipEnabled,
+        searchStages: settings.searchStages,
         updatedAt: new Date().toISOString()
       });
       
@@ -82,56 +62,22 @@ export const DistributionSettings = () => {
   };
 
   const handleReset = async () => {
-    if (confirm('هل أنت متأكد من إعادة تعيين جميع الإعدادات إلى القيم الافتراضية؟')) {
+    if (confirm('هل أنت متأكد من إعادة تعيين الإعدادات إلى القيم الافتراضية؟')) {
       const defaultSettings = {
-        autoAssignment: {
-          enabled: true,
-          maxDistance: 50,
-          maxProvidersPerOrder: 3,
-          priorityRadius: 10,
-          responseTimeout: 300
-        },
-        pricing: {
-          baseFee: 10,
-          commissionRate: 0.15,
-          vipCommissionRate: 0.10,
-          emergencyFee: 25,
-          nightFee: 15,
-          minimumOrderAmount: 50,
-          providerCommissionPerOrder: 5
-        },
-        serviceAreas: {
-          defaultRadius: 50,
-          vipRadius: 100,
-          emergencyRadius: 200,
-          expansionEnabled: false
-        },
-        notifications: {
-          smsEnabled: true,
-          emailEnabled: true,
-          pushEnabled: true,
-          adminNotifications: true
-        },
-        workingHours: {
-          start: "06:00",
-          end: "23:00",
-          weekendEnabled: true,
-          emergency24h: true
-        }
+        vipEnabled: true,
+        searchStages: [
+          { id: 1, type: 'vip', minRadius: 0, maxRadius: 6, waitTime: 20 },
+          { id: 2, type: 'all', minRadius: 0, maxRadius: 4, waitTime: 20 },
+          { id: 3, type: 'all', minRadius: 4, maxRadius: 7, waitTime: 20 },
+          { id: 4, type: 'all', minRadius: 7, maxRadius: 10, waitTime: 20 },
+          { id: 5, type: 'all', minRadius: 10, maxRadius: 13, waitTime: 20 },
+          { id: 6, type: 'all', minRadius: 13, maxRadius: 16, waitTime: 20 },
+          { id: 7, type: 'all', minRadius: 16, maxRadius: 19, waitTime: 20 }
+        ]
       };
       
       setSettings(defaultSettings);
     }
-  };
-
-  const updateSetting = (category, key, value) => {
-    setSettings(prev => ({
-      ...prev,
-      [category]: {
-        ...prev[category],
-        [key]: value
-      }
-    }));
   };
 
   if (loading) {
@@ -142,20 +88,12 @@ export const DistributionSettings = () => {
     );
   }
 
-  const tabs = [
-    { id: 'assignment', label: 'التوزيع التلقائي', icon: Users },
-    { id: 'pricing', label: 'الأسعار والعمولات', icon: DollarSign },
-    { id: 'areas', label: 'مناطق الخدمة', icon: MapPin },
-    { id: 'notifications', label: 'الإشعارات', icon: Settings },
-    { id: 'hours', label: 'ساعات العمل', icon: Clock }
-  ];
-
   return (
     <div>
       <div className="mb-8 flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-black text-gray-800 mb-2">إعدادات التوزيع</h1>
-          <p className="text-gray-600">إدارة إعدادات توزيع الطلبات والخدمات</p>
+          <h1 className="text-3xl font-black text-gray-800 mb-2">إعدادات توزيع وتوسيع الطلبات</h1>
+          <p className="text-gray-600">إدارة حلقات البحث الجغرافي (Zoning) وتوقيت ظهور الإشعارات.</p>
         </div>
         <div className="flex gap-3">
           <button
@@ -163,7 +101,7 @@ export const DistributionSettings = () => {
             className="flex items-center gap-2 px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-all font-semibold"
           >
             <RotateCcw size={20} />
-            إعادة تعيين
+            إعادة تعيين الافتراضي
           </button>
           <button
             onClick={handleSave}
@@ -171,379 +109,167 @@ export const DistributionSettings = () => {
             className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:shadow-lg transition-all font-semibold disabled:opacity-50"
           >
             <Save size={20} />
-            {saving ? 'جاري الحفظ...' : 'حفظ الإعدادات'}
+            {saving ? 'جاري الحفظ...' : 'حفظ التغييرات'}
           </button>
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="bg-white rounded-2xl shadow-lg mb-6">
-        <div className="border-b border-gray-200 overflow-x-auto">
-          <nav className="flex flex-nowrap space-x-4 md:space-x-8 px-4 md:px-6 min-w-max" dir="ltr">
-            {tabs.map((tab) => {
-              const Icon = tab.icon;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-1 md:gap-2 py-4 px-2 md:px-1 border-b-2 font-medium text-xs md:text-sm transition-all whitespace-nowrap flex-shrink-0 ${
-                    activeTab === tab.id
-                      ? 'border-green-500 text-green-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700'
-                  }`}
-                >
-                  <Icon size={14} className="md:w-4 md:h-4" />
-                  <span>{tab.label}</span>
-                </button>
-              );
-            })}
-          </nav>
-        </div>
-
-        <div className="p-6">
-          {/* Auto Assignment Settings */}
-          {activeTab === 'assignment' && (
-            <div className="space-y-6">
-              <div>
-                <h3 className="text-lg font-semibold text-gray-800 mb-4">إعدادات التوزيع التلقائي</h3>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                    <div>
-                      <label className="font-semibold text-gray-700">تفعيل التوزيع التلقائي</label>
-                      <p className="text-sm text-gray-500 mt-1">توزيع الطلبات تلقائياً على المزودين المتاحين</p>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={settings.autoAssignment.enabled}
-                      onChange={(e) => updateSetting('autoAssignment', 'enabled', e.target.checked)}
-                      className="w-5 h-5 text-green-600 border-2 border-gray-300 rounded focus:ring-green-500"
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">الحد الأقصى للمسافة (كم)</label>
-                      <input
-                        type="number"
-                        min="1"
-                        max="200"
-                        value={settings.autoAssignment.maxDistance}
-                        onChange={(e) => updateSetting('autoAssignment', 'maxDistance', parseInt(e.target.value))}
-                        className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">الحد الأقصى للمزودين لكل طلب</label>
-                      <input
-                        type="number"
-                        min="1"
-                        max="10"
-                        value={settings.autoAssignment.maxProvidersPerOrder}
-                        onChange={(e) => updateSetting('autoAssignment', 'maxProvidersPerOrder', parseInt(e.target.value))}
-                        className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">نطاق الأولوية (كم)</label>
-                      <input
-                        type="number"
-                        min="1"
-                        max="50"
-                        value={settings.autoAssignment.priorityRadius}
-                        onChange={(e) => updateSetting('autoAssignment', 'priorityRadius', parseInt(e.target.value))}
-                        className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">مهلة الاستجابة (ثانية)</label>
-                      <input
-                        type="number"
-                        min="60"
-                        max="1800"
-                        value={settings.autoAssignment.responseTimeout}
-                        onChange={(e) => updateSetting('autoAssignment', 'responseTimeout', parseInt(e.target.value))}
-                        className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
+      {/* VIP Status Toggle Card */}
+      <div className="bg-white rounded-2xl shadow-lg mb-6 p-6 border-r-4 border-amber-500">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className={`p-3 rounded-xl ${settings.vipEnabled ? 'bg-amber-100 text-amber-600' : 'bg-gray-100 text-gray-400'}`}>
+              <Users size={24} />
             </div>
-          )}
-
-          {/* Pricing Settings */}
-          {activeTab === 'pricing' && (
-            <div className="space-y-6">
-              <div>
-                <h3 className="text-lg font-semibold text-gray-800 mb-4">إعدادات الأسعار والعمولات</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">الرسوم الأساسية (ر.س)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={settings.pricing.baseFee}
-                      onChange={(e) => updateSetting('pricing', 'baseFee', parseFloat(e.target.value))}
-                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">نسبة العمولة (%)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      max="1"
-                      step="0.01"
-                      value={settings.pricing.commissionRate}
-                      onChange={(e) => updateSetting('pricing', 'commissionRate', parseFloat(e.target.value))}
-                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">عمولة VIP (%)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      max="1"
-                      step="0.01"
-                      value={settings.pricing.vipCommissionRate}
-                      onChange={(e) => updateSetting('pricing', 'vipCommissionRate', parseFloat(e.target.value))}
-                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">رسوم الطوارئ (ر.س)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={settings.pricing.emergencyFee}
-                      onChange={(e) => updateSetting('pricing', 'emergencyFee', parseFloat(e.target.value))}
-                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">رسوم الليل (ر.س)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={settings.pricing.nightFee}
-                      onChange={(e) => updateSetting('pricing', 'nightFee', parseFloat(e.target.value))}
-                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">الحد الأدنى للطلب (ر.س)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={settings.pricing.minimumOrderAmount}
-                      onChange={(e) => updateSetting('pricing', 'minimumOrderAmount', parseFloat(e.target.value))}
-                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">خصم محفظة المزود لكل طلب مكتمل (ر.س)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={settings.pricing.providerCommissionPerOrder ?? 5}
-                      onChange={(e) => updateSetting('pricing', 'providerCommissionPerOrder', parseFloat(e.target.value) || 0)}
-                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">يُخصم من محفظة المزود مباشرة عند اكتمال الطلب</p>
-                  </div>
-                </div>
-              </div>
+            <div>
+              <h3 className="text-lg font-bold text-gray-800">نظام أولوية VIP</h3>
+              <p className="text-sm text-gray-500">عند التعطيل، سيتم معاملة جميع المزودين كمستوى واحد في كافة النطاقات.</p>
             </div>
-          )}
-
-          {/* Service Areas Settings */}
-          {activeTab === 'areas' && (
-            <div className="space-y-6">
-              <div>
-                <h3 className="text-lg font-semibold text-gray-800 mb-4">إعدادات مناطق الخدمة</h3>
-                <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">نطاق الخدمة الافتراضي (كم)</label>
-                      <input
-                        type="number"
-                        min="1"
-                        max="200"
-                        value={settings.serviceAreas.defaultRadius}
-                        onChange={(e) => updateSetting('serviceAreas', 'defaultRadius', parseInt(e.target.value))}
-                        className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">نطاق خدمة VIP (كم)</label>
-                      <input
-                        type="number"
-                        min="1"
-                        max="300"
-                        value={settings.serviceAreas.vipRadius}
-                        onChange={(e) => updateSetting('serviceAreas', 'vipRadius', parseInt(e.target.value))}
-                        className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">نطاق الطوارئ (كم)</label>
-                      <input
-                        type="number"
-                        min="1"
-                        max="500"
-                        value={settings.serviceAreas.emergencyRadius}
-                        onChange={(e) => updateSetting('serviceAreas', 'emergencyRadius', parseInt(e.target.value))}
-                        className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none"
-                      />
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                    <div>
-                      <label className="font-semibold text-gray-700">توسيع مناطق الخدمة تلقائياً</label>
-                      <p className="text-sm text-gray-500 mt-1">توسيع نطاق الخدمة عند عدم وجود مزودين</p>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={settings.serviceAreas.expansionEnabled}
-                      onChange={(e) => updateSetting('serviceAreas', 'expansionEnabled', e.target.checked)}
-                      className="w-5 h-5 text-green-600 border-2 border-gray-300 rounded focus:ring-green-500"
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Notifications Settings */}
-          {activeTab === 'notifications' && (
-            <div className="space-y-6">
-              <div>
-                <h3 className="text-lg font-semibold text-gray-800 mb-4">إعدادات الإشعارات</h3>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                    <div>
-                      <label className="font-semibold text-gray-700">إشعارات الرسائل النصية</label>
-                      <p className="text-sm text-gray-500 mt-1">إرسال إشعارات عبر الرسائل النصية</p>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={settings.notifications.smsEnabled}
-                      onChange={(e) => updateSetting('notifications', 'smsEnabled', e.target.checked)}
-                      className="w-5 h-5 text-green-600 border-2 border-gray-300 rounded focus:ring-green-500"
-                    />
-                  </div>
-                  <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                    <div>
-                      <label className="font-semibold text-gray-700">إشعارات البريد الإلكتروني</label>
-                      <p className="text-sm text-gray-500 mt-1">إرسال إشعارات عبر البريد الإلكتروني</p>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={settings.notifications.emailEnabled}
-                      onChange={(e) => updateSetting('notifications', 'emailEnabled', e.target.checked)}
-                      className="w-5 h-5 text-green-600 border-2 border-gray-300 rounded focus:ring-green-500"
-                    />
-                  </div>
-                  <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                    <div>
-                      <label className="font-semibold text-gray-700">إشعارات الدفع</label>
-                      <p className="text-sm text-gray-500 mt-1">إرسال إشعارات فورية للتطبيق</p>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={settings.notifications.pushEnabled}
-                      onChange={(e) => updateSetting('notifications', 'pushEnabled', e.target.checked)}
-                      className="w-5 h-5 text-green-600 border-2 border-gray-300 rounded focus:ring-green-500"
-                    />
-                  </div>
-                  <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                    <div>
-                      <label className="font-semibold text-gray-700">إشعارات المدير</label>
-                      <p className="text-sm text-gray-500 mt-1">إرسال إشعارات مهمة للمديرين</p>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={settings.notifications.adminNotifications}
-                      onChange={(e) => updateSetting('notifications', 'adminNotifications', e.target.checked)}
-                      className="w-5 h-5 text-green-600 border-2 border-gray-300 rounded focus:ring-green-500"
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Working Hours Settings */}
-          {activeTab === 'hours' && (
-            <div className="space-y-6">
-              <div>
-                <h3 className="text-lg font-semibold text-gray-800 mb-4">إعدادات ساعات العمل</h3>
-                <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">وقت بدء العمل</label>
-                      <input
-                        type="time"
-                        value={settings.workingHours.start}
-                        onChange={(e) => updateSetting('workingHours', 'start', e.target.value)}
-                        className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">وقت انتهاء العمل</label>
-                      <input
-                        type="time"
-                        value={settings.workingHours.end}
-                        onChange={(e) => updateSetting('workingHours', 'end', e.target.value)}
-                        className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none"
-                      />
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                    <div>
-                      <label className="font-semibold text-gray-700">العمل في عطلة نهاية الأسبوع</label>
-                      <p className="text-sm text-gray-500 mt-1">توفير الخدمة خلال عطلة نهاية الأسبوع</p>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={settings.workingHours.weekendEnabled}
-                      onChange={(e) => updateSetting('workingHours', 'weekendEnabled', e.target.checked)}
-                      className="w-5 h-5 text-green-600 border-2 border-gray-300 rounded focus:ring-green-500"
-                    />
-                  </div>
-                  <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                    <div>
-                      <label className="font-semibold text-gray-700">خدمة الطوارئ 24/7</label>
-                      <p className="text-sm text-gray-500 mt-1">توفير خدمة الطوارئ على مدار الساعة</p>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={settings.workingHours.emergency24h}
-                      onChange={(e) => updateSetting('workingHours', 'emergency24h', e.target.checked)}
-                      className="w-5 h-5 text-green-600 border-2 border-gray-300 rounded focus:ring-green-500"
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
+          </div>
+          <div className="flex items-center gap-3 bg-gray-50 px-4 py-2 rounded-xl">
+            <span className={`text-sm font-bold ${settings.vipEnabled ? 'text-green-600' : 'text-red-500'}`}>
+              {settings.vipEnabled ? 'مفعل' : 'معطل'}
+            </span>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input 
+                type="checkbox" 
+                className="sr-only peer"
+                checked={settings.vipEnabled}
+                onChange={(e) => setSettings({...settings, vipEnabled: e.target.checked})}
+              />
+              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+            </label>
+          </div>
         </div>
       </div>
 
-      {/* Warning Card */}
+      <div className="bg-white rounded-2xl shadow-lg mb-6 p-6">
+        <div className="space-y-6">
+          <div className="flex justify-between items-center mb-4">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-800">توزيع الطلب حسب الحلقات (Strict Zoning)</h3>
+              <p className="text-sm text-gray-500">سيتم البحث في كل حلقة بشكل منفصل وبالترتيب الزمني المكتوب.</p>
+            </div>
+            <button
+              onClick={() => {
+                const newId = settings.searchStages.length > 0
+                  ? Math.max(...settings.searchStages.map(s => s.id)) + 1
+                  : 1;
+                setSettings(prev => ({
+                  ...prev,
+                  searchStages: [...prev.searchStages, { id: newId, type: 'all', minRadius: 0, maxRadius: 20, waitTime: 20 }]
+                }));
+              }}
+              className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-sm font-bold transition-all"
+            >
+              + إضافة حلقة جديدة
+            </button>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-right border-collapse">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  <th className="p-4 text-sm font-bold text-gray-700">المرحلة</th>
+                  <th className="p-4 text-sm font-bold text-gray-700">نوع المزود</th>
+                  <th className="p-4 text-sm font-bold text-gray-700">من (كم)</th>
+                  <th className="p-4 text-sm font-bold text-gray-700">إلى (كم)</th>
+                  <th className="p-4 text-sm font-bold text-gray-700">الانتظار (ثانية)</th>
+                  <th className="p-4 text-sm font-bold text-gray-700">إجراءات</th>
+                </tr>
+              </thead>
+              <tbody>
+                {settings.searchStages?.map((stage, index) => (
+                  <tr key={stage.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                    <td className="p-4 font-bold text-gray-600">{index + 1}</td>
+                    <td className="p-4">
+                      <select
+                        value={stage.type}
+                        disabled={!settings.vipEnabled && stage.type !== 'all'}
+                        onChange={(e) => {
+                          const newStages = [...settings.searchStages];
+                          newStages[index].type = e.target.value;
+                          setSettings({ ...settings, searchStages: newStages });
+                        }}
+                        className={`bg-white border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:border-green-500 ${!settings.vipEnabled && stage.type !== 'all' ? 'opacity-50' : ''}`}
+                      >
+                        <option value="all">الكل (VIP + عام)</option>
+                        <option value="vip">VIP فقط</option>
+                        <option value="general">عام فقط</option>
+                      </select>
+                      {!settings.vipEnabled && stage.type !== 'all' && (
+                        <p className="text-[10px] text-amber-600 mt-1 italic">سيتم تجاهل الفلتر لأن VIP معطل</p>
+                      )}
+                    </td>
+                    <td className="p-4">
+                      <input
+                        type="number"
+                        value={stage.minRadius}
+                        onChange={(e) => {
+                          const newStages = [...settings.searchStages];
+                          newStages[index].minRadius = parseInt(e.target.value) || 0;
+                          setSettings({ ...settings, searchStages: newStages });
+                        }}
+                        className="w-20 border border-gray-300 rounded px-2 py-1 text-sm text-center"
+                      />
+                    </td>
+                    <td className="p-4">
+                      <input
+                        type="number"
+                        value={stage.maxRadius}
+                        onChange={(e) => {
+                          const newStages = [...settings.searchStages];
+                          newStages[index].maxRadius = parseInt(e.target.value) || 0;
+                          setSettings({ ...settings, searchStages: newStages });
+                        }}
+                        className="w-20 border border-gray-300 rounded px-2 py-1 text-sm text-center"
+                      />
+                    </td>
+                    <td className="p-4">
+                      <input
+                        type="number"
+                        value={stage.waitTime}
+                        onChange={(e) => {
+                          const newStages = [...settings.searchStages];
+                          newStages[index].waitTime = parseInt(e.target.value) || 0;
+                          setSettings({ ...settings, searchStages: newStages });
+                        }}
+                        className="w-20 border border-gray-300 rounded px-2 py-1 text-sm text-center"
+                      />
+                    </td>
+                    <td className="p-4">
+                      <button
+                        onClick={() => {
+                          const newStages = settings.searchStages.filter(s => s.id !== stage.id);
+                          setSettings({ ...settings, searchStages: newStages });
+                        }}
+                        className="text-red-500 hover:text-red-700 text-sm font-bold"
+                      >
+                        حذف
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {(!settings.searchStages || settings.searchStages.length === 0) && (
+                  <tr>
+                    <td colSpan="6" className="p-8 text-center text-gray-400 italic">
+                      لا توجد حلقات بحث معرفة. سيتم إغلاق الطلبات فوراً.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
       <div className="bg-yellow-50 border border-yellow-200 rounded-2xl p-6">
         <div className="flex items-start gap-3">
           <AlertTriangle className="text-yellow-600 mt-1" size={20} />
           <div>
             <h3 className="font-semibold text-yellow-800 mb-2">تنبيه هام</h3>
             <p className="text-yellow-700 text-sm">
-              قد تؤثر تغييرات الإعدادات على أداء النظام وتجربة المستخدمين. يرجى مراجعة جميع التغييرات بعناية قبل حفظها.
-              بعض الإعدادات قد تحتاج إلى إعادة تشغيل النظام لتطبيقها.
+              التغييرات هنا تنعكس فوراً على جميع الطلبات الجديدة. يرجى التأكد من أن الحلقات تغطي مساحات جغرافية منطقية لضمان وصول الخدمة للعملاء.
             </p>
           </div>
         </div>

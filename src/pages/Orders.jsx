@@ -39,6 +39,7 @@ import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
 import { collection, getDocs, doc, getDoc, updateDoc, query, orderBy, where, limit } from 'firebase/firestore';
 import { db } from '../services/firebase';
+import SAUDI_CITIES from '../services/cities.json';
 
 const MapPickerWidget = ({ coordinates, onLocationSelect }) => {
   const mapContainerRef = useRef(null);
@@ -221,7 +222,6 @@ export const Orders = () => {
   const [mainServices, setMainServices] = useState([]);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [loadingCustomer, setLoadingCustomer] = useState(false);
-  const [cities, setCities] = useState([]);
   const [services, setServices] = useState([]);
 
   // Manual Order State
@@ -262,7 +262,6 @@ export const Orders = () => {
 
     // جلب الخدمات الرئيسية
     fetchMainServices();
-    fetchCities();
     fetchServices();
 
     // Deep linking from Dashboard
@@ -287,15 +286,6 @@ export const Orders = () => {
     if (req) setSelectedRequest(req);
   }, [location.search, requests]);
 
-  const fetchCities = async () => {
-    try {
-      const querySnapshot = await getDocs(collection(db, 'cities'));
-      const citiesList = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setCities(citiesList);
-    } catch (error) {
-      console.error('Error fetching cities:', error);
-    }
-  };
 
   const fetchServices = async () => {
     try {
@@ -485,7 +475,6 @@ export const Orders = () => {
       } catch (e) {
         console.warn('requests query failed:', e.message);
       }
-
       // 3) جلب من orders collection
       try {
         const q2 = query(collection(db, 'orders'), where('providerId', '==', providerId));
@@ -517,65 +506,59 @@ export const Orders = () => {
   const filterOrders = () => {
     let filtered = requests;
     const sTerm = searchTerm.trim();
-    // استخراج الأرقام فقط من نص البحث لتسهيل مقارنة الهواتف
-    const searchDigits = sTerm.replace(/\D/g, '');
-    // التحقق مما إذا كان البحث "رقمي" المنحى (رقم طلب أو جزء كبير من هاتف)
-    // نعتبره بحثاً رقمياً شاملاً إذا كان المدخل أرقاماً فقط، أو إذا استخرجنا أكثر من 4 أرقام
-    const isNumericSearch = searchDigits.length >= 4 || (/^\d+$/.test(sTerm) && sTerm.length >= 3);
 
-    // إذا لم يكن بحثاً رقمياً، يتم تطبيق الفلاتر المعتادة
-    if (!isNumericSearch) {
-      // Filter by Service
-      if (serviceFilter !== 'all') {
-        filtered = filtered.filter(req => req.serviceId === serviceFilter || req.serviceType === serviceFilter);
-      }
+    // 1. Filter by Service
+    if (serviceFilter !== 'all') {
+      filtered = filtered.filter(req => req.serviceId === serviceFilter || req.serviceType === serviceFilter);
+    }
 
-      // Filter by City
-      if (cityFilter !== 'all') {
-        filtered = filtered.filter(req => req.cityId === cityFilter || req.city === cityFilter);
-      }
+    // 2. Filter by City
+    if (cityFilter !== 'all') {
+      const cityName = SAUDI_CITIES.find(c => c.id === cityFilter)?.name || cityFilter;
+      filtered = filtered.filter(req => {
+        const matchesId = req.cityId === cityFilter || req.city === cityFilter;
+        const matchesName = req.city === cityName;
+        const matchesLocation = req.location?.includes(cityName) || req.location?.includes(cityFilter);
+        return matchesId || matchesName || matchesLocation;
+      });
+    }
 
-      // Filter by Status
-      if (statusFilter !== 'all') {
-        if (statusFilter === 'active') {
-          filtered = filtered.filter((r) => ['searching', 'assigned', 'en_route', 'arrived', 'in_progress'].includes(r.status));
-        } else if (statusFilter === 'cancelled') {
-          filtered = filtered.filter((r) => r.status?.includes('canceled'));
-        } else if (statusFilter === 'cancelled_by_customer') {
-          filtered = filtered.filter((r) => r.status === 'canceled_by_client' || r.status === 'canceled_by_client_with_reason');
-        } else if (statusFilter === 'cancelled_by_provider') {
-          filtered = filtered.filter((r) => r.status === 'canceled_by_provider' || r.status === 'canceled_by_provider_with_reason');
-        } else if (statusFilter === 'no_providers_timeout') {
-          // فلترة خاصة لعدم وجود مزودين وانتهاء المهلة
-          filtered = filtered.filter(o => {
-            if (o.status === 'timed_out') return true;
-            if (o.status !== 'canceled_by_client' && o.status !== 'canceled_by_client_with_reason') {
-              return false;
-            }
-            const wasAccepted = o.assignedAt || (Array.isArray(o.history) && o.history.some(h => h.status === 'assigned'));
-            if (wasAccepted) return false;
-            const cancelReason = o.cancelReason || (Array.isArray(o.history) ? o.history.find(h => h.cancelReason)?.cancelReason : '') || '';
-            const timeoutReasons = ['لا يوجد مزودين متاحين', 'ضغط على الشبكة', 'انتهى وقت البحث', 'لايوجد شبكة متاحة', 'ضغط على الشبكة', 'نعتذر لايوجد شبكة متاحة في منطقتكم', 'نعتذر يوجد ضغط على الشبكة في الوقت الحالي'];
-            return timeoutReasons.some(r => cancelReason.includes(r));
-          });
-        } else if (statusFilter === 'rejections_after_accept') {
-          // فلترة للرفض بعد القبول
-          filtered = filtered.filter(o => {
-            const wasAccepted = o.assignedAt || (Array.isArray(o.history) && o.history.some(h => h.status === 'assigned'));
-            if (!wasAccepted) return false;
-
-            const isCancelled = o.status?.includes('canceled') ||
-              (Array.isArray(o.history) && o.history.some(h => h.status?.includes('canceled') || h.action?.includes('cancellation')));
-
-            return isCancelled;
-          });
-        } else {
-          filtered = filtered.filter((r) => r.status === statusFilter);
-        }
+    // 3. Filter by Status
+    if (statusFilter !== 'all') {
+      if (statusFilter === 'active') {
+        filtered = filtered.filter((r) => ['searching', 'assigned', 'en_route', 'arrived', 'in_progress'].includes(r.status));
+      } else if (statusFilter === 'cancelled') {
+        filtered = filtered.filter((r) => r.status?.includes('canceled'));
+      } else if (statusFilter === 'cancelled_by_customer') {
+        filtered = filtered.filter((r) => r.status === 'canceled_by_client' || r.status === 'canceled_by_client_with_reason');
+      } else if (statusFilter === 'cancelled_by_provider') {
+        filtered = filtered.filter((r) => r.status === 'canceled_by_provider' || r.status === 'canceled_by_provider_with_reason');
+      } else if (statusFilter === 'no_providers_timeout') {
+        filtered = filtered.filter(o => {
+          if (o.status === 'timed_out') return true;
+          if (o.status !== 'canceled_by_client' && o.status !== 'canceled_by_client_with_reason') {
+            return false;
+          }
+          const wasAccepted = o.assignedAt || (Array.isArray(o.history) && o.history.some(h => h.status === 'assigned'));
+          if (wasAccepted) return false;
+          const cancelReason = o.cancelReason || (Array.isArray(o.history) ? o.history.find(h => h.cancelReason)?.cancelReason : '') || '';
+          const timeoutReasons = ['لا يوجد مزودين متاحين', 'ضغط على الشبكة', 'انتهى وقت البحث', 'لايوجد شبكة متاحة', 'ضغط على الشبكة', 'نعتذر لايوجد شبكة متاحة في منطقتكم', 'نعتذر يوجد ضغط على الشبكة في الوقت الحالي'];
+          return timeoutReasons.some(r => cancelReason.includes(r));
+        });
+      } else if (statusFilter === 'rejections_after_accept') {
+        filtered = filtered.filter(o => {
+          const wasAccepted = o.assignedAt || (Array.isArray(o.history) && o.history.some(h => h.status === 'assigned'));
+          if (!wasAccepted) return false;
+          const isCancelled = o.status?.includes('canceled') ||
+            (Array.isArray(o.history) && o.history.some(h => h.status?.includes('canceled') || h.action?.includes('cancellation')));
+          return isCancelled;
+        });
+      } else {
+        filtered = filtered.filter((r) => r.status === statusFilter);
       }
     }
 
-    // تطبيق البحث
+    // 4. تطبيق البحث (Search)
     if (sTerm) {
       const searchLower = sTerm.toLowerCase();
       const normalize = (val) => String(val || '').replace(/\D/g, '');
@@ -583,20 +566,13 @@ export const Orders = () => {
 
       filtered = filtered.filter(
         (r) => {
-          // 1. البحث برقم الطلب (Order Number)
           const matchOrder = r.orderNumber != null && String(r.orderNumber).includes(sTerm);
-
-          // 2. البحث برقم الهاتف - نقوم بتنظيف الرقمين من أي مسافات أو رموز للمقارنة
           const matchCustomerPhone = normalizedSearch && normalize(r.customerPhone).includes(normalizedSearch);
           const matchProviderPhone = normalizedSearch && normalize(r.providerPhone).includes(normalizedSearch);
-
-          // 3. البحث الذكي عبر المعرفات (UIDs) التي وجدناها مسبقاً برقم الهاتف
           const matchUid = matchedUids.includes(r.customerId) ||
             matchedUids.includes(r.providerId) ||
             matchedUids.includes(r.userId) ||
             matchedUids.includes(r.uid);
-
-          // 4. البحث بالاسم أو الخدمة أو المعرف
           const matchText = r.id?.toLowerCase().includes(searchLower) ||
             r.customerName?.toLowerCase().includes(searchLower) ||
             r.providerName?.toLowerCase().includes(searchLower) ||
@@ -1221,7 +1197,7 @@ export const Orders = () => {
             className="w-full md:w-auto px-4 py-3 border-2 border-gray-100 rounded-xl focus:border-teal-400 focus:outline-none font-semibold text-gray-700"
           >
             <option value="all">كل المدن</option>
-            {cities.map(city => (
+            {SAUDI_CITIES.map(city => (
               <option key={city.id} value={city.id}>{city.name}</option>
             ))}
           </select>
@@ -1279,14 +1255,22 @@ export const Orders = () => {
                         )}
                       </div>
                       <div className="space-y-1 text-sm text-gray-600">
+                        {(order.city || order.cityId) && (
+                          <div className="flex items-center gap-2 text-teal-600 font-semibold mb-1">
+                            <MapPin size={16} className="shrink-0" />
+                            <span>
+                              {SAUDI_CITIES.find(c => c.id === order.cityId)?.name || order.city}
+                            </span>
+                          </div>
+                        )}
                         {order.location && (
                           <div className="flex items-center gap-2">
-                            <MapPin size={16} />
+                            <MapPin size={16} className="shrink-0 text-gray-400" />
                             <span>{order.location}</span>
                           </div>
                         )}
                         <div className="flex items-center gap-2">
-                          <Clock size={16} />
+                          <Clock size={16} className="shrink-0 text-gray-400" />
                           <span>
                             {(() => {
                               if (!order.createdAt) return '-';
@@ -2276,8 +2260,8 @@ export const Orders = () => {
 
                         const filteredList = activityFilter === 'completed' ? completed
                           : activityFilter === 'cancelled' ? cancelled
-                          : activityFilter === 'active' ? active
-                          : providerOrders;
+                            : activityFilter === 'active' ? active
+                              : providerOrders;
 
                         return (
                           <div className="space-y-4">
@@ -2319,9 +2303,9 @@ export const Orders = () => {
                             <div className="space-y-2">
                               <h5 className="text-[10px] sm:text-xs font-bold text-gray-400 uppercase tracking-wider">
                                 {activityFilter === 'all' ? `كل النشاطات (${filteredList.length})` :
-                                 activityFilter === 'completed' ? `المكتملة (${filteredList.length})` :
-                                 activityFilter === 'cancelled' ? `الملغية/الاعتذار (${filteredList.length})` :
-                                 `النشطة (${filteredList.length})`}
+                                  activityFilter === 'completed' ? `المكتملة (${filteredList.length})` :
+                                    activityFilter === 'cancelled' ? `الملغية/الاعتذار (${filteredList.length})` :
+                                      `النشطة (${filteredList.length})`}
                               </h5>
                               {filteredList.length > 0 ? (
                                 filteredList.slice(0, 10).map((order, idx) => {
@@ -2576,16 +2560,34 @@ export const Orders = () => {
                   )}
                 </div>
 
-                <div className="space-y-2">
-                  <label className="block text-sm font-semibold text-gray-700">السعر (ر.س)</label>
-                  <input
-                    type="number"
-                    required
-                    placeholder="0.00"
-                    value={newOrderData.price}
-                    onChange={(e) => setNewOrderData({ ...newOrderData, price: e.target.value })}
-                    className="w-full px-4 py-3 border-2 border-gray-100 rounded-xl focus:border-primary-teal outline-none transition-all"
-                  />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="block text-sm font-semibold text-gray-700">السعر (ر.س)</label>
+                    <input
+                      type="number"
+                      required
+                      placeholder="0.00"
+                      value={newOrderData.price}
+                      onChange={(e) => setNewOrderData({ ...newOrderData, price: e.target.value })}
+                      className="w-full px-4 py-3 border-2 border-gray-100 rounded-xl focus:border-primary-teal outline-none transition-all"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-sm font-semibold text-gray-700">المدينة</label>
+                    <select
+                      required
+                      value={newOrderData.cityId}
+                      onChange={(e) => setNewOrderData({ ...newOrderData, cityId: e.target.value })}
+                      className="w-full px-4 py-3 border-2 border-gray-100 rounded-xl focus:border-primary-teal outline-none transition-all"
+                    >
+                      <option value="">اختر المدينة...</option>
+                      {SAUDI_CITIES.map((city) => (
+                        <option key={city.id} value={city.id}>
+                          {city.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
 
                 {/* الموقع - خريطة تفاعلية + بحث مع اقتراحات */}

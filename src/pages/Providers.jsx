@@ -1504,8 +1504,8 @@ export const Providers = () => {
                               typeof providerService === 'object'
                                 ? providerService.status
                                 : providerService === true
-                                ? 'approved'
-                                : 'pending';
+                                  ? 'approved'
+                                  : 'pending';
 
                             return (
                               <div
@@ -1516,19 +1516,18 @@ export const Providers = () => {
                                   <p className="font-bold text-gray-800">{service.name}</p>
                                   {isRequested ? (
                                     <span
-                                      className={`text-xs px-2 py-0.5 rounded-full ${
-                                        status === 'approved'
+                                      className={`text-xs px-2 py-0.5 rounded-full ${status === 'approved'
                                           ? 'bg-green-100 text-green-700'
                                           : status === 'rejected'
-                                          ? 'bg-red-100 text-red-700'
-                                          : 'bg-yellow-100 text-yellow-700'
-                                      }`}
+                                            ? 'bg-red-100 text-red-700'
+                                            : 'bg-yellow-100 text-yellow-700'
+                                        }`}
                                     >
                                       {status === 'approved'
                                         ? '✅ مقبول'
                                         : status === 'rejected'
-                                        ? '❌ مرفوض'
-                                        : '⏳ قيد المراجعة'}
+                                          ? '❌ مرفوض'
+                                          : '⏳ قيد المراجعة'}
                                     </span>
                                   ) : (
                                     <span className="text-xs text-gray-400 font-medium">غير مشترك</span>
@@ -1745,11 +1744,10 @@ export const Providers = () => {
                                   setWalletAmountError('');
                                   setWalletAdjustment({ ...walletAdjustment, amount: e.target.value });
                                 }}
-                                className={`px-4 py-3 rounded-xl border-2 focus:outline-none font-bold ${
-                                  walletAmountError
+                                className={`px-4 py-3 rounded-xl border-2 focus:outline-none font-bold ${walletAmountError
                                     ? 'border-red-400 focus:border-red-500'
                                     : 'border-gray-200 focus:border-teal-400'
-                                }`}
+                                  }`}
                               />
                             </div>
                             {walletAmountError && (
