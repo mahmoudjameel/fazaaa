@@ -23,6 +23,7 @@ import {
   Bell,
   ImageIcon,
   Ticket,
+  Timer
 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
@@ -151,6 +152,14 @@ export const Layout = () => {
       icon: ShoppingBag,
       label: 'إدارة الطلبات',
       color: 'from-primary-teal to-teal-600',
+      category: 'management',
+    },
+    {
+      id: 'sla_tracking',
+      path: '/sla-tracking',
+      icon: Timer,
+      label: 'متابعة SLA الاستجابة',
+      color: 'from-orange-500 to-red-600',
       category: 'management',
     },
     {

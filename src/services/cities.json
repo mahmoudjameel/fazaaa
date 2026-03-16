@@ -2,101 +2,121 @@
     {
         "id": "riyadh",
         "name": "الرياض",
-        "nameEn": "Riyadh"
+        "nameEn": "Riyadh",
+        "coordinates": { "lat": 24.7136, "lng": 46.6753 }
     },
     {
         "id": "jeddah",
         "name": "جدة",
-        "nameEn": "Jeddah"
+        "nameEn": "Jeddah",
+        "coordinates": { "lat": 21.4858, "lng": 39.1925 }
     },
     {
         "id": "mecca",
         "name": "مكة المكرمة",
-        "nameEn": "Mecca"
+        "nameEn": "Mecca",
+        "coordinates": { "lat": 21.3891, "lng": 39.8579 }
     },
     {
         "id": "medina",
         "name": "المدينة المنورة",
-        "nameEn": "Medina"
+        "nameEn": "Medina",
+        "coordinates": { "lat": 24.5247, "lng": 39.5692 }
     },
     {
         "id": "dammam",
         "name": "الدمام",
-        "nameEn": "Dammam"
+        "nameEn": "Dammam",
+        "coordinates": { "lat": 26.4207, "lng": 50.0888 }
     },
     {
         "id": "khobar",
         "name": "الخبر",
-        "nameEn": "Khobar"
+        "nameEn": "Khobar",
+        "coordinates": { "lat": 26.2172, "lng": 50.1971 }
     },
     {
         "id": "abha",
         "name": "أبها",
-        "nameEn": "Abha"
+        "nameEn": "Abha",
+        "coordinates": { "lat": 18.2164, "lng": 42.5053 }
     },
     {
         "id": "tabuk",
         "name": "تبوك",
-        "nameEn": "Tabuk"
+        "nameEn": "Tabuk",
+        "coordinates": { "lat": 28.3835, "lng": 36.5662 }
     },
     {
         "id": "buraidah",
         "name": "بريدة",
-        "nameEn": "Buraidah"
+        "nameEn": "Buraidah",
+        "coordinates": { "lat": 26.3260, "lng": 43.9750 }
     },
     {
         "id": "khamis-mushait",
         "name": "خميس مشيط",
-        "nameEn": "Khamis Mushait"
+        "nameEn": "Khamis Mushait",
+        "coordinates": { "lat": 18.3033, "lng": 42.7317 }
     },
     {
         "id": "hofuf",
         "name": "الهفوف",
-        "nameEn": "Hofuf"
+        "nameEn": "Hofuf",
+        "coordinates": { "lat": 25.3622, "lng": 49.5911 }
     },
     {
         "id": "jubail",
         "name": "الجبيل",
-        "nameEn": "Jubail"
+        "nameEn": "Jubail",
+        "coordinates": { "lat": 27.0117, "lng": 49.6583 }
     },
     {
         "id": "hail",
         "name": "حائل",
-        "nameEn": "Hail"
+        "nameEn": "Hail",
+        "coordinates": { "lat": 27.5219, "lng": 41.6961 }
     },
     {
         "id": "najran",
         "name": "نجران",
-        "nameEn": "Najran"
+        "nameEn": "Najran",
+        "coordinates": { "lat": 17.4933, "lng": 44.1322 }
     },
     {
         "id": "yanbu",
         "name": "ينبع",
-        "nameEn": "Yanbu"
+        "nameEn": "Yanbu",
+        "coordinates": { "lat": 24.0891, "lng": 38.0637 }
     },
     {
         "id": "qatif",
         "name": "القطيف",
-        "nameEn": "Qatif"
+        "nameEn": "Qatif",
+        "coordinates": { "lat": 26.5170, "lng": 50.0244 }
     },
     {
         "id": "arar",
         "name": "عرعر",
-        "nameEn": "Arar"
+        "nameEn": "Arar",
+        "coordinates": { "lat": 30.9753, "lng": 41.0381 }
     },
     {
         "id": "sakaka",
         "name": "سكاكا",
-        "nameEn": "Sakaka"
+        "nameEn": "Sakaka",
+        "coordinates": { "lat": 29.9697, "lng": 40.2064 }
     },
     {
         "id": "jazan",
         "name": "جيزان",
-        "nameEn": "Jazan"
+        "nameEn": "Jazan",
+        "coordinates": { "lat": 16.8892, "lng": 42.5706 }
     },
     {
         "id": "al-bahah",
         "name": "الباحة",
-        "nameEn": "Al-Bahah"
+        "nameEn": "Al-Bahah",
+        "coordinates": { "lat": 20.0129, "lng": 41.4677 }
     }
 ]

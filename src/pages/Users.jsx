@@ -5,7 +5,8 @@ import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { db, secondaryAuth } from '../services/firebase';
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
-import SAUDI_CITIES from '../services/cities.json';
+import { getAllCities } from '../services/adminService';
+import SAUDI_CITIES_FALLBACK from '../services/cities.json';
 
 
 export const Users = () => {
@@ -15,6 +16,7 @@ export const Users = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [cityFilter, setCityFilter] = useState('all');
+  const [cities, setCities] = useState(SAUDI_CITIES_FALLBACK);
   const [selectedUser, setSelectedUser] = useState(null);
   const [userOrders, setUserOrders] = useState([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
@@ -28,6 +30,15 @@ export const Users = () => {
   const [isAddingUser, setIsAddingUser] = useState(false);
 
   useEffect(() => {
+    // Fetch Cities
+    const fetchCities = async () => {
+      const result = await getAllCities();
+      if (result.success && result.cities.length > 0) {
+        setCities(result.cities);
+      }
+    };
+    fetchCities();
+
     fetchUsers();
   }, []);
 
@@ -297,7 +308,7 @@ export const Users = () => {
             className="w-full md:w-auto px-4 py-2.5 sm:py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none text-sm sm:text-base text-right"
           >
             <option value="all">جميع المدن</option>
-            {SAUDI_CITIES.map(city => (
+            {cities.map(city => (
               <option key={city.id} value={city.id}>{city.name}</option>
             ))}
           </select>
@@ -359,7 +370,7 @@ export const Users = () => {
                         {user.city && (
                           <div className="flex items-center gap-2">
                             <MapPin className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
-                            <span>المدينة: {SAUDI_CITIES.find(c => c.id === user.city)?.name || user.city}</span>
+                            <span>المدينة: {cities.find(c => c.id === user.city)?.name || user.city}</span>
                           </div>
                         )}
                       </div>
@@ -440,7 +451,7 @@ export const Users = () => {
                   <div>
                     <h3 className="font-semibold text-sm sm:text-base text-gray-700 mb-1 sm:mb-2">المدينة</h3>
                     <p className="text-sm sm:text-base text-gray-800">
-                      {SAUDI_CITIES.find(c => c.id === selectedUser.city)?.name || selectedUser.city}
+                      {cities.find(c => c.id === selectedUser.city)?.name || selectedUser.city}
                     </p>
                   </div>
                 )}

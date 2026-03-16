@@ -177,6 +177,22 @@ export const updateProviderStatus = async (providerId, status) => {
   }
 };
 
+// Cities Management
+export const getAllCities = async () => {
+  try {
+    const citiesRef = collection(db, 'cities');
+    const querySnapshot = await getDocs(citiesRef);
+    const cities = [];
+    querySnapshot.forEach((doc) => {
+      cities.push({ ...doc.data(), id: doc.id });
+    });
+    return { success: true, cities };
+  } catch (error) {
+    console.error('Get cities error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
 // إدارة الخدمات للمزود
 export const updateProviderServiceStatus = async (providerId, serviceId, status) => {
   try {

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Search, Plus, Edit2, Trash2, MapPin, Users as UsersIcon, CheckCircle, XCircle, Settings } from 'lucide-react';
 import { collection, getDocs, doc, updateDoc, deleteDoc, addDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
+import SAUDI_CITIES_DEFAULTS from '../services/cities.json';
 
 export const Cities = () => {
   const [cities, setCities] = useState([]);
@@ -140,6 +141,36 @@ export const Cities = () => {
     });
   };
 
+  const seedDefaultCities = async () => {
+    if (!confirm('هل تريد إضافة المدن الافتراضية إلى النظام؟')) return;
+    
+    setLoading(true);
+    try {
+      const citiesRef = collection(db, 'cities');
+      for (const defaultCity of SAUDI_CITIES_DEFAULTS) {
+        // Check if exists by name to avoid duplicates
+        const alreadyExists = cities.some(c => c.name === defaultCity.name);
+        if (!alreadyExists) {
+          await addDoc(citiesRef, {
+            ...defaultCity,
+            isActive: true,
+            serviceRadius: 50,
+            priority: 'medium',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          });
+        }
+      }
+      await fetchCities();
+      alert('تمت إضافة المدن الافتراضية بنجاح');
+    } catch (error) {
+      console.error('Error seeding cities:', error);
+      alert('فشل إضافة المدن');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const getPriorityBadge = (priority) => {
     const badges = {
       low: { text: 'منخفض', color: 'bg-gray-100 text-gray-700' },
@@ -164,17 +195,28 @@ export const Cities = () => {
           <h1 className="text-2xl sm:text-3xl font-black text-gray-800 mb-1 sm:mb-2">إدارة المدن</h1>
           <p className="text-sm sm:text-base text-gray-600">إضافة وتعديل المدن وتعيين مديري المدن</p>
         </div>
-        <button
-          onClick={() => {
-            resetForm();
-            setIsModalOpen(true);
-          }}
-          className="flex items-center justify-center gap-2 px-4 sm:px-6 py-2.5 sm:py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:shadow-lg transition-all font-semibold text-sm sm:text-base"
-        >
-          <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
-          <span className="hidden sm:inline">إضافة مدينة جديدة</span>
-          <span className="sm:hidden">إضافة</span>
-        </button>
+        <div className="flex flex-col sm:flex-row gap-2">
+          {cities.length === 0 && (
+            <button
+              onClick={seedDefaultCities}
+              className="flex items-center justify-center gap-2 px-4 sm:px-6 py-2.5 sm:py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-all font-semibold text-sm sm:text-base shadow-sm"
+            >
+              <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
+              <span>إضافة المدن الافتراضية</span>
+            </button>
+          )}
+          <button
+            onClick={() => {
+              resetForm();
+              setIsModalOpen(true);
+            }}
+            className="flex items-center justify-center gap-2 px-4 sm:px-6 py-2.5 sm:py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:shadow-lg transition-all font-semibold text-sm sm:text-base"
+          >
+            <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
+            <span className="hidden sm:inline">إضافة مدينة جديدة</span>
+            <span className="sm:hidden">إضافة</span>
+          </button>
+        </div>
       </div>
 
       {/* Stats Cards */}

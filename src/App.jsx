@@ -21,6 +21,7 @@ import Admins from './pages/Admins';
 import Banners from './pages/Banners';
 import { SupportTickets } from './pages/SupportTickets';
 import { AddProvider } from './pages/AddProvider';
+import { SLATracking } from './pages/SLATracking';
 import { Login } from './pages/Login';
 
 function App() {
@@ -82,6 +83,7 @@ function App() {
           <Route path="city-managers" element={<CityManagers />} />
           <Route path="users" element={<Users />} />
           <Route path="notifications" element={<Notifications />} />
+          <Route path="sla-tracking" element={<SLATracking />} />
           <Route path="complaints" element={<Complaints />} />
           <Route path="chats" element={<Chats />} />
           <Route path="bank-settings" element={<BankSettings />} />

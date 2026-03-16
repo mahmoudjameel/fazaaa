@@ -33,13 +33,14 @@ import {
   getUsersBySearch,
   getProvidersBySearch,
   createManualOrder,
-  updateOrderDetails
+  updateOrderDetails,
+  getAllCities
 } from '../services/adminService';
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
 import { collection, getDocs, doc, getDoc, updateDoc, query, orderBy, where, limit } from 'firebase/firestore';
 import { db } from '../services/firebase';
-import SAUDI_CITIES from '../services/cities.json';
+import SAUDI_CITIES_FALLBACK from '../services/cities.json';
 
 const MapPickerWidget = ({ coordinates, onLocationSelect }) => {
   const mapContainerRef = useRef(null);
@@ -211,7 +212,11 @@ export const Orders = () => {
   const [isSearchingUids, setIsSearchingUids] = useState(false);
   const [statusFilter, setStatusFilter] = useState('all');
   const [cityFilter, setCityFilter] = useState('all');
+  const [slaFilter, setSlaFilter] = useState('all');
   const [serviceFilter, setServiceFilter] = useState('all');
+  const [cities, setCities] = useState(SAUDI_CITIES_FALLBACK);
+
+  const [providersDict, setProvidersDict] = useState({});
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState(null);
@@ -254,9 +259,33 @@ export const Orders = () => {
   });
 
   useEffect(() => {
+    // جلب المزودين لغرض حساب مسافة SLA للطلبات القديمة التي لم يُحفظ فيها الوقت
+    const fetchAllProvidersForSla = async () => {
+      try {
+        const snap = await getDocs(collection(db, 'providers'));
+        const dict = {};
+        snap.forEach(d => {
+          dict[d.id] = d.data();
+        });
+        setProvidersDict(dict);
+      } catch (e) {
+        console.warn('Failed to fetch providers dictionary for SLA:', e.message);
+      }
+    };
+    fetchAllProvidersForSla();
+
+    // Fetch Cities
+    const fetchCities = async () => {
+      const result = await getAllCities();
+      if (result.success && result.cities.length > 0) {
+        setCities(result.cities);
+      }
+    };
+    fetchCities();
+
     // استخدام real-time listener بدلاً من fetch
-    const unsubscribe = listenToAllRequests((data) => {
-      setRequests(data);
+    const unsubscribe = listenToAllRequests((reqs) => {
+      setRequests(reqs);
       setLoading(false);
     });
 
@@ -503,9 +532,23 @@ export const Orders = () => {
     }
   };
 
+  // دالة حساب المسافة للـ Fallback
+  const calculateDistanceKm = (lat1, lon1, lat2, lon2) => {
+    if (!lat1 || !lon1 || !lat2 || !lon2) return 0;
+    const R = 6371; // نصف قطر الأرض بالكيلومتر
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+  };
+
   const filterOrders = () => {
     let filtered = requests;
     const sTerm = searchTerm.trim();
+
 
     // 1. Filter by Service
     if (serviceFilter !== 'all') {
@@ -514,7 +557,7 @@ export const Orders = () => {
 
     // 2. Filter by City
     if (cityFilter !== 'all') {
-      const cityName = SAUDI_CITIES.find(c => c.id === cityFilter)?.name || cityFilter;
+      const cityName = cities.find(c => c.id === cityFilter)?.name || cityFilter;
       filtered = filtered.filter(req => {
         const matchesId = req.cityId === cityFilter || req.city === cityFilter;
         const matchesName = req.city === cityName;
@@ -558,7 +601,36 @@ export const Orders = () => {
       }
     }
 
-    // 4. تطبيق البحث (Search)
+    // 4. Filter by SLA (> 15 min travel time)
+    if (slaFilter !== 'all') {
+      filtered = filtered.filter(req => {
+        let isOver15 = false;
+        
+        // إذا كان وقت الوصول أو المسافة محفوظاً بشكل مسبق (الطلبات الجديدة)
+        if (req.providerAcceptedDurationMin != null) {
+          isOver15 = req.providerAcceptedDurationMin > 15;
+        } else if (req.coordinates && req.coordinates.latitude && req.coordinates.longitude && req.providerId) {
+          // Fallback للطلبات القديمة (حساب ديناميكي باستخدام موقع المزود الحالي إذا أمكن)
+          const pData = providersDict[req.providerId];
+          if (pData) {
+            const loc = pData.locationCoordinates || pData.location || pData.coordinates;
+            if (loc && (loc.latitude ?? loc.lat) && (loc.longitude ?? loc.lng)) {
+              const pLat = loc.latitude ?? loc.lat;
+              const pLng = loc.longitude ?? loc.lng;
+              const distKm = calculateDistanceKm(req.coordinates.latitude, req.coordinates.longitude, pLat, pLng);
+              const estimatedMin = Math.round((distKm / 40) * 60) || 1;
+              isOver15 = estimatedMin > 15;
+            }
+          }
+        }
+        
+        if (slaFilter === 'over_15') return isOver15;
+        if (slaFilter === 'under_15') return !isOver15;
+        return true;
+      });
+    }
+
+    // 5. تطبيق البحث (Search)
     if (sTerm) {
       const searchLower = sTerm.toLowerCase();
       const normalize = (val) => String(val || '').replace(/\D/g, '');
@@ -584,6 +656,16 @@ export const Orders = () => {
     }
 
     setFilteredRequests(filtered);
+  };
+
+
+  const handleOpenLocation = (order) => {
+    if (order.coordinates) {
+      const { latitude, longitude } = order.coordinates;
+      window.open(`https://www.google.com/maps?q=${latitude},${longitude}`, '_blank');
+    } else if (order.location) {
+      window.open(`https://www.google.com/maps?q=${encodeURIComponent(order.location)}`, '_blank');
+    }
   };
 
   const handleCustomerSearch = async (term) => {
@@ -941,7 +1023,13 @@ export const Orders = () => {
                             {order.serviceName || order.serviceType || 'خدمة'}
                           </p>
                           <p className="text-xs text-gray-600 mb-1">
-                            الموقع: <span className="font-semibold">{order.location || 'غير محدد'}</span>
+                            الموقع: 
+                            <button 
+                              onClick={() => handleOpenLocation(order)}
+                              className="mr-1 text-teal-600 font-bold hover:underline transition-all"
+                            >
+                              {order.location || 'غير محدد'}
+                            </button>
                           </p>
                           <p className={`text-xs font-semibold mt-2 ${reasonColor}`}>
                             ⚠️ {reasonType}
@@ -1197,7 +1285,7 @@ export const Orders = () => {
             className="w-full md:w-auto px-4 py-3 border-2 border-gray-100 rounded-xl focus:border-teal-400 focus:outline-none font-semibold text-gray-700"
           >
             <option value="all">كل المدن</option>
-            {SAUDI_CITIES.map(city => (
+            {cities.map(city => (
               <option key={city.id} value={city.id}>{city.name}</option>
             ))}
           </select>
@@ -1211,6 +1299,21 @@ export const Orders = () => {
             {services.map(service => (
               <option key={service.id} value={service.id}>{service.name}</option>
             ))}
+          </select>
+
+          {/* Dropdown Filter for SLA */}
+          <select
+            value={slaFilter}
+            onChange={(e) => setSlaFilter(e.target.value)}
+            className={`w-full md:w-auto px-4 py-3 border-2 rounded-xl focus:outline-none font-semibold ${
+              slaFilter !== 'all' 
+                ? 'bg-red-50 text-red-700 border-red-300 shadow-sm focus:border-red-400' 
+                : 'border-gray-100 focus:border-teal-400 text-gray-700'
+            }`}
+          >
+            <option value="all">كل الاستجابات (SLA)</option>
+            <option value="over_15">مسافة الاستجابة أكثر من 15 دقيقة</option>
+            <option value="under_15">مسافة الاستجابة 15 دقيقة فأقل</option>
           </select>
         </div>
       </div>
@@ -1265,8 +1368,13 @@ export const Orders = () => {
                         )}
                         {order.location && (
                           <div className="flex items-center gap-2">
-                            <MapPin size={16} className="shrink-0 text-gray-400" />
-                            <span>{order.location}</span>
+                             <MapPin size={16} className="shrink-0 text-gray-400" />
+                             <button 
+                               onClick={() => handleOpenLocation(order)}
+                               className="text-teal-600 hover:text-teal-700 font-bold hover:underline transition-all text-sm text-right"
+                             >
+                               {order.location}
+                             </button>
                           </div>
                         )}
                         <div className="flex items-center gap-2">
@@ -1291,6 +1399,51 @@ export const Orders = () => {
                             })()}
                           </span>
                         </div>
+
+                        {/* SLA Info Label */}
+                        {(() => {
+                          if (!order.providerId && !order.providerAcceptedDurationMin) return null;
+
+                          let durationMin = order.providerAcceptedDurationMin;
+                          let distanceKm = order.providerAcceptedDistanceKm;
+                          let isCalculated = false;
+
+                          if (durationMin == null && order.coordinates && order.coordinates.latitude && order.coordinates.longitude && order.providerId) {
+                            const pData = providersDict[order.providerId];
+                            if (pData) {
+                              const loc = pData.locationCoordinates || pData.location || pData.coordinates;
+                              if (loc && (loc.latitude ?? loc.lat) && (loc.longitude ?? loc.lng)) {
+                                const pLat = loc.latitude ?? loc.lat;
+                                const pLng = loc.longitude ?? loc.lng;
+                                distanceKm = calculateDistanceKm(order.coordinates.latitude, order.coordinates.longitude, pLat, pLng);
+                                durationMin = Math.round((distanceKm / 40) * 60) || 1;
+                                isCalculated = true;
+                              }
+                            }
+                          }
+
+                          if (durationMin == null) return null;
+
+                          const isSlaExceeded = durationMin > 15;
+                          const colorClass = isSlaExceeded ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700';
+
+                          return (
+                            <div className={`mt-2 flex flex-col gap-1 px-3 py-2 rounded-lg border w-fit ${isSlaExceeded ? 'border-red-200' : 'border-green-200'} ${colorClass}`}>
+                              <div className="flex justify-between items-center gap-2">
+                                <span className={`text-xs font-bold ${isSlaExceeded ? 'text-red-700' : 'text-green-700'}`}>
+                                  ⏳ مسافة الاستجابة {isCalculated ? '(تقديرية)' : '(مؤرشفة)'}:
+                                </span>
+                                <span className="text-sm font-black" dir="ltr">
+                                  {durationMin} Min {distanceKm != null ? `(${distanceKm.toFixed(1)} Km)` : ''}
+                                </span>
+                              </div>
+                              {isSlaExceeded && (
+                                <p className="text-[10px] text-red-600 font-bold mt-0.5">⚠️ الطلب تجاوز مسافة الـ 15 دقيقة</p>
+                              )}
+                            </div>
+                          );
+                        })()}
+
                         {order.providerName && (
                           <div className="text-xs">
                             <span className="text-gray-600">مزود: </span>
@@ -2344,7 +2497,12 @@ export const Orders = () => {
                                         <p className="text-xs sm:text-sm font-bold text-gray-800 truncate">{order.serviceName || order.serviceType || 'خدمة'}</p>
                                         <div className="flex items-center gap-2 mt-1">
                                           {order.location && (
-                                            <span className="text-[10px] text-gray-400 truncate max-w-[120px]">{order.location}</span>
+                                            <button 
+                                              onClick={() => handleOpenLocation(order)}
+                                              className="text-[10px] text-teal-600 font-bold hover:underline truncate max-w-[120px]"
+                                            >
+                                              {order.location}
+                                            </button>
                                           )}
                                           {orderDate && (
                                             <span className="text-[10px] text-gray-500">
@@ -2581,7 +2739,7 @@ export const Orders = () => {
                       className="w-full px-4 py-3 border-2 border-gray-100 rounded-xl focus:border-primary-teal outline-none transition-all"
                     >
                       <option value="">اختر المدينة...</option>
-                      {SAUDI_CITIES.map((city) => (
+                      {cities.map((city) => (
                         <option key={city.id} value={city.id}>
                           {city.name}
                         </option>

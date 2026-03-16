@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Settings, MapPin, Clock, DollarSign, Users, Save, RotateCcw, AlertTriangle } from 'lucide-react';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 
 export const DistributionSettings = () => {
@@ -46,7 +46,7 @@ export const DistributionSettings = () => {
     setSaving(true);
     try {
       const settingsRef = doc(db, 'settings', 'distribution');
-      await updateDoc(settingsRef, {
+      await setDoc(settingsRef, {
         vipEnabled: settings.vipEnabled,
         searchStages: settings.searchStages,
         updatedAt: new Date().toISOString()
