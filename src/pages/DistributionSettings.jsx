@@ -6,6 +6,7 @@ import { db } from '../services/firebase';
 export const DistributionSettings = () => {
   const [settings, setSettings] = useState({
     vipEnabled: true,
+    cumulativeEnabled: true,
     searchStages: [
       { id: 1, type: 'vip', minRadius: 0, maxRadius: 6, waitTime: 20 },
       { id: 2, type: 'all', minRadius: 0, maxRadius: 4, waitTime: 20 },
@@ -32,6 +33,7 @@ export const DistributionSettings = () => {
         const data = settingsSnap.data();
         setSettings({
           vipEnabled: data.vipEnabled ?? true,
+          cumulativeEnabled: data.cumulativeEnabled ?? true,
           searchStages: data.searchStages || []
         });
       }
@@ -48,6 +50,7 @@ export const DistributionSettings = () => {
       const settingsRef = doc(db, 'settings', 'distribution');
       await setDoc(settingsRef, {
         vipEnabled: settings.vipEnabled,
+        cumulativeEnabled: settings.cumulativeEnabled,
         searchStages: settings.searchStages,
         updatedAt: new Date().toISOString()
       });
@@ -65,6 +68,7 @@ export const DistributionSettings = () => {
     if (confirm('هل أنت متأكد من إعادة تعيين الإعدادات إلى القيم الافتراضية؟')) {
       const defaultSettings = {
         vipEnabled: true,
+        cumulativeEnabled: true,
         searchStages: [
           { id: 1, type: 'vip', minRadius: 0, maxRadius: 6, waitTime: 20 },
           { id: 2, type: 'all', minRadius: 0, maxRadius: 4, waitTime: 20 },
@@ -115,30 +119,54 @@ export const DistributionSettings = () => {
       </div>
 
       {/* VIP Status Toggle Card */}
-      <div className="bg-white rounded-2xl shadow-lg mb-6 p-6 border-r-4 border-amber-500">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className={`p-3 rounded-xl ${settings.vipEnabled ? 'bg-amber-100 text-amber-600' : 'bg-gray-100 text-gray-400'}`}>
-              <Users size={24} />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+        <div className="bg-white rounded-2xl shadow-lg p-6 border-r-4 border-amber-500">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className={`p-3 rounded-xl ${settings.vipEnabled ? 'bg-amber-100 text-amber-600' : 'bg-gray-100 text-gray-400'}`}>
+                <Users size={24} />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-gray-800">نظام أولوية VIP</h3>
+                <p className="text-sm text-gray-500">تفعيل مراحل خاصة لمزودي الـ VIP.</p>
+              </div>
             </div>
-            <div>
-              <h3 className="text-lg font-bold text-gray-800">نظام أولوية VIP</h3>
-              <p className="text-sm text-gray-500">عند التعطيل، سيتم معاملة جميع المزودين كمستوى واحد في كافة النطاقات.</p>
+            <div className="flex items-center gap-3 bg-gray-50 px-4 py-2 rounded-xl">
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  className="sr-only peer"
+                  checked={settings.vipEnabled}
+                  onChange={(e) => setSettings({...settings, vipEnabled: e.target.checked})}
+                />
+                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+              </label>
             </div>
           </div>
-          <div className="flex items-center gap-3 bg-gray-50 px-4 py-2 rounded-xl">
-            <span className={`text-sm font-bold ${settings.vipEnabled ? 'text-green-600' : 'text-red-500'}`}>
-              {settings.vipEnabled ? 'مفعل' : 'معطل'}
-            </span>
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input 
-                type="checkbox" 
-                className="sr-only peer"
-                checked={settings.vipEnabled}
-                onChange={(e) => setSettings({...settings, vipEnabled: e.target.checked})}
-              />
-              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
-            </label>
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-lg p-6 border-r-4 border-blue-500">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className={`p-3 rounded-xl ${settings.cumulativeEnabled ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-400'}`}>
+                <RotateCcw size={24} />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-gray-800">توزيع تراكمي (Strict Zoning)</h3>
+                <p className="text-sm text-gray-500">استمرار تنبيه المزودين في المراحل السابقة دفعة واحدة.</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 bg-gray-50 px-4 py-2 rounded-xl">
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  className="sr-only peer"
+                  checked={settings.cumulativeEnabled}
+                  onChange={(e) => setSettings({...settings, cumulativeEnabled: e.target.checked})}
+                />
+                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-500"></div>
+              </label>
+            </div>
           </div>
         </div>
       </div>
