@@ -23,6 +23,8 @@ export default function AppSettings() {
     const [support, setSupport] = useState({
         whatsappNumber: '966551780608',
         whatsappDisplay: '+966 55 178 0608',
+        providerChargeWhatsappNumber: '966539741002',
+        providerChargeWhatsappDisplay: '+966 53 974 1002',
     });
 
     useEffect(() => {
@@ -248,6 +250,49 @@ export default function AppSettings() {
                                 style={{ textAlign: 'left' }}
                             />
                             <p className="text-xs text-gray-400 mt-1">الصيغة التي ستظهر في التطبيق</p>
+                        </div>
+
+                        <div className="bg-teal-50 border border-teal-200 rounded-xl p-4 mb-2">
+                            <div className="flex items-center gap-2 mb-1">
+                                <Phone className="w-5 h-5 text-teal-600" />
+                                <h3 className="font-bold text-teal-800">رقم واتساب شحن محفظة المزود</h3>
+                            </div>
+                            <p className="text-sm text-teal-700">
+                                هذا الرقم يستخدم عند الضغط على زر <span className="font-mono">طلب إضافة رصيد</span> في تطبيق المزود.
+                                سيتم فتح رابط ويب <span className="font-mono">wa.me</span> ثم الانتقال لواتساب.
+                            </p>
+                        </div>
+
+                        <div>
+                            <label className="flex items-center text-sm font-medium text-gray-700 mb-2">
+                                رقم الواتساب (بدون + وبالكود الدولي)
+                            </label>
+                            <input
+                                type="text"
+                                value={support.providerChargeWhatsappNumber}
+                                onChange={(e) => setSupport(prev => ({ ...prev, providerChargeWhatsappNumber: e.target.value }))}
+                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                                placeholder="مثال: 966539741002"
+                                dir="ltr"
+                                style={{ textAlign: 'left' }}
+                            />
+                            <p className="text-xs text-gray-400 mt-1">مثال: 966539741002 (بدون + أو مسافات)</p>
+                        </div>
+
+                        <div>
+                            <label className="flex items-center text-sm font-medium text-gray-700 mb-2">
+                                الرقم كما يظهر للمزود (اختياري)
+                            </label>
+                            <input
+                                type="text"
+                                value={support.providerChargeWhatsappDisplay}
+                                onChange={(e) => setSupport(prev => ({ ...prev, providerChargeWhatsappDisplay: e.target.value }))}
+                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                                placeholder="مثال: +966 53 974 1002"
+                                dir="ltr"
+                                style={{ textAlign: 'left' }}
+                            />
+                            <p className="text-xs text-gray-400 mt-1">لن يؤثر على رابط فتح واتساب، فقط للعرض إن احتجناه لاحقاً.</p>
                         </div>
                     </div>
                 )}

@@ -1774,17 +1774,83 @@ export const Orders = () => {
                       const reason = selectedRequest.cancelReason || cancelEvent?.cancelReason;
                       const wasAccepted = selectedRequest.assignedAt || (Array.isArray(selectedRequest.history) && selectedRequest.history.some(h => h.status === 'assigned'));
 
-                      if (wasAccepted) {
+                      // 1) إذا كانت أسباب timeout/لا يوجد مزودين => استخدم بلوك الـ timeout الحالي
+                      const timeoutReasons = [
+                        'لا يوجد مزودين متاحين',
+                        'ضغط على الشبكة',
+                        'انتهى وقت البحث',
+                        'نعتذر لايوجد شبكة متاحة في منطقتكم',
+                        'نعتذر يوجد ضغط على الشبكة في الوقت الحالي',
+                        'لايوجد شبكة متاحة',
+                        'لايوجد شبكة متاحة'
+                      ];
+
+                      const isTimeoutReason =
+                        selectedRequest.status === 'timed_out' ||
+                        (typeof reason === 'string' && timeoutReasons.some(r => reason.includes(r)));
+
+                      if ((selectedRequest.status === 'timed_out' || !wasAccepted) && reason && isTimeoutReason) {
+                        let reasonType = 'غير محدد';
+                        let bgColor = 'bg-purple-50';
+                        let borderColor = 'border-purple-500';
+                        let textColor = 'text-purple-800';
+                        let reasonTextColor = 'text-purple-700';
+
+                        if (reason.includes('لا يوجد مزودين') || reason.includes('لايوجد شبكة') || reason.includes('نعتذر لايوجد شبكة')) {
+                          reasonType = 'لا يوجد مزودين في المنطقة';
+                          bgColor = 'bg-red-50';
+                          borderColor = 'border-red-500';
+                          textColor = 'text-red-800';
+                          reasonTextColor = 'text-red-700';
+                        } else if (reason.includes('ضغط على الشبكة') || selectedRequest.status === 'timed_out') {
+                          reasonType = selectedRequest.status === 'timed_out' ? 'انتهاء مهلة البحث' : 'ضغط على الشبكة';
+                          bgColor = 'bg-orange-50';
+                          borderColor = 'border-orange-500';
+                          textColor = 'text-orange-800';
+                          reasonTextColor = 'text-orange-700';
+                        } else if (reason.includes('انتهى وقت البحث')) {
+                          reasonType = 'انتهى وقت البحث';
+                          bgColor = 'bg-yellow-50';
+                          borderColor = 'border-yellow-500';
+                          textColor = 'text-yellow-800';
+                          reasonTextColor = 'text-yellow-700';
+                        }
+
+                        return (
+                          <div className={`mt-3 p-3 ${bgColor} border-r-4 ${borderColor} rounded-lg`}>
+                            <p className={`text-sm font-semibold ${textColor} mb-2`}>
+                              ⚠️ عدم وجود مزودين وانتهاء المهلة المحددة
+                            </p>
+                            <p className={`text-sm ${reasonTextColor} mb-2`}>
+                              <span className="font-semibold">نوع السبب:</span> {reasonType}
+                            </p>
+                            <p className={`text-sm ${reasonTextColor}`}>
+                              <span className="font-semibold">السبب الكامل:</span> {reason}
+                            </p>
+                            {selectedRequest.cancelledAt && (
+                              <p className={`text-xs ${reasonTextColor} mt-2`}>
+                                وقت الإلغاء: {(() => {
+                                  const date = selectedRequest.cancelledAt?.toMillis
+                                    ? new Date(selectedRequest.cancelledAt.toMillis())
+                                    : new Date(selectedRequest.cancelledAt);
+                                  return isNaN(date.getTime()) ? '-' : format(date, 'dd MMM yyyy, HH:mm', { locale: ar });
+                                })()}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      }
+
+                      // 2) إلغاء العميل: اعرض السبب حتى لو لم يتم قبول الطلب (wasAccepted=false)
+                      if (reason) {
                         return (
                           <div className="mt-3 p-3 bg-orange-50 border-r-4 border-orange-500 rounded-lg">
                             <p className="text-sm font-semibold text-orange-800 mb-2">
-                              ⚠️ إلغاء العميل بعد قبول الطلب
+                              {wasAccepted ? '⚠️ إلغاء العميل بعد قبول الطلب' : 'إلغاء العميل'}
                             </p>
-                            {reason && (
-                              <p className="text-sm text-orange-700">
-                                <span className="font-semibold">السبب:</span> {reason}
-                              </p>
-                            )}
+                            <p className="text-sm text-orange-700">
+                              <span className="font-semibold">السبب:</span> {reason}
+                            </p>
                             {selectedRequest.cancelledBy && (
                               <p className="text-xs text-orange-600 mt-2">
                                 معرف العميل: {selectedRequest.cancelledBy}
@@ -1802,72 +1868,6 @@ export const Orders = () => {
                             )}
                           </div>
                         );
-                      }
-
-                      // عرض حالة عدم وجود مزودين وانتهاء المهلة
-                      if ((selectedRequest.status === 'timed_out' || !wasAccepted) && reason) {
-                        const timeoutReasons = [
-                          'لا يوجد مزودين متاحين',
-                          'ضغط على الشبكة',
-                          'انتهى وقت البحث',
-                          'نعتذر لايوجد شبكة متاحة في منطقتكم',
-                          'نعتذر يوجد ضغط على الشبكة في الوقت الحالي',
-                          'لايوجد شبكة متاحة'
-                        ];
-
-                        const isTimeoutReason = selectedRequest.status === 'timed_out' || timeoutReasons.some(r => reason.includes(r));
-
-                        if (isTimeoutReason) {
-                          let reasonType = 'غير محدد';
-                          let bgColor = 'bg-purple-50';
-                          let borderColor = 'border-purple-500';
-                          let textColor = 'text-purple-800';
-                          let reasonTextColor = 'text-purple-700';
-
-                          if (reason.includes('لا يوجد مزودين') || reason.includes('لايوجد شبكة') || reason.includes('نعتذر لايوجد شبكة')) {
-                            reasonType = 'لا يوجد مزودين في المنطقة';
-                            bgColor = 'bg-red-50';
-                            borderColor = 'border-red-500';
-                            textColor = 'text-red-800';
-                            reasonTextColor = 'text-red-700';
-                          } else if (reason.includes('ضغط على الشبكة') || selectedRequest.status === 'timed_out') {
-                            reasonType = selectedRequest.status === 'timed_out' ? 'انتهاء مهلة البحث' : 'ضغط على الشبكة';
-                            bgColor = 'bg-orange-50';
-                            borderColor = 'border-orange-500';
-                            textColor = 'text-orange-800';
-                            reasonTextColor = 'text-orange-700';
-                          } else if (reason.includes('انتهى وقت البحث')) {
-                            reasonType = 'انتهى وقت البحث';
-                            bgColor = 'bg-yellow-50';
-                            borderColor = 'border-yellow-500';
-                            textColor = 'text-yellow-800';
-                            reasonTextColor = 'text-yellow-700';
-                          }
-
-                          return (
-                            <div className={`mt-3 p-3 ${bgColor} border-r-4 ${borderColor} rounded-lg`}>
-                              <p className={`text-sm font-semibold ${textColor} mb-2`}>
-                                ⚠️ عدم وجود مزودين وانتهاء المهلة المحددة
-                              </p>
-                              <p className={`text-sm ${reasonTextColor} mb-2`}>
-                                <span className="font-semibold">نوع السبب:</span> {reasonType}
-                              </p>
-                              <p className={`text-sm ${reasonTextColor}`}>
-                                <span className="font-semibold">السبب الكامل:</span> {reason}
-                              </p>
-                              {selectedRequest.cancelledAt && (
-                                <p className={`text-xs ${reasonTextColor} mt-2`}>
-                                  وقت الإلغاء: {(() => {
-                                    const date = selectedRequest.cancelledAt?.toMillis
-                                      ? new Date(selectedRequest.cancelledAt.toMillis())
-                                      : new Date(selectedRequest.cancelledAt);
-                                    return isNaN(date.getTime()) ? '-' : format(date, 'dd MMM yyyy, HH:mm', { locale: ar });
-                                  })()}
-                                </p>
-                              )}
-                            </div>
-                          );
-                        }
                       }
 
                       return null;

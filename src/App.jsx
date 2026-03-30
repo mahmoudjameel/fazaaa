@@ -23,6 +23,8 @@ import { SupportTickets } from './pages/SupportTickets';
 import { AddProvider } from './pages/AddProvider';
 import { SLATracking } from './pages/SLATracking';
 import { Login } from './pages/Login';
+import ProviderDrawerSections from './pages/ProviderDrawerSections';
+import CustomerDrawerSections from './pages/CustomerDrawerSections';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -90,6 +92,8 @@ function App() {
           <Route path="withdrawal-requests" element={<WithdrawalRequests />} />
           <Route path="provider-profile-requests" element={<ProviderProfileRequests />} />
           <Route path="app-settings" element={<AppSettings />} />
+          <Route path="provider-drawer-sections" element={<ProviderDrawerSections />} />
+          <Route path="customer-drawer-sections" element={<CustomerDrawerSections />} />
           <Route path="banners" element={<Banners />} />
           <Route path="support-tickets" element={<SupportTickets />} />
           <Route path="admins" element={<Admins />} />

@@ -49,6 +49,8 @@ export const Admins = () => {
         { id: 'distribution', label: 'توزيع الطلبات' },
         { id: 'bank_settings', label: 'إعدادات البنك' },
         { id: 'app_settings', label: 'إعدادات التطبيق' },
+      { id: 'provider_drawer_sections', label: 'أقسام Drawer للمزود' },
+        { id: 'customer_drawer_sections', label: 'أقسام Drawer للعميل' },
     ];
 
     useEffect(() => {

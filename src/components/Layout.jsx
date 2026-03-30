@@ -251,6 +251,22 @@ export const Layout = () => {
       category: 'settings',
     },
     {
+      id: 'provider_drawer_sections',
+      path: '/provider-drawer-sections',
+      icon: Settings,
+      label: 'أقسام Drawer للمزود',
+      color: 'from-teal-500 to-teal-700',
+      category: 'settings',
+    },
+    {
+      id: 'customer_drawer_sections',
+      path: '/customer-drawer-sections',
+      icon: Settings,
+      label: 'أقسام Drawer للعميل',
+      color: 'from-indigo-500 to-indigo-700',
+      category: 'settings',
+    },
+    {
       id: 'banners',
       path: '/banners',
       icon: ImageIcon,

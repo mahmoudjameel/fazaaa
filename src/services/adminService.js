@@ -1327,6 +1327,7 @@ export const approveProviderProfileChange = async (requestId) => {
     if (data.status !== 'pending') throw new Error('تمت معالجة هذا الطلب مسبقاً');
 
     const providerRef = doc(db, 'providers', data.providerId);
+    const providerSnap = await getDoc(providerRef);
     const requested = data.requestedChanges || {};
     const updates = {
       firstName: requested.firstName,
@@ -1342,6 +1343,43 @@ export const approveProviderProfileChange = async (requestId) => {
       status: 'approved',
       reviewedAt: serverTimestamp(),
     });
+
+    // إرسال إشعار خارجي للمزود بعد الموافقة
+    const pushToken = providerSnap?.data()?.pushToken;
+    if (pushToken) {
+      try {
+        await fetch('https://exp.host/--/api/v2/push/send', {
+          method: 'POST',
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            to: pushToken,
+            sound: 'default',
+            title: 'تم اعتماد طلب تعديل بياناتك',
+            body: 'تمت الموافقة من الإدارة وسيتم تطبيق التعديل على حسابك الآن.',
+            data: {
+              type: 'profile_change_approved',
+              requestId,
+              nationality: requested.nationality,
+            },
+            priority: 'high',
+            ttl: 3600,
+            channelId: 'incoming_requests_v2',
+            android: {
+              priority: 'max',
+              sound: 'default',
+              channelId: 'incoming_requests_v2',
+            },
+            _displayInForeground: true,
+          }),
+        });
+      } catch (e) {
+        console.warn('Failed to send expo push after approval:', e?.message || e);
+      }
+    }
+
     return { success: true };
   } catch (error) {
     console.error('approveProviderProfileChange error:', error);
