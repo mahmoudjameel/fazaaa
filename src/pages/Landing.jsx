@@ -579,40 +579,147 @@ export const Landing = () => {
       </section>
 
       {/* ── Footer ── */}
-      <footer className="bg-gray-950 border-t border-white/5 text-white/40 py-10 sm:py-14">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col md:flex-row items-center md:items-start justify-between gap-8">
-            <div className="flex flex-col items-center md:items-end gap-3">
+      <footer className="bg-gray-950 border-t border-white/5">
+        {/* Main footer body */}
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14 sm:py-20">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10 lg:gap-12">
+
+            {/* Col 1 – Brand */}
+            <div className="sm:col-span-2 lg:col-span-1 flex flex-col gap-4">
               <div className="flex items-center gap-3">
-                <img src="/fzaeen-logo.jpeg" alt="فزاعين" className="w-10 h-10 rounded-xl object-cover" />
-                <span className="text-white text-xl font-black">فزاعين</span>
+                <img src="/fzaeen-logo.jpeg" alt="فزاعين" className="w-11 h-11 rounded-xl object-cover shadow-md" />
+                <span className="text-white text-xl font-black tracking-tight">فزاعين</span>
               </div>
-              <p className="text-sm text-center md:text-right max-w-xs">مساعدة طريق سريعة – داخل المدينة</p>
-            </div>
-            <div className="flex flex-col sm:flex-row gap-8 text-sm text-center md:text-right">
-              <div className="space-y-2.5">
-                <div className="text-white font-black mb-3">روابط</div>
-                {NAV_LINKS.map(l => (
-                  <button key={l.href} onClick={() => scrollTo(l.href)}
-                    className="block hover:text-amber-400 transition-colors mx-auto md:mr-0">
-                    {l.label}
-                  </button>
+              <p className="text-white/40 text-sm leading-relaxed max-w-[260px]">
+                منصة تقنية لمساعدة الطريق – نوصّلك بأقرب مزود خدمة معتمد في لحظات.
+              </p>
+              {/* App badges */}
+              <div className="flex flex-row gap-2.5 mt-1">
+                {[
+                  {
+                    label: 'App Store',
+                    sub: 'Download on the',
+                    href: 'https://apps.apple.com',
+                    svg: <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z" />,
+                  },
+                  {
+                    label: 'Google Play',
+                    sub: 'Get it on',
+                    href: 'https://play.google.com',
+                    svg: <path d="M3.18 23.76a2.5 2.5 0 0 1-1.18-2.22V2.46A2.5 2.5 0 0 1 3.18.24l11.37 11.76-11.37 11.76zm13.09-8.04L4.02 23.4l10.5-6.06 1.75-1.62zm2.96-4.16c.64.37 1.03.99 1.03 1.67s-.39 1.3-1.03 1.67l-2.61 1.51-2.02-2.09 2.02-2.09 2.61 1.33zm-15.2-9.15 12.25 7.68-1.75 1.62-10.5-6.06z" />,
+                  },
+                ].map(btn => (
+                  <a key={btn.label} href={btn.href} target="_blank" rel="noopener noreferrer"
+                    className="flex items-center gap-2 bg-white/6 border border-white/10 hover:bg-white/10 hover:border-white/20 transition-all rounded-xl px-3 py-2.5 flex-1">
+                    <svg viewBox="0 0 24 24" className="w-4 h-4 text-white/70 flex-shrink-0" fill="currentColor">
+                      {btn.svg}
+                    </svg>
+                    <div>
+                      <div className="text-[8px] text-white/30 leading-none">{btn.sub}</div>
+                      <div className="text-[11px] text-white font-bold leading-tight mt-0.5">{btn.label}</div>
+                    </div>
+                  </a>
                 ))}
               </div>
-              <div className="space-y-2.5">
-                <div className="text-white font-black mb-3">قانوني</div>
-                <Link to="/privacy" className="block hover:text-amber-400 transition-colors">سياسة الخصوصية</Link>
-                <Link to="/terms" className="block hover:text-amber-400 transition-colors">الشروط والأحكام</Link>
-              </div>
-              <div className="space-y-2.5">
-                <div className="text-white font-black mb-3">للإدارة</div>
-                <Link to="/admin" className="block hover:text-amber-400 transition-colors">لوحة التحكم</Link>
-                <a href="mailto:support@fzaeen.com" className="block hover:text-amber-400 transition-colors">الدعم</a>
-              </div>
+            </div>
+
+            {/* Col 2 – Navigation */}
+            <div>
+              <h4 className="text-white font-black text-sm mb-5 pb-3 border-b border-white/8">
+                التنقل السريع
+              </h4>
+              <ul className="space-y-3">
+                {NAV_LINKS.map(l => (
+                  <li key={l.href}>
+                    <button onClick={() => scrollTo(l.href)}
+                      className="text-white/45 text-sm hover:text-amber-400 transition-colors flex items-center gap-1.5 group">
+                      <span className="w-1 h-1 rounded-full bg-white/20 group-hover:bg-amber-400 transition-colors flex-shrink-0" />
+                      {l.label}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Col 3 – Legal */}
+            <div>
+              <h4 className="text-white font-black text-sm mb-5 pb-3 border-b border-white/8">
+                قانوني
+              </h4>
+              <ul className="space-y-3">
+                {[
+                  { label: 'سياسة الخصوصية', to: '/privacy' },
+                  { label: 'الشروط والأحكام', to: '/terms' },
+                ].map(item => (
+                  <li key={item.to}>
+                    <Link to={item.to}
+                      className="text-white/45 text-sm hover:text-amber-400 transition-colors flex items-center gap-1.5 group">
+                      <span className="w-1 h-1 rounded-full bg-white/20 group-hover:bg-amber-400 transition-colors flex-shrink-0" />
+                      {item.label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Col 4 – Contact */}
+            <div>
+              <h4 className="text-white font-black text-sm mb-5 pb-3 border-b border-white/8">
+                تواصل معنا
+              </h4>
+              <ul className="space-y-4">
+                <li>
+                  <a href="mailto:support@fzaeen.com"
+                    className="flex items-start gap-3 group">
+                    <div className="w-8 h-8 rounded-lg bg-white/5 border border-white/8 flex items-center justify-center flex-shrink-0 group-hover:bg-amber-400/15 group-hover:border-amber-400/25 transition-all mt-0.5">
+                      <Mail className="w-3.5 h-3.5 text-white/40 group-hover:text-amber-400 transition-colors" />
+                    </div>
+                    <div>
+                      <div className="text-white/30 text-[10px] font-medium mb-0.5">البريد الإلكتروني</div>
+                      <div className="text-white/60 text-xs font-semibold group-hover:text-amber-400 transition-colors">
+                        support@fzaeen.com
+                      </div>
+                    </div>
+                  </a>
+                </li>
+                <li>
+                  <Link to="/admin"
+                    className="flex items-start gap-3 group">
+                    <div className="w-8 h-8 rounded-lg bg-white/5 border border-white/8 flex items-center justify-center flex-shrink-0 group-hover:bg-amber-400/15 group-hover:border-amber-400/25 transition-all mt-0.5">
+                      <Globe className="w-3.5 h-3.5 text-white/40 group-hover:text-amber-400 transition-colors" />
+                    </div>
+                    <div>
+                      <div className="text-white/30 text-[10px] font-medium mb-0.5">لوحة التحكم</div>
+                      <div className="text-white/60 text-xs font-semibold group-hover:text-amber-400 transition-colors">
+                        دخول المشرفين
+                      </div>
+                    </div>
+                  </Link>
+                </li>
+              </ul>
             </div>
           </div>
-          <div className="border-t border-white/5 mt-10 pt-6 text-center text-sm">
-            © {new Date().getFullYear()} فزاعين – جميع الحقوق محفوظة
+        </div>
+
+        {/* Bottom bar */}
+        <div className="border-t border-white/5">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <p className="text-white/25 text-xs text-center sm:text-right">
+              © {new Date().getFullYear()} فزاعين – جميع الحقوق محفوظة
+            </p>
+            <div className="flex items-center gap-4">
+              <Link to="/privacy" className="text-white/25 text-xs hover:text-white/50 transition-colors">
+                الخصوصية
+              </Link>
+              <span className="text-white/10">·</span>
+              <Link to="/terms" className="text-white/25 text-xs hover:text-white/50 transition-colors">
+                الشروط
+              </Link>
+              <span className="text-white/10">·</span>
+              <a href="mailto:support@fzaeen.com" className="text-white/25 text-xs hover:text-white/50 transition-colors">
+                الدعم
+              </a>
+            </div>
           </div>
         </div>
       </footer>
