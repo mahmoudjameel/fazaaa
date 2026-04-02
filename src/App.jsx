@@ -1,6 +1,9 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { Layout } from './components/Layout';
+import { Landing } from './pages/Landing';
+import { PrivacyPolicy } from './pages/PrivacyPolicy';
+import { Terms } from './pages/Terms';
 import { Dashboard } from './pages/Dashboard';
 import { Services } from './pages/Services';
 import { EmergencyServices } from './pages/EmergencyServices';
@@ -31,7 +34,6 @@ function App() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // التحقق من حالة المصادقة عند التحميل
     const checkAuth = () => {
       const authStatus = localStorage.getItem('admin_authenticated') === 'true';
       setIsAuthenticated(authStatus);
@@ -40,7 +42,6 @@ function App() {
 
     checkAuth();
 
-    // الاستماع لتغييرات localStorage
     const handleStorageChange = (e) => {
       if (e.key === 'admin_authenticated') {
         setIsAuthenticated(e.newValue === 'true');
@@ -48,8 +49,6 @@ function App() {
     };
 
     window.addEventListener('storage', handleStorageChange);
-
-    // التحقق الدوري من حالة المصادقة (للتأكد من التحديثات في نفس النافذة)
     const interval = setInterval(checkAuth, 100);
 
     return () => {
@@ -69,9 +68,17 @@ function App() {
   return (
     <Router>
       <Routes>
+        {/* Public routes */}
+        <Route path="/" element={<Landing />} />
+        <Route path="/privacy" element={<PrivacyPolicy />} />
+        <Route path="/terms" element={<Terms />} />
+
+        {/* Admin login */}
         <Route path="/login" element={<Login onLogin={() => setIsAuthenticated(true)} />} />
+
+        {/* Admin dashboard – protected */}
         <Route
-          path="/"
+          path="/admin"
           element={isAuthenticated ? <Layout /> : <Navigate to="/login" />}
         >
           <Route index element={<Dashboard />} />
@@ -98,10 +105,12 @@ function App() {
           <Route path="support-tickets" element={<SupportTickets />} />
           <Route path="admins" element={<Admins />} />
         </Route>
+
+        {/* Catch-all redirect */}
+        <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </Router>
   );
 }
 
 export default App;
-

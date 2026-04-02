@@ -39,7 +39,7 @@ export const Login = ({ onLogin }) => {
         if (onLogin) {
           onLogin();
         }
-        navigate('/');
+        navigate('/admin');
       } else {
         // BOOTSTRAP: إذا كان هذا هو البريد "admin@fazaaa.com" أو المستخدم يحاول الدخول كمدير رئيسي
         // سنقوم بإنشاء السجل تلقائياً لتسهيل الدخول الأول
@@ -63,7 +63,7 @@ export const Login = ({ onLogin }) => {
           localStorage.setItem('admin_name', 'Main Admin');
 
           if (onLogin) onLogin();
-          navigate('/');
+          navigate('/admin');
           return;
         }
 

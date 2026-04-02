@@ -116,7 +116,7 @@ export const Layout = () => {
   const menuItems = [
     {
       id: 'dashboard',
-      path: '/',
+      path: '/admin',
       icon: LayoutDashboard,
       label: 'لوحة التحكم',
       color: 'from-primary-orange to-primary-yellow',
@@ -124,7 +124,7 @@ export const Layout = () => {
     },
     {
       id: 'emergency_services',
-      path: '/emergency-services',
+      path: '/admin/emergency-services',
       icon: AlertCircle,
       label: 'إدارة خدمات الطوارئ',
       color: 'from-primary-red to-red-600',
@@ -132,7 +132,7 @@ export const Layout = () => {
     },
     {
       id: 'providers',
-      path: '/providers',
+      path: '/admin/providers',
       icon: Users,
       label: 'إدارة المزودين',
       color: 'from-primary-green to-green-600',
@@ -140,7 +140,7 @@ export const Layout = () => {
     },
     {
       id: 'add_provider',
-      path: '/add-provider',
+      path: '/admin/add-provider',
       icon: UserPlus,
       label: 'إضافة مزود يدوي',
       color: 'from-blue-400 to-blue-600',
@@ -148,7 +148,7 @@ export const Layout = () => {
     },
     {
       id: 'orders',
-      path: '/orders',
+      path: '/admin/orders',
       icon: ShoppingBag,
       label: 'إدارة الطلبات',
       color: 'from-primary-teal to-teal-600',
@@ -156,7 +156,7 @@ export const Layout = () => {
     },
     {
       id: 'sla_tracking',
-      path: '/sla-tracking',
+      path: '/admin/sla-tracking',
       icon: Timer,
       label: 'متابعة SLA الاستجابة',
       color: 'from-orange-500 to-red-600',
@@ -164,7 +164,7 @@ export const Layout = () => {
     },
     {
       id: 'users',
-      path: '/users',
+      path: '/admin/users',
       icon: UserCheck,
       label: 'العملاء',
       color: 'from-purple-500 to-purple-600',
@@ -172,7 +172,7 @@ export const Layout = () => {
     },
     {
       id: 'notifications',
-      path: '/notifications',
+      path: '/admin/notifications',
       icon: Bell,
       label: 'إدارة الإشعارات',
       color: 'from-orange-400 to-orange-600',
@@ -180,7 +180,7 @@ export const Layout = () => {
     },
     {
       id: 'cities',
-      path: '/cities',
+      path: '/admin/cities',
       icon: MapPin,
       label: 'إدارة المدن',
       color: 'from-indigo-500 to-indigo-600',
@@ -188,7 +188,7 @@ export const Layout = () => {
     },
     {
       id: 'city_managers',
-      path: '/city-managers',
+      path: '/admin/city-managers',
       icon: UserCog,
       label: 'بيانات مديري المدن',
       color: 'from-cyan-500 to-cyan-600',
@@ -196,7 +196,7 @@ export const Layout = () => {
     },
     {
       id: 'support_tickets',
-      path: '/support-tickets',
+      path: '/admin/support-tickets',
       icon: Ticket,
       label: 'تذاكر الدعم الفني',
       color: 'from-emerald-400 to-emerald-600',
@@ -204,7 +204,7 @@ export const Layout = () => {
     },
     {
       id: 'complaints',
-      path: '/complaints',
+      path: '/admin/complaints',
       icon: MessageSquare,
       label: 'الشكاوي والملاحظات',
       color: 'from-pink-500 to-pink-600',
@@ -212,7 +212,7 @@ export const Layout = () => {
     },
     {
       id: 'chats',
-      path: '/chats',
+      path: '/admin/chats',
       icon: MessageCircle,
       label: 'المحادثات (عميل–مزود)',
       color: 'from-violet-500 to-violet-600',
@@ -220,7 +220,7 @@ export const Layout = () => {
     },
     {
       id: 'withdrawal_requests',
-      path: '/withdrawal-requests',
+      path: '/admin/withdrawal-requests',
       icon: Banknote,
       label: 'طلبات سحب الرصيد',
       color: 'from-amber-500 to-amber-600',
@@ -228,7 +228,7 @@ export const Layout = () => {
     },
     {
       id: 'distribution',
-      path: '/distribution',
+      path: '/admin/distribution',
       icon: Settings,
       label: 'إعدادات التوزيع',
       color: 'from-slate-500 to-slate-600',
@@ -236,7 +236,7 @@ export const Layout = () => {
     },
     {
       id: 'bank_settings',
-      path: '/bank-settings',
+      path: '/admin/bank-settings',
       icon: CreditCard,
       label: 'إعدادات البنك',
       color: 'from-emerald-500 to-emerald-600',
@@ -244,7 +244,7 @@ export const Layout = () => {
     },
     {
       id: 'app_settings',
-      path: '/app-settings',
+      path: '/admin/app-settings',
       icon: Settings,
       label: 'إعدادات التطبيق',
       color: 'from-gray-500 to-gray-600',
@@ -252,7 +252,7 @@ export const Layout = () => {
     },
     {
       id: 'provider_drawer_sections',
-      path: '/provider-drawer-sections',
+      path: '/admin/provider-drawer-sections',
       icon: Settings,
       label: 'أقسام Drawer للمزود',
       color: 'from-teal-500 to-teal-700',
@@ -260,7 +260,7 @@ export const Layout = () => {
     },
     {
       id: 'customer_drawer_sections',
-      path: '/customer-drawer-sections',
+      path: '/admin/customer-drawer-sections',
       icon: Settings,
       label: 'أقسام Drawer للعميل',
       color: 'from-indigo-500 to-indigo-700',
@@ -268,7 +268,7 @@ export const Layout = () => {
     },
     {
       id: 'banners',
-      path: '/banners',
+      path: '/admin/banners',
       icon: ImageIcon,
       label: 'بانر الشاشة الرئيسية',
       color: 'from-amber-500 to-amber-600',
@@ -276,12 +276,12 @@ export const Layout = () => {
     },
     {
       id: 'admins',
-      path: '/admins',
+      path: '/admin/admins',
       icon: Shield,
       label: 'إدارة المديرين',
       color: 'from-red-500 to-red-600',
       category: 'settings',
-      restricted: true // Only super_admin can see this by default
+      restricted: true
     }
   ];
 
