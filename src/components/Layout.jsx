@@ -9,13 +9,11 @@ import {
   MessageSquare,
   MessageCircle,
   UserCheck,
-  Package,
   Settings,
   MapPin,
   UserCog,
   CreditCard,
   Banknote,
-  FileText,
   AlertCircle,
   Shield,
   ChevronRight,
@@ -362,11 +360,10 @@ export const Layout = () => {
         <div className="p-3 sm:p-4 md:p-6 border-b border-border-light bg-gradient-to-br from-primary-orange to-primary-yellow flex-shrink-0">
           {sidebarOpen ? (
             <div className="flex items-center gap-3 sm:gap-4 w-full">
-              <div className="w-10 h-10 sm:w-12 sm:h-12 bg-white rounded-lg sm:rounded-xl flex items-center justify-center shadow-medium flex-shrink-0">
-                <Shield className="text-primary-orange w-5 h-5 sm:w-6 sm:h-6" />
-              </div>
+              <img src="/fzaeen-logo.jpeg" alt="فزاعين"
+                className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl object-cover shadow-medium flex-shrink-0" />
               <div className="flex-1 min-w-0 pr-2">
-                <h1 className="text-base sm:text-lg md:text-xl font-black text-white truncate">فزّاعين</h1>
+                <h1 className="text-base sm:text-lg md:text-xl font-black text-white truncate">فزاعين</h1>
                 <p className="text-xs text-white/90 font-medium hidden sm:block">لوحة التحكم</p>
               </div>
               <button
@@ -379,9 +376,8 @@ export const Layout = () => {
             </div>
           ) : (
             <div className="flex items-center justify-center w-full relative">
-              <div className="w-10 h-10 sm:w-12 sm:h-12 bg-white rounded-lg sm:rounded-xl flex items-center justify-center shadow-medium">
-                <Shield className="text-primary-orange w-5 h-5 sm:w-6 sm:h-6" />
-              </div>
+              <img src="/fzaeen-logo.jpeg" alt="فزاعين"
+                className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl object-cover shadow-medium" />
               <button
                 onClick={() => setSidebarOpen(true)}
                 className="absolute left-3 sm:left-4 p-1.5 sm:p-2 hover:bg-white/20 rounded-lg transition-all text-white hover:scale-110 hidden lg:flex"
