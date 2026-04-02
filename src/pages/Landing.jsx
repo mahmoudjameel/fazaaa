@@ -505,69 +505,149 @@ export const Landing = () => {
         </div>
       </section>
 
-      {/* ── Why us / Testimonials ── */}
-      <section className="py-16 sm:py-24 bg-gray-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid lg:grid-cols-2 gap-12 lg:gap-20 items-start">
-            <div>
-              <div className="inline-flex items-center gap-2 bg-gray-200 text-gray-600 px-4 py-1.5 rounded-full text-sm font-semibold mb-6">
-                <Award className="w-4 h-4" />
-                ليش فزاعين؟
-              </div>
-              <h2 className="text-3xl sm:text-4xl font-black text-gray-900 mb-5 leading-tight">
-                ما نحن اللي ننفذ –<br />
-                <span className="text-amber-500">نحن من يوصّلك بمن ينفذ</span>
-              </h2>
-              <p className="text-gray-500 text-base leading-relaxed mb-8">
-                فزاعين وسيط تقني ذكي. شبكة مزودين موثقين في مناطق مختلفة، يصلونك في أقصر وقت.
-              </p>
-              <div className="space-y-5">
-                {[
-                  { title: 'شبكة واسعة',   desc: 'أكثر من ٢٠٠ مزود في أنحاء المدينة، كل واحد موثق بهويته وأدواته' },
-                  { title: 'شفافية تامة',   desc: 'تعرف السعر قبل ما تؤكد الطلب – لا مفاجآت' },
-                  { title: 'تتبع حقيقي',    desc: 'الخريطة تتحدث لحظة بلحظة، تشوف المزود وهو يتحرك' },
-                  { title: 'دعم يرد عليك', desc: 'فريق دعم يرد عليك بسرعة إذا صار أي شيء' },
-                ].map(f => (
-                  <div key={f.title} className="flex items-start gap-4">
-                    <div className="w-6 h-6 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
-                      <CheckCircle className="w-3.5 h-3.5 text-amber-600" />
-                    </div>
-                    <div>
-                      <div className="font-black text-gray-900 text-sm sm:text-base">{f.title}</div>
-                      <div className="text-gray-400 text-sm mt-0.5">{f.desc}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+      {/* ── Why Fzaeen ── */}
+      <section className="py-20 sm:py-28 bg-gray-950 relative overflow-hidden">
+        {/* Ambient */}
+        <div className="absolute inset-0 pointer-events-none">
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[700px] h-[300px] bg-amber-500/5 rounded-full blur-3xl" />
+        </div>
 
-            {/* Reviews */}
-            <div className="space-y-4">
-              {[
-                { name: 'أحمد م.', service: 'بنشر إطار', rating: 5,
-                  comment: 'وصل المزود خلال ١٢ دقيقة. غيّر الإطار وراح. سريع وما فيه تعقيد.' },
-                { name: 'سارة ع.', service: 'بطارية',    rating: 5,
-                  comment: 'كانت السيارة ما تشتغل في منطقة مظلمة. فزاعين أنقذني بالحرف.' },
-                { name: 'محمد الشمري', service: 'فتح سيارة', rating: 5,
-                  comment: 'نسيت المفتاح جوّا. فتحوا بدون أي خدش والحمد لله. شكرًا جزيلًا.' },
-              ].map((r, i) => (
-                <div key={r.name}
-                  className={`bg-white rounded-2xl p-5 border border-gray-100 shadow-sm ${i === 1 ? 'lg:mr-6' : ''}`}>
-                  <div className="flex items-center justify-between mb-3">
-                    <div>
-                      <div className="font-black text-gray-900 text-sm">{r.name}</div>
-                      <div className="text-amber-600 text-xs font-semibold mt-0.5">{r.service}</div>
-                    </div>
-                    <div className="flex gap-0.5">
-                      {Array.from({ length: r.rating }).map((_, j) => (
-                        <Star key={j} className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
-                      ))}
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+
+          {/* Heading */}
+          <div className="text-center mb-14 sm:mb-20">
+            <div className="inline-flex items-center gap-2 bg-amber-400/10 border border-amber-400/20 text-amber-400 px-4 py-1.5 rounded-full text-sm font-semibold mb-5">
+              <Award className="w-4 h-4" />
+              ليش فزاعين؟
+            </div>
+            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black text-white mb-4 leading-tight">
+              ما نحن اللي ننفذ –
+              <span className="text-amber-400"> نحن من يوصّلك بمن ينفذ</span>
+            </h2>
+            <p className="text-white/40 text-base sm:text-lg max-w-xl mx-auto">
+              فزاعين وسيط تقني ذكي. شبكة مزودين موثقين في مناطق مختلفة، يصلونك في أقصر وقت.
+            </p>
+          </div>
+
+          {/* Feature cards – 2×2 grid */}
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5 mb-16 sm:mb-20">
+            {[
+              {
+                num: '٢٠٠+',
+                icon: Users,
+                title: 'شبكة واسعة',
+                desc: 'أكثر من ٢٠٠ مزود في أنحاء المدينة، كل واحد موثق بهويته وأدواته.',
+              },
+              {
+                num: '٠',
+                icon: CheckCircle,
+                title: 'شفافية تامة',
+                desc: 'تعرف السعر قبل ما تؤكد الطلب – لا مفاجآت ولا رسوم مخفية.',
+              },
+              {
+                num: '°٣٦٠',
+                icon: MapPin,
+                title: 'تتبع مباشر',
+                desc: 'الخريطة تتحدث لحظة بلحظة، تشوف المزود وهو يتقرب منك.',
+              },
+              {
+                num: '٢٤/٧',
+                icon: Clock,
+                title: 'دعم دائم',
+                desc: 'فريق دعم جاهز يرد عليك في أي وقت إذا صار أي شيء.',
+              },
+            ].map((f) => (
+              <div key={f.title}
+                className="group bg-white/4 border border-white/8 rounded-2xl p-6 hover:bg-white/7 hover:border-amber-400/20 transition-all duration-300">
+                <div className="flex items-start justify-between mb-5">
+                  <div className="w-10 h-10 bg-amber-400/10 border border-amber-400/15 rounded-xl flex items-center justify-center group-hover:bg-amber-400/20 transition-colors">
+                    <f.icon className="w-5 h-5 text-amber-400" />
+                  </div>
+                  <span className="text-2xl sm:text-3xl font-black text-white/10 group-hover:text-amber-400/20 transition-colors">
+                    {f.num}
+                  </span>
+                </div>
+                <h3 className="text-white font-black text-base mb-2">{f.title}</h3>
+                <p className="text-white/40 text-sm leading-relaxed">{f.desc}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Divider */}
+          <div className="flex items-center gap-4 mb-12 sm:mb-14">
+            <div className="flex-1 h-px bg-white/6" />
+            <div className="flex items-center gap-2 text-white/25 text-xs font-semibold">
+              <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+              ماذا يقول عملاؤنا
+              <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+            </div>
+            <div className="flex-1 h-px bg-white/6" />
+          </div>
+
+          {/* Testimonials – 3 col */}
+          <div className="grid sm:grid-cols-3 gap-4 sm:gap-5">
+            {[
+              {
+                initials: 'أ م',
+                name: 'أحمد م.',
+                service: 'بنشر إطار',
+                icon: Wrench,
+                comment: 'وصل المزود خلال ١٢ دقيقة. غيّر الإطار وراح. سريع وما فيه تعقيد.',
+              },
+              {
+                initials: 'س ع',
+                name: 'سارة ع.',
+                service: 'بطارية فارغة',
+                icon: Battery,
+                comment: 'كانت السيارة ما تشتغل في منطقة مظلمة. فزاعين أنقذني بالحرف الواحد.',
+                featured: true,
+              },
+              {
+                initials: 'م ش',
+                name: 'محمد الشمري',
+                service: 'فتح سيارة',
+                icon: Key,
+                comment: 'نسيت المفتاح جوّا. فتحوا بدون أي خدش والحمد لله. شكرًا جزيلًا.',
+              },
+            ].map((r) => (
+              <div key={r.name}
+                className={`relative rounded-2xl p-6 border flex flex-col gap-4 ${
+                  r.featured
+                    ? 'bg-amber-400/8 border-amber-400/25'
+                    : 'bg-white/4 border-white/8'
+                }`}>
+                {r.featured && (
+                  <div className="absolute top-4 left-4">
+                    <span className="text-[10px] text-amber-400 font-bold bg-amber-400/10 px-2 py-0.5 rounded-full border border-amber-400/20">
+                      مميز
+                    </span>
+                  </div>
+                )}
+                {/* Stars */}
+                <div className="flex gap-0.5">
+                  {[1,2,3,4,5].map(i => (
+                    <Star key={i} className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+                  ))}
+                </div>
+                {/* Comment */}
+                <p className="text-white/65 text-sm leading-relaxed flex-1">
+                  "{r.comment}"
+                </p>
+                {/* Reviewer */}
+                <div className="flex items-center gap-3 pt-3 border-t border-white/6">
+                  <div className="w-9 h-9 rounded-xl bg-amber-400/15 border border-amber-400/20 flex items-center justify-center flex-shrink-0">
+                    <span className="text-amber-400 text-xs font-black">{r.initials}</span>
+                  </div>
+                  <div>
+                    <div className="text-white font-black text-sm">{r.name}</div>
+                    <div className="flex items-center gap-1 text-white/35 text-xs mt-0.5">
+                      <r.icon className="w-3 h-3" />
+                      {r.service}
                     </div>
                   </div>
-                  <p className="text-gray-500 text-sm leading-relaxed">"{r.comment}"</p>
                 </div>
-              ))}
-            </div>
+              </div>
+            ))}
           </div>
         </div>
       </section>
