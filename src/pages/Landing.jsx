@@ -6,6 +6,7 @@ import {
   Battery, Wrench, Key, AlertTriangle, Users, Award,
   Download, Globe
 } from 'lucide-react';
+import { WhatsAppFloat } from '../components/WhatsAppFloat';
 
 const Logo = ({ size = 'md', rounded = '2xl' }) => {
   const sizes = { sm: 'w-8 h-8', md: 'w-10 h-10', lg: 'w-14 h-14', xl: 'w-20 h-20' };
@@ -539,6 +540,9 @@ export const Landing = () => {
           </div>
         </div>
       </section>
+
+      {/* WhatsApp Floating Button */}
+      <WhatsAppFloat />
 
       {/* Footer */}
       <footer className="bg-black text-gray-400 py-10 sm:py-14">

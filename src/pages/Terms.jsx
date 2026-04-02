@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { FileText, ArrowRight, ChevronRight } from 'lucide-react';
+import { WhatsAppFloat } from '../components/WhatsAppFloat';
 
 const Section = ({ title, children }) => (
   <div className="mb-8 sm:mb-10">
@@ -13,7 +14,8 @@ const Section = ({ title, children }) => (
 
 export const Terms = () => {
   return (
-    <div className="min-h-screen bg-gray-50" dir="rtl">
+    <div className="min-h-screen bg-gray-50 relative" dir="rtl">
+      <WhatsAppFloat />
       {/* Header */}
       <div className="bg-gradient-to-br from-gray-900 via-gray-800 to-gray-700 text-white pt-16 pb-20 sm:pt-20 sm:pb-28 relative overflow-hidden">
         <div className="absolute inset-0 pointer-events-none">
