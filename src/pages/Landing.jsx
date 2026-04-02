@@ -8,13 +8,20 @@ import {
 } from 'lucide-react';
 import { WhatsAppFloat } from '../components/WhatsAppFloat';
 
-const NAV_LINKS = [
-  { label: 'الرئيسية', href: '#hero' },
-  { label: 'خدماتنا', href: '#services' },
-  { label: 'كيف يعمل', href: '#how' },
-  { label: 'التطبيقات', href: '#apps' },
+const SCROLL_LINKS = [
+  { label: 'الرئيسية',    href: '#hero' },
+  { label: 'خدماتنا',    href: '#services' },
+  { label: 'كيف يعمل',   href: '#how' },
+  { label: 'التطبيقات',  href: '#apps' },
   { label: 'تواصل معنا', href: '#contact' },
 ];
+
+const PAGE_LINKS = [
+  { label: 'سياسة الخصوصية', to: '/privacy' },
+  { label: 'الشروط والأحكام', to: '/terms' },
+];
+
+const NAV_LINKS = SCROLL_LINKS;
 
 export const Landing = () => {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -44,12 +51,20 @@ export const Landing = () => {
                 className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl object-cover shadow-md" />
               <span className="text-xl sm:text-2xl font-black text-white tracking-tight">فزاعين</span>
             </div>
-            <nav className="hidden md:flex items-center gap-6 lg:gap-8">
-              {NAV_LINKS.map(l => (
+            <nav className="hidden md:flex items-center gap-5 lg:gap-7">
+              {SCROLL_LINKS.map(l => (
                 <button key={l.href} onClick={() => scrollTo(l.href)}
-                  className="font-semibold text-sm lg:text-base text-white/70 hover:text-amber-400 transition-colors">
+                  className="font-semibold text-sm text-white/70 hover:text-amber-400 transition-colors">
                   {l.label}
                 </button>
+              ))}
+              {/* Divider */}
+              <span className="h-4 w-px bg-white/10" />
+              {PAGE_LINKS.map(l => (
+                <Link key={l.to} to={l.to}
+                  className="font-semibold text-sm text-white/50 hover:text-amber-400 transition-colors">
+                  {l.label}
+                </Link>
               ))}
               <Link to="/admin"
                 className="bg-amber-400 text-gray-950 font-black px-5 py-2.5 rounded-xl text-sm hover:bg-amber-300 transition-all hover:shadow-lg hover:shadow-amber-400/20">
@@ -64,12 +79,21 @@ export const Landing = () => {
         {menuOpen && (
           <div className="md:hidden bg-gray-950 border-t border-white/10">
             <div className="px-4 py-4 flex flex-col gap-1">
-              {NAV_LINKS.map(l => (
+              {SCROLL_LINKS.map(l => (
                 <button key={l.href} onClick={() => scrollTo(l.href)}
                   className="text-white/70 font-semibold py-3 text-right hover:text-amber-400 transition-colors border-b border-white/5">
                   {l.label}
                 </button>
               ))}
+              <div className="pt-1 pb-1">
+                <div className="text-white/25 text-[10px] font-bold uppercase tracking-widest px-1 py-2">قانوني</div>
+                {PAGE_LINKS.map(l => (
+                  <Link key={l.to} to={l.to} onClick={() => setMenuOpen(false)}
+                    className="block text-white/50 font-semibold py-2.5 text-right hover:text-amber-400 transition-colors border-b border-white/5">
+                    {l.label}
+                  </Link>
+                ))}
+              </div>
               <Link to="/admin" onClick={() => setMenuOpen(false)}
                 className="bg-amber-400 text-gray-950 font-black px-4 py-3 rounded-xl text-center text-sm mt-3">
                 لوحة التحكم
