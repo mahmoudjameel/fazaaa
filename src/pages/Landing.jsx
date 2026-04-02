@@ -142,15 +142,16 @@ export const Landing = () => {
                   <ChevronDown className="w-5 h-5" />
                 </button>
               </div>
-              <div className="flex items-center justify-center lg:justify-end gap-10 pt-1">
+              <div className="flex items-center justify-center lg:justify-end gap-0 pt-1 divide-x divide-x-reverse divide-white/10 bg-white/4 border border-white/8 rounded-2xl overflow-hidden">
                 {[
-                  { num: '+٥٠٠٠', label: 'طلب منجز' },
-                  { num: '+٢٠٠', label: 'مزود خدمة' },
-                  { num: '٤.٩★', label: 'في المتجر' },
+                  { num: '+٣٠٠',  label: 'طلب منجز',   sub: 'ومتزايد' },
+                  { num: '+٤٠',   label: 'مزود معتمد',  sub: 'في المنطقة' },
+                  { num: '٤.٧★',  label: 'تقييم المتجر', sub: 'من ٥' },
                 ].map(s => (
-                  <div key={s.label} className="text-center">
-                    <div className="text-2xl sm:text-3xl font-black text-amber-400">{s.num}</div>
-                    <div className="text-white/40 text-xs sm:text-sm font-medium mt-0.5">{s.label}</div>
+                  <div key={s.label} className="flex-1 text-center px-4 py-3">
+                    <div className="text-xl sm:text-2xl font-black text-amber-400 leading-none">{s.num}</div>
+                    <div className="text-white/50 text-[10px] sm:text-xs font-semibold mt-1">{s.label}</div>
+                    <div className="text-white/20 text-[9px] mt-0.5">{s.sub}</div>
                   </div>
                 ))}
               </div>
