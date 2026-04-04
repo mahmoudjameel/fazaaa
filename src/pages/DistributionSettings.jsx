@@ -1,21 +1,23 @@
 import { useEffect, useState } from 'react';
-import { Settings, MapPin, Clock, DollarSign, Users, Save, RotateCcw, AlertTriangle } from 'lucide-react';
+import { Settings, MapPin, Clock, DollarSign, Users, Save, RotateCcw, AlertTriangle, Loader2, Plus, Trash2 } from 'lucide-react';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
+
+const DEFAULT_STAGES = [
+  { id: 1, type: 'vip', minRadius: 0, maxRadius: 6, waitTime: 20 },
+  { id: 2, type: 'all', minRadius: 0, maxRadius: 4, waitTime: 20 },
+  { id: 3, type: 'all', minRadius: 4, maxRadius: 7, waitTime: 20 },
+  { id: 4, type: 'all', minRadius: 7, maxRadius: 10, waitTime: 20 },
+  { id: 5, type: 'all', minRadius: 10, maxRadius: 13, waitTime: 20 },
+  { id: 6, type: 'all', minRadius: 13, maxRadius: 16, waitTime: 20 },
+  { id: 7, type: 'all', minRadius: 16, maxRadius: 19, waitTime: 20 },
+];
 
 export const DistributionSettings = () => {
   const [settings, setSettings] = useState({
     vipEnabled: true,
     cumulativeEnabled: true,
-    searchStages: [
-      { id: 1, type: 'vip', minRadius: 0, maxRadius: 6, waitTime: 20 },
-      { id: 2, type: 'all', minRadius: 0, maxRadius: 4, waitTime: 20 },
-      { id: 3, type: 'all', minRadius: 4, maxRadius: 7, waitTime: 20 },
-      { id: 4, type: 'all', minRadius: 7, maxRadius: 10, waitTime: 20 },
-      { id: 5, type: 'all', minRadius: 10, maxRadius: 13, waitTime: 20 },
-      { id: 6, type: 'all', minRadius: 13, maxRadius: 16, waitTime: 20 },
-      { id: 7, type: 'all', minRadius: 16, maxRadius: 19, waitTime: 20 }
-    ]
+    searchStages: DEFAULT_STAGES,
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -26,15 +28,13 @@ export const DistributionSettings = () => {
 
   const fetchSettings = async () => {
     try {
-      const settingsRef = doc(db, 'settings', 'distribution');
-      const settingsSnap = await getDoc(settingsRef);
-      
+      const settingsSnap = await getDoc(doc(db, 'settings', 'distribution'));
       if (settingsSnap.exists()) {
         const data = settingsSnap.data();
         setSettings({
           vipEnabled: data.vipEnabled ?? true,
           cumulativeEnabled: data.cumulativeEnabled ?? true,
-          searchStages: data.searchStages || []
+          searchStages: data.searchStages || [],
         });
       }
     } catch (error) {
@@ -47,14 +47,10 @@ export const DistributionSettings = () => {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const settingsRef = doc(db, 'settings', 'distribution');
-      await setDoc(settingsRef, {
-        vipEnabled: settings.vipEnabled,
-        cumulativeEnabled: settings.cumulativeEnabled,
-        searchStages: settings.searchStages,
-        updatedAt: new Date().toISOString()
+      await setDoc(doc(db, 'settings', 'distribution'), {
+        ...settings,
+        updatedAt: new Date().toISOString(),
       });
-      
       alert('تم حفظ الإعدادات بنجاح');
     } catch (error) {
       console.error('Error saving settings:', error);
@@ -64,240 +60,206 @@ export const DistributionSettings = () => {
     }
   };
 
-  const handleReset = async () => {
+  const handleReset = () => {
     if (confirm('هل أنت متأكد من إعادة تعيين الإعدادات إلى القيم الافتراضية؟')) {
-      const defaultSettings = {
-        vipEnabled: true,
-        cumulativeEnabled: true,
-        searchStages: [
-          { id: 1, type: 'vip', minRadius: 0, maxRadius: 6, waitTime: 20 },
-          { id: 2, type: 'all', minRadius: 0, maxRadius: 4, waitTime: 20 },
-          { id: 3, type: 'all', minRadius: 4, maxRadius: 7, waitTime: 20 },
-          { id: 4, type: 'all', minRadius: 7, maxRadius: 10, waitTime: 20 },
-          { id: 5, type: 'all', minRadius: 10, maxRadius: 13, waitTime: 20 },
-          { id: 6, type: 'all', minRadius: 13, maxRadius: 16, waitTime: 20 },
-          { id: 7, type: 'all', minRadius: 16, maxRadius: 19, waitTime: 20 }
-        ]
-      };
-      
-      setSettings(defaultSettings);
+      setSettings({ vipEnabled: true, cumulativeEnabled: true, searchStages: DEFAULT_STAGES });
     }
+  };
+
+  const updateStage = (index, field, value) => {
+    const newStages = [...settings.searchStages];
+    newStages[index][field] = value;
+    setSettings({ ...settings, searchStages: newStages });
+  };
+
+  const addStage = () => {
+    const newId = settings.searchStages.length > 0
+      ? Math.max(...settings.searchStages.map((s) => s.id)) + 1
+      : 1;
+    setSettings((prev) => ({
+      ...prev,
+      searchStages: [...prev.searchStages, { id: newId, type: 'all', minRadius: 0, maxRadius: 20, waitTime: 20 }],
+    }));
+  };
+
+  const removeStage = (id) => {
+    setSettings((prev) => ({
+      ...prev,
+      searchStages: prev.searchStages.filter((s) => s.id !== id),
+    }));
   };
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-gray-500">جاري التحميل...</div>
+      <div className="flex flex-col items-center justify-center h-64 gap-3">
+        <div className="animate-spin rounded-full h-10 w-10 border-2 border-amber-400 border-t-transparent" />
+        <p className="text-sm text-gray-500">جاري التحميل...</p>
       </div>
     );
   }
 
+  const Toggle = ({ checked, onChange }) => (
+    <label className="relative inline-flex items-center cursor-pointer">
+      <input type="checkbox" className="sr-only peer" checked={checked} onChange={onChange} />
+      <div className="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-400" />
+    </label>
+  );
+
   return (
-    <div>
-      <div className="mb-8 flex justify-between items-center">
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-black text-gray-800 mb-2">إعدادات توزيع وتوسيع الطلبات</h1>
-          <p className="text-gray-600">إدارة حلقات البحث الجغرافي (Zoning) وتوقيت ظهور الإشعارات.</p>
+          <h1 className="text-2xl font-bold text-gray-900">إعدادات توزيع الطلبات</h1>
+          <p className="text-gray-500 mt-1 text-sm">إدارة حلقات البحث الجغرافي وتوقيت ظهور الإشعارات</p>
         </div>
         <div className="flex gap-3">
           <button
             onClick={handleReset}
-            className="flex items-center gap-2 px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-all font-semibold"
+            className="flex items-center gap-2 px-5 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-all font-semibold text-sm shadow-sm"
           >
-            <RotateCcw size={20} />
-            إعادة تعيين الافتراضي
+            <RotateCcw size={16} />
+            إعادة الافتراضي
           </button>
           <button
             onClick={handleSave}
             disabled={saving}
-            className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:shadow-lg transition-all font-semibold disabled:opacity-50"
+            className="flex items-center gap-2 px-6 py-2.5 bg-amber-400 text-gray-950 rounded-xl hover:bg-amber-500 transition-all font-bold text-sm shadow-sm disabled:opacity-50"
           >
-            <Save size={20} />
+            {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
             {saving ? 'جاري الحفظ...' : 'حفظ التغييرات'}
           </button>
         </div>
       </div>
 
-      {/* VIP Status Toggle Card */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-        <div className="bg-white rounded-2xl shadow-lg p-6 border-r-4 border-amber-500">
+      {/* Toggle Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 border-r-4 border-r-amber-400">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <div className={`p-3 rounded-xl ${settings.vipEnabled ? 'bg-amber-100 text-amber-600' : 'bg-gray-100 text-gray-400'}`}>
-                <Users size={24} />
+              <div className={`p-2.5 rounded-xl ${settings.vipEnabled ? 'bg-amber-100 text-amber-600' : 'bg-gray-100 text-gray-400'}`}>
+                <Users size={20} />
               </div>
               <div>
-                <h3 className="text-lg font-bold text-gray-800">نظام أولوية VIP</h3>
-                <p className="text-sm text-gray-500">تفعيل مراحل خاصة لمزودي الـ VIP.</p>
+                <h3 className="font-bold text-gray-800">نظام أولوية VIP</h3>
+                <p className="text-xs text-gray-500 mt-0.5">تفعيل مراحل خاصة لمزودي VIP</p>
               </div>
             </div>
-            <div className="flex items-center gap-3 bg-gray-50 px-4 py-2 rounded-xl">
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input 
-                  type="checkbox" 
-                  className="sr-only peer"
-                  checked={settings.vipEnabled}
-                  onChange={(e) => setSettings({...settings, vipEnabled: e.target.checked})}
-                />
-                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
-              </label>
-            </div>
+            <Toggle
+              checked={settings.vipEnabled}
+              onChange={(e) => setSettings({ ...settings, vipEnabled: e.target.checked })}
+            />
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-lg p-6 border-r-4 border-blue-500">
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 border-r-4 border-r-blue-400">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <div className={`p-3 rounded-xl ${settings.cumulativeEnabled ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-400'}`}>
-                <RotateCcw size={24} />
+              <div className={`p-2.5 rounded-xl ${settings.cumulativeEnabled ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-400'}`}>
+                <RotateCcw size={20} />
               </div>
               <div>
-                <h3 className="text-lg font-bold text-gray-800">توزيع تراكمي (Strict Zoning)</h3>
-                <p className="text-sm text-gray-500">استمرار تنبيه المزودين في المراحل السابقة دفعة واحدة.</p>
+                <h3 className="font-bold text-gray-800">توزيع تراكمي</h3>
+                <p className="text-xs text-gray-500 mt-0.5">استمرار تنبيه المزودين في المراحل السابقة</p>
               </div>
             </div>
-            <div className="flex items-center gap-3 bg-gray-50 px-4 py-2 rounded-xl">
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input 
-                  type="checkbox" 
-                  className="sr-only peer"
-                  checked={settings.cumulativeEnabled}
-                  onChange={(e) => setSettings({...settings, cumulativeEnabled: e.target.checked})}
-                />
-                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-500"></div>
-              </label>
-            </div>
+            <Toggle
+              checked={settings.cumulativeEnabled}
+              onChange={(e) => setSettings({ ...settings, cumulativeEnabled: e.target.checked })}
+            />
           </div>
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-lg mb-6 p-6">
-        <div className="space-y-6">
-          <div className="flex justify-between items-center mb-4">
-            <div>
-              <h3 className="text-lg font-semibold text-gray-800">توزيع الطلب حسب الحلقات (Strict Zoning)</h3>
-              <p className="text-sm text-gray-500">سيتم البحث في كل حلقة بشكل منفصل وبالترتيب الزمني المكتوب.</p>
-            </div>
-            <button
-              onClick={() => {
-                const newId = settings.searchStages.length > 0
-                  ? Math.max(...settings.searchStages.map(s => s.id)) + 1
-                  : 1;
-                setSettings(prev => ({
-                  ...prev,
-                  searchStages: [...prev.searchStages, { id: newId, type: 'all', minRadius: 0, maxRadius: 20, waitTime: 20 }]
-                }));
-              }}
-              className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-sm font-bold transition-all"
-            >
-              + إضافة حلقة جديدة
-            </button>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-right border-collapse">
-              <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className="p-4 text-sm font-bold text-gray-700">المرحلة</th>
-                  <th className="p-4 text-sm font-bold text-gray-700">نوع المزود</th>
-                  <th className="p-4 text-sm font-bold text-gray-700">من (كم)</th>
-                  <th className="p-4 text-sm font-bold text-gray-700">إلى (كم)</th>
-                  <th className="p-4 text-sm font-bold text-gray-700">الانتظار (ثانية)</th>
-                  <th className="p-4 text-sm font-bold text-gray-700">إجراءات</th>
-                </tr>
-              </thead>
-              <tbody>
-                {settings.searchStages?.map((stage, index) => (
-                  <tr key={stage.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                    <td className="p-4 font-bold text-gray-600">{index + 1}</td>
-                    <td className="p-4">
-                      <select
-                        value={stage.type}
-                        disabled={!settings.vipEnabled && stage.type !== 'all'}
-                        onChange={(e) => {
-                          const newStages = [...settings.searchStages];
-                          newStages[index].type = e.target.value;
-                          setSettings({ ...settings, searchStages: newStages });
-                        }}
-                        className={`bg-white border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:border-green-500 ${!settings.vipEnabled && stage.type !== 'all' ? 'opacity-50' : ''}`}
-                      >
-                        <option value="all">الكل (VIP + عام)</option>
-                        <option value="vip">VIP فقط</option>
-                        <option value="general">عام فقط</option>
-                      </select>
-                      {!settings.vipEnabled && stage.type !== 'all' && (
-                        <p className="text-[10px] text-amber-600 mt-1 italic">سيتم تجاهل الفلتر لأن VIP معطل</p>
-                      )}
-                    </td>
-                    <td className="p-4">
-                      <input
-                        type="number"
-                        value={stage.minRadius}
-                        onChange={(e) => {
-                          const newStages = [...settings.searchStages];
-                          newStages[index].minRadius = parseInt(e.target.value) || 0;
-                          setSettings({ ...settings, searchStages: newStages });
-                        }}
-                        className="w-20 border border-gray-300 rounded px-2 py-1 text-sm text-center"
-                      />
-                    </td>
-                    <td className="p-4">
-                      <input
-                        type="number"
-                        value={stage.maxRadius}
-                        onChange={(e) => {
-                          const newStages = [...settings.searchStages];
-                          newStages[index].maxRadius = parseInt(e.target.value) || 0;
-                          setSettings({ ...settings, searchStages: newStages });
-                        }}
-                        className="w-20 border border-gray-300 rounded px-2 py-1 text-sm text-center"
-                      />
-                    </td>
-                    <td className="p-4">
-                      <input
-                        type="number"
-                        value={stage.waitTime}
-                        onChange={(e) => {
-                          const newStages = [...settings.searchStages];
-                          newStages[index].waitTime = parseInt(e.target.value) || 0;
-                          setSettings({ ...settings, searchStages: newStages });
-                        }}
-                        className="w-20 border border-gray-300 rounded px-2 py-1 text-sm text-center"
-                      />
-                    </td>
-                    <td className="p-4">
-                      <button
-                        onClick={() => {
-                          const newStages = settings.searchStages.filter(s => s.id !== stage.id);
-                          setSettings({ ...settings, searchStages: newStages });
-                        }}
-                        className="text-red-500 hover:text-red-700 text-sm font-bold"
-                      >
-                        حذف
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-                {(!settings.searchStages || settings.searchStages.length === 0) && (
-                  <tr>
-                    <td colSpan="6" className="p-8 text-center text-gray-400 italic">
-                      لا توجد حلقات بحث معرفة. سيتم إغلاق الطلبات فوراً.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-      <div className="bg-yellow-50 border border-yellow-200 rounded-2xl p-6">
-        <div className="flex items-start gap-3">
-          <AlertTriangle className="text-yellow-600 mt-1" size={20} />
+      {/* Stages Table */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
           <div>
-            <h3 className="font-semibold text-yellow-800 mb-2">تنبيه هام</h3>
-            <p className="text-yellow-700 text-sm">
-              التغييرات هنا تنعكس فوراً على جميع الطلبات الجديدة. يرجى التأكد من أن الحلقات تغطي مساحات جغرافية منطقية لضمان وصول الخدمة للعملاء.
+            <h3 className="font-bold text-gray-800">حلقات البحث الجغرافي</h3>
+            <p className="text-xs text-gray-500 mt-0.5">يتم البحث في كل حلقة بالترتيب</p>
+          </div>
+          <button
+            onClick={addStage}
+            className="flex items-center gap-2 px-4 py-2 bg-amber-400 text-gray-950 rounded-xl text-sm font-bold hover:bg-amber-500 transition-all"
+          >
+            <Plus size={16} />
+            إضافة حلقة
+          </button>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-right">
+            <thead className="bg-gray-50 border-b border-gray-100">
+              <tr>
+                <th className="px-4 py-3 text-xs font-bold text-gray-500 uppercase">المرحلة</th>
+                <th className="px-4 py-3 text-xs font-bold text-gray-500 uppercase">نوع المزود</th>
+                <th className="px-4 py-3 text-xs font-bold text-gray-500 uppercase">من (كم)</th>
+                <th className="px-4 py-3 text-xs font-bold text-gray-500 uppercase">إلى (كم)</th>
+                <th className="px-4 py-3 text-xs font-bold text-gray-500 uppercase">انتظار (ث)</th>
+                <th className="px-4 py-3 text-xs font-bold text-gray-500 uppercase">حذف</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {settings.searchStages?.map((stage, index) => (
+                <tr key={stage.id} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-4 py-3">
+                    <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-amber-100 text-amber-700 text-xs font-bold">{index + 1}</span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <select
+                      value={stage.type}
+                      disabled={!settings.vipEnabled && stage.type !== 'all'}
+                      onChange={(e) => updateStage(index, 'type', e.target.value)}
+                      className="bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-amber-400 disabled:opacity-50"
+                    >
+                      <option value="all">الكل (VIP + عام)</option>
+                      <option value="vip">VIP فقط</option>
+                      <option value="general">عام فقط</option>
+                    </select>
+                    {!settings.vipEnabled && stage.type !== 'all' && (
+                      <p className="text-[10px] text-amber-600 mt-1">سيتم تجاهل الفلتر (VIP معطل)</p>
+                    )}
+                  </td>
+                  {['minRadius', 'maxRadius', 'waitTime'].map((field) => (
+                    <td key={field} className="px-4 py-3">
+                      <input
+                        type="number"
+                        value={stage[field]}
+                        onChange={(e) => updateStage(index, field, parseInt(e.target.value) || 0)}
+                        className="w-20 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center focus:outline-none focus:border-amber-400"
+                      />
+                    </td>
+                  ))}
+                  <td className="px-4 py-3">
+                    <button
+                      onClick={() => removeStage(stage.id)}
+                      className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {(!settings.searchStages || settings.searchStages.length === 0) && (
+                <tr>
+                  <td colSpan={6} className="px-4 py-10 text-center text-gray-400 text-sm italic">
+                    لا توجد حلقات. سيتم إغلاق الطلبات فوراً.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Warning */}
+      <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5">
+        <div className="flex items-start gap-3">
+          <AlertTriangle className="text-amber-600 mt-0.5 shrink-0" size={18} />
+          <div>
+            <h3 className="font-semibold text-amber-800 text-sm mb-1">تنبيه هام</h3>
+            <p className="text-amber-700 text-sm leading-relaxed">
+              التغييرات هنا تنعكس فوراً على جميع الطلبات الجديدة. يرجى التأكد من أن الحلقات تغطي مساحات جغرافية منطقية.
             </p>
           </div>
         </div>
@@ -305,3 +267,5 @@ export const DistributionSettings = () => {
     </div>
   );
 };
+
+export default DistributionSettings;

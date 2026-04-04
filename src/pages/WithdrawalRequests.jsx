@@ -1,417 +1,371 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Eye, CheckCircle, XCircle, Clock, DollarSign, User, Phone } from 'lucide-react';
+import { Search, Eye, CheckCircle, XCircle, Clock, DollarSign, User, Phone, Loader2, X } from 'lucide-react';
 import { getAllWithdrawalRequests, approveWithdrawalRequest, rejectWithdrawalRequest } from '../services/withdrawalService';
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
 
+const STATUS_CONFIG = {
+  pending:  { label: 'قيد المراجعة', color: 'bg-amber-100 text-amber-800',  icon: Clock },
+  approved: { label: 'مكتمل',        color: 'bg-green-100 text-green-800',  icon: CheckCircle },
+  rejected: { label: 'مرفوض',        color: 'bg-red-100 text-red-800',      icon: XCircle },
+};
+
+const StatusBadge = ({ status }) => {
+  const { label, color, icon: Icon } = STATUS_CONFIG[status] || STATUS_CONFIG.pending;
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${color}`}>
+      <Icon className="w-3.5 h-3.5" />
+      {label}
+    </span>
+  );
+};
+
+const StatCard = ({ label, value, colorClass }) => (
+  <div className={`bg-white rounded-2xl border border-gray-100 shadow-sm p-4`}>
+    <div className={`text-2xl font-black mb-1 ${colorClass || 'text-gray-800'}`}>{value}</div>
+    <div className="text-sm text-gray-500">{label}</div>
+  </div>
+);
+
 export default function WithdrawalRequests() {
-    const [requests, setRequests] = useState([]);
-    const [filteredRequests, setFilteredRequests] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [statusFilter, setStatusFilter] = useState('all');
-    const [searchTerm, setSearchTerm] = useState('');
-    const [selectedRequest, setSelectedRequest] = useState(null);
-    const [actionModal, setActionModal] = useState({ show: false, type: null, request: null });
-    const [adminNotes, setAdminNotes] = useState('');
-    const [processing, setProcessing] = useState(false);
+  const [requests, setRequests]           = useState([]);
+  const [filteredRequests, setFiltered]   = useState([]);
+  const [loading, setLoading]             = useState(true);
+  const [statusFilter, setStatusFilter]   = useState('all');
+  const [searchTerm, setSearchTerm]       = useState('');
+  const [selectedRequest, setSelected]    = useState(null);
+  const [actionModal, setActionModal]     = useState({ show: false, type: null, request: null });
+  const [adminNotes, setAdminNotes]       = useState('');
+  const [processing, setProcessing]       = useState(false);
 
-    useEffect(() => {
-        loadRequests();
-    }, [statusFilter]);
+  useEffect(() => { loadRequests(); }, [statusFilter]);
 
-    useEffect(() => {
-        filterRequests();
-    }, [requests, searchTerm]);
+  useEffect(() => {
+    let filtered = requests;
+    if (searchTerm) {
+      filtered = filtered.filter(
+        (r) =>
+          r.providerName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          r.providerPhone?.includes(searchTerm)
+      );
+    }
+    setFiltered(filtered);
+  }, [requests, searchTerm]);
 
-    const loadRequests = async () => {
-        setLoading(true);
-        try {
-            const data = await getAllWithdrawalRequests(statusFilter);
-            setRequests(data);
-        } catch (error) {
-            console.error('Error loading requests:', error);
-        } finally {
-            setLoading(false);
-        }
-    };
+  const loadRequests = async () => {
+    setLoading(true);
+    try {
+      const data = await getAllWithdrawalRequests(statusFilter);
+      setRequests(data);
+    } catch (error) {
+      console.error('Error loading requests:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    const filterRequests = () => {
-        let filtered = requests;
+  const handleApprove = async () => {
+    if (!actionModal.request) return;
+    setProcessing(true);
+    try {
+      await approveWithdrawalRequest(actionModal.request.id, 'admin', adminNotes);
+      alert('تمت الموافقة على الطلب بنجاح');
+      closeAction();
+      loadRequests();
+    } catch (error) {
+      alert('فشل في الموافقة: ' + error.message);
+    } finally {
+      setProcessing(false);
+    }
+  };
 
-        if (searchTerm) {
-            filtered = filtered.filter(req =>
-                req.providerName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                req.providerPhone?.includes(searchTerm)
-            );
-        }
+  const handleReject = async () => {
+    if (!actionModal.request || !adminNotes.trim()) {
+      alert('يرجى كتابة سبب الرفض');
+      return;
+    }
+    setProcessing(true);
+    try {
+      await rejectWithdrawalRequest(actionModal.request.id, 'admin', adminNotes);
+      alert('تم رفض الطلب');
+      closeAction();
+      loadRequests();
+    } catch (error) {
+      alert('فشل في الرفض');
+    } finally {
+      setProcessing(false);
+    }
+  };
 
-        setFilteredRequests(filtered);
-    };
+  const closeAction = () => {
+    setActionModal({ show: false, type: null, request: null });
+    setAdminNotes('');
+  };
 
-    const handleApprove = async () => {
-        if (!actionModal.request) return;
+  const stats = {
+    total:       requests.length,
+    pending:     requests.filter((r) => r.status === 'pending').length,
+    approved:    requests.filter((r) => r.status === 'approved').length,
+    rejected:    requests.filter((r) => r.status === 'rejected').length,
+    totalAmount: requests.reduce((s, r) => s + (r.amount || 0), 0),
+  };
 
-        setProcessing(true);
-        try {
-            await approveWithdrawalRequest(
-                actionModal.request.id,
-                'admin',
-                adminNotes
-            );
+  const STATUS_FILTERS = [
+    { key: 'all',      label: 'الكل' },
+    { key: 'pending',  label: 'قيد المراجعة' },
+    { key: 'approved', label: 'مكتملة' },
+    { key: 'rejected', label: 'مرفوضة' },
+  ];
 
-            alert('تمت الموافقة على الطلب بنجاح');
-            setActionModal({ show: false, type: null, request: null });
-            setAdminNotes('');
-            loadRequests();
-        } catch (error) {
-            console.error('Error approving request:', error);
-            alert('فشل في الموافقة: ' + error.message);
-        } finally {
-            setProcessing(false);
-        }
-    };
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">طلبات سحب الرصيد</h1>
+        <p className="text-gray-500 mt-1 text-sm">إدارة طلبات سحب الرصيد من المزودين</p>
+      </div>
 
-    const handleReject = async () => {
-        if (!actionModal.request || !adminNotes.trim()) {
-            alert('يرجى كتابة سبب الرفض');
-            return;
-        }
-
-        setProcessing(true);
-        try {
-            await rejectWithdrawalRequest(
-                actionModal.request.id,
-                'admin',
-                adminNotes
-            );
-
-            alert('تم رفض الطلب');
-            setActionModal({ show: false, type: null, request: null });
-            setAdminNotes('');
-            loadRequests();
-        } catch (error) {
-            console.error('Error rejecting request:', error);
-            alert('فشل في الرفض');
-        } finally {
-            setProcessing(false);
-        }
-    };
-
-    const getStatusBadge = (status) => {
-        const config = {
-            pending: { label: 'قيد المراجعة', color: 'bg-yellow-100 text-yellow-800', icon: Clock },
-            approved: { label: 'مكتمل', color: 'bg-green-100 text-green-800', icon: CheckCircle },
-            rejected: { label: 'مرفوض', color: 'bg-red-100 text-red-800', icon: XCircle },
-        };
-
-        const { label, color, icon: Icon } = config[status] || config.pending;
-
-        return (
-            <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-semibold ${color}`}>
-                <Icon className="w-4 h-4" />
-                {label}
-            </span>
-        );
-    };
-
-    const stats = {
-        total: requests.length,
-        pending: requests.filter(r => r.status === 'pending').length,
-        approved: requests.filter(r => r.status === 'approved').length,
-        rejected: requests.filter(r => r.status === 'rejected').length,
-        totalAmount: requests.reduce((sum, r) => sum + r.amount, 0),
-    };
-
-    return (
-        <div className="p-3 sm:p-4 md:p-6">
-            {/* Header */}
-            <div className="mb-4 sm:mb-6">
-                <h1 className="text-xl sm:text-2xl font-bold text-gray-900">طلبات سحب الرصيد</h1>
-                <p className="text-sm sm:text-base text-gray-600 mt-1">إدارة طلبات سحب الرصيد من المزودين</p>
-            </div>
-
-            {/* Stats Cards */}
-            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 mb-4 sm:mb-6">
-                <div className="bg-white p-3 sm:p-4 rounded-lg shadow">
-                    <div className="text-xs sm:text-sm text-gray-600">إجمالي الطلبات</div>
-                    <div className="text-xl sm:text-2xl font-bold text-gray-900">{stats.total}</div>
-                </div>
-                <div className="bg-yellow-50 p-3 sm:p-4 rounded-lg shadow">
-                    <div className="text-xs sm:text-sm text-yellow-700">قيد المراجعة</div>
-                    <div className="text-xl sm:text-2xl font-bold text-yellow-800">{stats.pending}</div>
-                </div>
-                <div className="bg-green-50 p-3 sm:p-4 rounded-lg shadow">
-                    <div className="text-xs sm:text-sm text-green-700">مكتملة</div>
-                    <div className="text-xl sm:text-2xl font-bold text-green-800">{stats.approved}</div>
-                </div>
-                <div className="bg-red-50 p-3 sm:p-4 rounded-lg shadow">
-                    <div className="text-xs sm:text-sm text-red-700">مرفوضة</div>
-                    <div className="text-xl sm:text-2xl font-bold text-red-800">{stats.rejected}</div>
-                </div>
-                <div className="bg-teal-50 p-3 sm:p-4 rounded-lg shadow col-span-2 lg:col-span-1">
-                    <div className="text-xs sm:text-sm text-teal-700">إجمالي المبالغ</div>
-                    <div className="text-xl sm:text-2xl font-bold text-teal-800">{stats.totalAmount} ر.س</div>
-                </div>
-            </div>
-
-            {/* Filters */}
-            <div className="bg-white p-3 sm:p-4 rounded-lg shadow mb-4 sm:mb-6">
-                <div className="flex flex-col md:flex-row gap-3 sm:gap-4">
-                    <div className="flex-1">
-                        <div className="relative">
-                            <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
-                            <input
-                                type="text"
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                placeholder="بحث بالاسم أو رقم الهاتف..."
-                                className="w-full pr-9 sm:pr-10 pl-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 text-sm sm:text-base"
-                                dir="rtl"
-                            />
-                        </div>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                        {['all', 'pending', 'approved', 'rejected'].map((status) => (
-                            <button
-                                key={status}
-                                onClick={() => setStatusFilter(status)}
-                                className={`px-3 sm:px-4 py-2 rounded-lg font-semibold transition text-xs sm:text-sm ${statusFilter === status
-                                        ? 'bg-teal-600 text-white'
-                                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                                    }`}
-                            >
-                                {status === 'all' && 'الكل'}
-                                {status === 'pending' && 'قيد المراجعة'}
-                                {status === 'approved' && 'مكتملة'}
-                                {status === 'rejected' && 'مرفوضة'}
-                            </button>
-                        ))}
-                    </div>
-                </div>
-            </div>
-
-            {/* Requests - Desktop Table / Mobile Cards */}
-            <div className="bg-white rounded-lg shadow overflow-hidden">
-                {loading ? (
-                    <div className="flex justify-center items-center h-64">
-                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600"></div>
-                    </div>
-                ) : filteredRequests.length === 0 ? (
-                    <div className="text-center py-12 text-gray-500">لا توجد طلبات</div>
-                ) : (
-                    <>
-                        {/* Desktop Table */}
-                        <div className="hidden md:block overflow-x-auto">
-                            <table className="w-full">
-                                <thead className="bg-gray-50">
-                                    <tr>
-                                        <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">المزود</th>
-                                        <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">المبلغ</th>
-                                        <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">الحالة</th>
-                                        <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">التاريخ</th>
-                                        <th className="px-6 py-3 text-center text-sm font-semibold text-gray-700">إجراءات</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-200">
-                                    {filteredRequests.map((request) => (
-                                        <tr key={request.id} className="hover:bg-gray-50">
-                                            <td className="px-6 py-4">
-                                                <div>
-                                                    <div className="flex items-center gap-2 text-sm font-medium text-gray-900">
-                                                        <User className="w-4 h-4" />
-                                                        {request.providerName || 'غير محدد'}
-                                                    </div>
-                                                    <div className="flex items-center gap-2 text-sm text-gray-500 mt-1">
-                                                        <Phone className="w-4 h-4" />
-                                                        {request.providerPhone || 'لا يوجد'}
-                                                    </div>
-                                                </div>
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <div className="flex items-center gap-2">
-                                                    <DollarSign className="w-5 h-5 text-teal-600" />
-                                                    <span className="text-lg font-bold text-gray-900">{request.amount} ر.س</span>
-                                                </div>
-                                            </td>
-                                            <td className="px-6 py-4">{getStatusBadge(request.status)}</td>
-                                            <td className="px-6 py-4 text-sm text-gray-600">
-                                                {format(request.createdAt, 'dd MMM yyyy - HH:mm', { locale: ar })}
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <div className="flex justify-center gap-2">
-                                                    <button
-                                                        onClick={() => setSelectedRequest(request)}
-                                                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition"
-                                                    >
-                                                        <Eye size={20} />
-                                                    </button>
-                                                    {request.status === 'pending' && (
-                                                        <>
-                                                            <button
-                                                                onClick={() => setActionModal({ show: true, type: 'approve', request })}
-                                                                className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition"
-                                                            >
-                                                                <CheckCircle size={20} />
-                                                            </button>
-                                                            <button
-                                                                onClick={() => setActionModal({ show: true, type: 'reject', request })}
-                                                                className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition"
-                                                            >
-                                                                <XCircle size={20} />
-                                                            </button>
-                                                        </>
-                                                    )}
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-
-                        {/* Mobile Cards */}
-                        <div className="md:hidden divide-y divide-gray-200">
-                            {filteredRequests.map((request) => (
-                                <div key={request.id} className="p-4 hover:bg-gray-50">
-                                    <div className="flex items-start justify-between mb-3">
-                                        <div className="flex-1">
-                                            <div className="flex items-center gap-2 mb-2">
-                                                <User className="w-4 h-4 text-gray-500" />
-                                                <span className="font-semibold text-gray-900">{request.providerName || 'غير محدد'}</span>
-                                            </div>
-                                            <div className="flex items-center gap-2 text-sm text-gray-500 mb-3">
-                                                <Phone className="w-4 h-4" />
-                                                <span>{request.providerPhone || 'لا يوجد'}</span>
-                                            </div>
-                                            <div className="flex items-center gap-2 mb-2">
-                                                <DollarSign className="w-5 h-5 text-teal-600" />
-                                                <span className="text-lg font-bold text-gray-900">{request.amount} ر.س</span>
-                                            </div>
-                                            <div className="mb-2">{getStatusBadge(request.status)}</div>
-                                            <div className="text-xs text-gray-600">
-                                                {format(request.createdAt, 'dd MMM yyyy - HH:mm', { locale: ar })}
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="flex gap-2 justify-end">
-                                        <button
-                                            onClick={() => setSelectedRequest(request)}
-                                            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition"
-                                        >
-                                            <Eye size={18} />
-                                        </button>
-                                        {request.status === 'pending' && (
-                                            <>
-                                                <button
-                                                    onClick={() => setActionModal({ show: true, type: 'approve', request })}
-                                                    className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition"
-                                                >
-                                                    <CheckCircle size={18} />
-                                                </button>
-                                                <button
-                                                    onClick={() => setActionModal({ show: true, type: 'reject', request })}
-                                                    className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition"
-                                                >
-                                                    <XCircle size={18} />
-                                                </button>
-                                            </>
-                                        )}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </>
-                )}
-            </div>
-
-            {/* Details Modal */}
-            {selectedRequest && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4" onClick={() => setSelectedRequest(null)}>
-                    <div className="bg-white rounded-lg p-4 sm:p-6 max-w-lg w-full" onClick={(e) => e.stopPropagation()}>
-                        <h3 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4">تفاصيل الطلب</h3>
-                        <div className="space-y-2 sm:space-y-3">
-                            <div className="text-sm sm:text-base">
-                                <strong className="text-gray-700">المزود:</strong> 
-                                <span className="mr-2 text-gray-900">{selectedRequest.providerName}</span>
-                            </div>
-                            <div className="text-sm sm:text-base">
-                                <strong className="text-gray-700">الهاتف:</strong> 
-                                <span className="mr-2 text-gray-900">{selectedRequest.providerPhone}</span>
-                            </div>
-                            <div className="text-sm sm:text-base">
-                                <strong className="text-gray-700">المبلغ:</strong> 
-                                <span className="mr-2 text-gray-900">{selectedRequest.amount} ر.س</span>
-                            </div>
-                            <div className="text-sm sm:text-base">
-                                <strong className="text-gray-700">الحالة:</strong> 
-                                <span className="mr-2">{getStatusBadge(selectedRequest.status)}</span>
-                            </div>
-                            <div className="text-sm sm:text-base">
-                                <strong className="text-gray-700">تاريخ الإنشاء:</strong> 
-                                <span className="mr-2 text-gray-900">{format(selectedRequest.createdAt, 'dd MMM yyyy - HH:mm', { locale: ar })}</span>
-                            </div>
-                            {selectedRequest.adminNotes && (
-                                <div className="text-sm sm:text-base">
-                                    <strong className="text-gray-700">ملاحظات الإدارة:</strong> 
-                                    <span className="mr-2 text-gray-900">{selectedRequest.adminNotes}</span>
-                                </div>
-                            )}
-                        </div>
-                        <button
-                            onClick={() => setSelectedRequest(null)}
-                            className="mt-4 sm:mt-6 w-full bg-gray-200 text-gray-800 py-2 rounded-lg hover:bg-gray-300 text-sm sm:text-base"
-                        >
-                            إغلاق
-                        </button>
-                    </div>
-                </div>
-            )}
-
-            {/* Action Modal */}
-            {actionModal.show && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
-                    <div className="bg-white rounded-lg p-4 sm:p-6 max-w-md w-full">
-                        <h3 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4">
-                            {actionModal.type === 'approve' ? 'تأكيد الموافقة' : 'تأكيد الرفض'}
-                        </h3>
-                        <p className="text-sm sm:text-base text-gray-600 mb-3 sm:mb-4">
-                            {actionModal.type === 'approve'
-                                ? 'هل أنت متأكد من الموافقة على هذا الطلب؟ سيتم خصم المبلغ من رصيد المزود.'
-                                : 'يرجى كتابة سبب رفض الطلب:'}
-                        </p>
-                        <textarea
-                            value={adminNotes}
-                            onChange={(e) => setAdminNotes(e.target.value)}
-                            placeholder={actionModal.type === 'approve' ? 'ملاحظات (اختياري)' : 'سبب الرفض'}
-                            className="w-full p-3 border rounded-lg mb-3 sm:mb-4 text-sm sm:text-base"
-                            rows="3"
-                            dir="rtl"
-                        />
-                        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-                            <button
-                                onClick={() => {
-                                    setActionModal({ show: false, type: null, request: null });
-                                    setAdminNotes('');
-                                }}
-                                className="flex-1 bg-gray-200 text-gray-800 py-2 rounded-lg hover:bg-gray-300 text-sm sm:text-base"
-                                disabled={processing}
-                            >
-                                إلغاء
-                            </button>
-                            <button
-                                onClick={actionModal.type === 'approve' ? handleApprove : handleReject}
-                                className={`flex-1 text-white py-2 rounded-lg text-sm sm:text-base ${actionModal.type === 'approve'
-                                        ? 'bg-green-600 hover:bg-green-700'
-                                        : 'bg-red-600 hover:bg-red-700'
-                                    } disabled:opacity-50`}
-                                disabled={processing}
-                            >
-                                {processing ? 'جارٍ المعالجة...' : 'تأكيد'}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+      {/* Stats */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        <StatCard label="إجمالي الطلبات"  value={stats.total}       />
+        <StatCard label="قيد المراجعة"    value={stats.pending}     colorClass="text-amber-600" />
+        <StatCard label="مكتملة"          value={stats.approved}    colorClass="text-green-600" />
+        <StatCard label="مرفوضة"          value={stats.rejected}    colorClass="text-red-600"   />
+        <div className="bg-gray-950 rounded-2xl border border-gray-800 shadow-sm p-4 col-span-2 lg:col-span-1">
+          <div className="text-2xl font-black mb-1 text-amber-400">{stats.totalAmount} <span className="text-base font-semibold">ر.س</span></div>
+          <div className="text-sm text-gray-400">إجمالي المبالغ</div>
         </div>
-    );
+      </div>
+
+      {/* Filters */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+        <div className="flex flex-col md:flex-row gap-3">
+          <div className="flex-1 relative">
+            <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="بحث بالاسم أو رقم الهاتف..."
+              className="w-full pr-10 pl-4 py-2.5 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:border-amber-400 focus:ring-1 focus:ring-amber-400 outline-none text-sm transition-all"
+              dir="rtl"
+            />
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            {STATUS_FILTERS.map(({ key, label }) => (
+              <button
+                key={key}
+                onClick={() => setStatusFilter(key)}
+                className={`px-4 py-2.5 rounded-xl font-semibold text-sm transition-all ${
+                  statusFilter === key
+                    ? 'bg-amber-400 text-gray-950 shadow-sm'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Table */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        {loading ? (
+          <div className="flex flex-col items-center justify-center h-48 gap-3">
+            <div className="animate-spin rounded-full h-9 w-9 border-2 border-amber-400 border-t-transparent" />
+            <p className="text-sm text-gray-400">جاري التحميل...</p>
+          </div>
+        ) : filteredRequests.length === 0 ? (
+          <div className="text-center py-14 text-gray-400">
+            <DollarSign className="w-10 h-10 mx-auto mb-3 text-gray-200" />
+            <p className="font-medium">لا توجد طلبات</p>
+          </div>
+        ) : (
+          <>
+            {/* Desktop Table */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b border-gray-100">
+                  <tr>
+                    {['المزود', 'المبلغ', 'الحالة', 'التاريخ', 'إجراءات'].map((h) => (
+                      <th key={h} className="px-6 py-3 text-right text-xs font-bold text-gray-500 uppercase">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {filteredRequests.map((req) => (
+                    <tr key={req.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-6 py-4">
+                        <div className="font-semibold text-gray-800 text-sm">{req.providerName || 'غير محدد'}</div>
+                        <div className="text-xs text-gray-500 mt-0.5 flex items-center gap-1">
+                          <Phone className="w-3 h-3" /> {req.providerPhone || 'لا يوجد'}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="text-lg font-black text-gray-900">{req.amount}</span>
+                        <span className="text-sm text-gray-500 mr-1">ر.س</span>
+                      </td>
+                      <td className="px-6 py-4"><StatusBadge status={req.status} /></td>
+                      <td className="px-6 py-4 text-sm text-gray-500">
+                        {format(req.createdAt, 'dd MMM yyyy - HH:mm', { locale: ar })}
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => setSelected(req)}
+                            className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-all"
+                          >
+                            <Eye size={17} />
+                          </button>
+                          {req.status === 'pending' && (
+                            <>
+                              <button
+                                onClick={() => setActionModal({ show: true, type: 'approve', request: req })}
+                                className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-all"
+                              >
+                                <CheckCircle size={17} />
+                              </button>
+                              <button
+                                onClick={() => setActionModal({ show: true, type: 'reject', request: req })}
+                                className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                              >
+                                <XCircle size={17} />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile Cards */}
+            <div className="md:hidden divide-y divide-gray-50">
+              {filteredRequests.map((req) => (
+                <div key={req.id} className="p-4">
+                  <div className="flex items-start justify-between mb-3">
+                    <StatusBadge status={req.status} />
+                    <span className="text-xl font-black text-gray-900">{req.amount} <span className="text-sm font-normal text-gray-500">ر.س</span></span>
+                  </div>
+                  <div className="font-semibold text-gray-800 mb-1">{req.providerName || 'غير محدد'}</div>
+                  <div className="text-xs text-gray-500 mb-3">{req.providerPhone || 'لا يوجد'}</div>
+                  <div className="text-xs text-gray-400 mb-3">{format(req.createdAt, 'dd MMM yyyy - HH:mm', { locale: ar })}</div>
+                  <div className="flex gap-2 justify-end">
+                    <button onClick={() => setSelected(req)} className="p-1.5 text-gray-500 hover:bg-gray-100 rounded-lg transition-all">
+                      <Eye size={17} />
+                    </button>
+                    {req.status === 'pending' && (
+                      <>
+                        <button onClick={() => setActionModal({ show: true, type: 'approve', request: req })} className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-all">
+                          <CheckCircle size={17} />
+                        </button>
+                        <button onClick={() => setActionModal({ show: true, type: 'reject', request: req })} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-all">
+                          <XCircle size={17} />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Details Modal */}
+      {selectedRequest && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setSelected(null)}>
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-5 border-b border-gray-100">
+              <h3 className="font-bold text-gray-800">تفاصيل الطلب</h3>
+              <button onClick={() => setSelected(null)} className="p-1.5 hover:bg-gray-100 rounded-lg transition-all">
+                <X size={18} className="text-gray-500" />
+              </button>
+            </div>
+            <div className="p-5 space-y-3 text-sm">
+              {[
+                { label: 'المزود', value: selectedRequest.providerName },
+                { label: 'الهاتف', value: selectedRequest.providerPhone },
+                { label: 'المبلغ', value: `${selectedRequest.amount} ر.س` },
+                { label: 'التاريخ', value: format(selectedRequest.createdAt, 'dd MMM yyyy - HH:mm', { locale: ar }) },
+              ].map(({ label, value }) => (
+                <div key={label} className="flex items-center gap-2">
+                  <span className="text-gray-500 min-w-[70px]">{label}:</span>
+                  <span className="font-medium text-gray-800">{value}</span>
+                </div>
+              ))}
+              <div className="flex items-center gap-2">
+                <span className="text-gray-500 min-w-[70px]">الحالة:</span>
+                <StatusBadge status={selectedRequest.status} />
+              </div>
+              {selectedRequest.adminNotes && (
+                <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
+                  <span className="text-gray-500 text-xs block mb-1">ملاحظات الإدارة:</span>
+                  <p className="text-gray-800">{selectedRequest.adminNotes}</p>
+                </div>
+              )}
+            </div>
+            <div className="p-5 border-t border-gray-100">
+              <button onClick={() => setSelected(null)} className="w-full py-2.5 bg-gray-100 text-gray-700 rounded-xl font-semibold hover:bg-gray-200 transition-all text-sm">
+                إغلاق
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Action Modal */}
+      {actionModal.show && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl">
+            <div className="flex items-center justify-between p-5 border-b border-gray-100">
+              <h3 className="font-bold text-gray-800">
+                {actionModal.type === 'approve' ? 'تأكيد الموافقة' : 'تأكيد الرفض'}
+              </h3>
+              <button onClick={closeAction} className="p-1.5 hover:bg-gray-100 rounded-lg transition-all">
+                <X size={18} className="text-gray-500" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <p className="text-sm text-gray-600">
+                {actionModal.type === 'approve'
+                  ? 'هل أنت متأكد من الموافقة على هذا الطلب؟ سيتم خصم المبلغ من رصيد المزود.'
+                  : 'يرجى كتابة سبب رفض الطلب:'}
+              </p>
+              <textarea
+                value={adminNotes}
+                onChange={(e) => setAdminNotes(e.target.value)}
+                placeholder={actionModal.type === 'approve' ? 'ملاحظات (اختياري)' : 'سبب الرفض (إلزامي)'}
+                className="w-full p-3 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:border-amber-400 focus:ring-1 focus:ring-amber-400 outline-none text-sm resize-none"
+                rows={3}
+                dir="rtl"
+              />
+              <div className="flex gap-3">
+                <button
+                  onClick={closeAction}
+                  disabled={processing}
+                  className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-semibold hover:bg-gray-200 transition-all text-sm disabled:opacity-50"
+                >
+                  إلغاء
+                </button>
+                <button
+                  onClick={actionModal.type === 'approve' ? handleApprove : handleReject}
+                  disabled={processing}
+                  className={`flex-1 py-2.5 text-white rounded-xl font-bold transition-all text-sm disabled:opacity-50 flex items-center justify-center gap-2 ${
+                    actionModal.type === 'approve' ? 'bg-green-500 hover:bg-green-600' : 'bg-red-500 hover:bg-red-600'
+                  }`}
+                >
+                  {processing && <Loader2 size={14} className="animate-spin" />}
+                  {processing ? 'جارٍ المعالجة...' : 'تأكيد'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
