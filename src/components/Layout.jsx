@@ -4,7 +4,7 @@ import {
   MessageSquare, MessageCircle, UserCheck, Sliders, MapPin,
   UserCog, CreditCard, Banknote, AlertCircle, Shield,
   ChevronLeft, UserPlus, Bell, ImageIcon, Ticket, Timer,
-  PanelRight, PanelLeft, Route
+  PanelRight, PanelLeft, Route, Globe
 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
@@ -94,6 +94,7 @@ export const Layout = () => {
     { id: 'provider_drawer_sections',path: '/admin/provider-drawer-sections', icon: PanelRight,      label: 'Drawer المزود',            category: 'settings' },
     { id: 'customer_drawer_sections',path: '/admin/customer-drawer-sections', icon: PanelLeft,       label: 'Drawer العميل',            category: 'settings' },
     { id: 'banners',                 path: '/admin/banners',                  icon: ImageIcon,       label: 'البانرات',                 category: 'settings' },
+    { id: 'landing_settings',        path: '/admin/landing-settings',         icon: Globe,           label: 'الاندنق بيج',              category: 'settings' },
     { id: 'admins',                  path: '/admin/admins',                   icon: Shield,          label: 'المديرون',                 category: 'settings', restricted: true },
   ];
 

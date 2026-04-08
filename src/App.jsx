@@ -28,6 +28,7 @@ import { SLATracking } from './pages/SLATracking';
 import { Login } from './pages/Login';
 import ProviderDrawerSections from './pages/ProviderDrawerSections';
 import CustomerDrawerSections from './pages/CustomerDrawerSections';
+import LandingSettings from './pages/LandingSettings';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -102,6 +103,7 @@ function App() {
           <Route path="provider-drawer-sections" element={<ProviderDrawerSections />} />
           <Route path="customer-drawer-sections" element={<CustomerDrawerSections />} />
           <Route path="banners" element={<Banners />} />
+          <Route path="landing-settings" element={<LandingSettings />} />
           <Route path="support-tickets" element={<SupportTickets />} />
           <Route path="admins" element={<Admins />} />
         </Route>
