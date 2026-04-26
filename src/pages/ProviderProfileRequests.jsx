@@ -12,6 +12,7 @@ const FIELD_LABELS = {
   phone: 'رقم الهاتف',
   email: 'البريد الإلكتروني',
   nationality: 'الجنسية',
+  city: 'المدينة',
 };
 
 export default function ProviderProfileRequests() {
@@ -233,7 +234,7 @@ export default function ProviderProfileRequests() {
               {selectedRequest.providerName}
             </p>
             <div className="space-y-3 text-sm">
-              {['firstName', 'lastName', 'phone', 'email', 'nationality'].map((key) => {
+              {['firstName', 'lastName', 'phone', 'email', 'nationality', 'city'].map((key) => {
                 const current = selectedRequest.currentData?.[key] ?? '—';
                 const requested = selectedRequest.requestedChanges?.[key] ?? '—';
                 const changed = String(current) !== String(requested);

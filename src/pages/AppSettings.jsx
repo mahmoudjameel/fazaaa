@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Save, FileText, Info, Phone, Loader2 } from 'lucide-react';
+import { Save, FileText, Info, Phone, Loader2, ShieldCheck } from 'lucide-react';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 
@@ -9,6 +9,7 @@ const inputClass =
 const TABS = [
   { id: 'terms', label: 'الشروط والأحكام', icon: FileText },
   { id: 'about', label: 'من نحن', icon: Info },
+  { id: 'privacy', label: 'سياسة الخصوصية', icon: ShieldCheck },
   { id: 'support', label: 'إعدادات الدعم', icon: Phone },
 ];
 
@@ -19,6 +20,7 @@ export default function AppSettings() {
 
   const [terms, setTerms] = useState({ title: 'الشروط والأحكام', content: '', lastUpdated: null });
   const [about, setAbout] = useState({ title: 'من نحن', content: '', lastUpdated: null });
+  const [privacy, setPrivacy] = useState({ title: 'سياسة الخصوصية', content: '', lastUpdated: null });
   const [support, setSupport] = useState({
     whatsappNumber: '966551780608',
     whatsappDisplay: '+966 55 178 0608',
@@ -33,13 +35,15 @@ export default function AppSettings() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [termsSnap, aboutSnap, supportSnap] = await Promise.all([
+      const [termsSnap, aboutSnap, privacySnap, supportSnap] = await Promise.all([
         getDoc(doc(db, 'settings', 'termsAndConditions')),
         getDoc(doc(db, 'settings', 'aboutUs')),
+        getDoc(doc(db, 'settings', 'privacyPolicy')),
         getDoc(doc(db, 'settings', 'support')),
       ]);
       if (termsSnap.exists()) setTerms(termsSnap.data());
       if (aboutSnap.exists()) setAbout(aboutSnap.data());
+      if (privacySnap.exists()) setPrivacy(privacySnap.data());
       if (supportSnap.exists()) setSupport((prev) => ({ ...prev, ...supportSnap.data() }));
     } catch (error) {
       console.error('Error loading settings:', error);
@@ -57,6 +61,9 @@ export default function AppSettings() {
       } else if (activeTab === 'about') {
         await setDoc(doc(db, 'settings', 'aboutUs'), { ...about, lastUpdated: new Date().toISOString() });
         alert('تم حفظ بيانات "من نحن" بنجاح');
+      } else if (activeTab === 'privacy') {
+        await setDoc(doc(db, 'settings', 'privacyPolicy'), { ...privacy, lastUpdated: new Date().toISOString() });
+        alert('تم حفظ سياسة الخصوصية بنجاح');
       } else if (activeTab === 'support') {
         await setDoc(doc(db, 'settings', 'support'), { ...support, lastUpdated: new Date().toISOString() });
         alert('تم حفظ إعدادات الدعم بنجاح');
@@ -80,7 +87,13 @@ export default function AppSettings() {
   }
 
   const currentLastUpdated =
-    activeTab === 'terms' ? terms.lastUpdated : activeTab === 'about' ? about.lastUpdated : support.lastUpdated;
+    activeTab === 'terms'
+      ? terms.lastUpdated
+      : activeTab === 'about'
+        ? about.lastUpdated
+        : activeTab === 'privacy'
+          ? privacy.lastUpdated
+          : support.lastUpdated;
 
   return (
     <div className="space-y-6">
@@ -156,6 +169,34 @@ export default function AppSettings() {
                 onChange={(e) => setAbout((p) => ({ ...p, content: e.target.value }))}
                 className={inputClass + ' resize-none'}
                 placeholder="اكتب معلومات عن التطبيق هنا..."
+                rows="14"
+                dir="rtl"
+                style={{ lineHeight: '1.8' }}
+              />
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'privacy' && (
+          <div className="p-6 space-y-5">
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">عنوان الصفحة</label>
+              <input
+                type="text"
+                value={privacy.title}
+                onChange={(e) => setPrivacy((p) => ({ ...p, title: e.target.value }))}
+                className={inputClass}
+                placeholder="مثال: سياسة الخصوصية"
+                dir="rtl"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">محتوى سياسة الخصوصية</label>
+              <textarea
+                value={privacy.content}
+                onChange={(e) => setPrivacy((p) => ({ ...p, content: e.target.value }))}
+                className={inputClass + ' resize-none'}
+                placeholder="اكتب سياسة الخصوصية هنا..."
                 rows="14"
                 dir="rtl"
                 style={{ lineHeight: '1.8' }}
@@ -278,10 +319,10 @@ export default function AppSettings() {
           <div className="p-6 bg-gray-50">
             <div className="bg-white p-6 rounded-xl border border-gray-200 max-w-2xl mx-auto">
               <h3 className="text-xl font-bold text-amber-500 mb-4 text-center border-b border-amber-200 pb-3">
-                {activeTab === 'terms' ? terms.title : about.title}
+                {activeTab === 'terms' ? terms.title : activeTab === 'about' ? about.title : privacy.title}
               </h3>
               <div className="text-gray-700 whitespace-pre-wrap leading-relaxed text-right text-sm" dir="rtl">
-                {(activeTab === 'terms' ? terms.content : about.content) || (
+                {(activeTab === 'terms' ? terms.content : activeTab === 'about' ? about.content : privacy.content) || (
                   <span className="text-gray-300 italic">لا يوجد محتوى بعد...</span>
                 )}
               </div>

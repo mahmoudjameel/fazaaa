@@ -30,6 +30,7 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../services/firebase';
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
+import SAUDI_CITIES_RAW from '../services/cities.json';
 
 export const NATIONALITIES = [
   { value: 'sa', label: 'السعودية' },
@@ -49,6 +50,10 @@ export const NATIONALITIES = [
   { value: 'sd', label: 'السودان' },
   { value: 'other', label: 'جنسية أخرى' },
 ];
+
+const SAUDI_CITIES = [...SAUDI_CITIES_RAW]
+  .sort((a, b) => (a.name || '').localeCompare((b.name || ''), 'ar'))
+  .map((city) => ({ value: city.id, label: city.name }));
 
 const DOCUMENT_TYPE_OPTIONS = [
   { key: 'idImage', label: 'الهوية / الإقامة' },
@@ -327,6 +332,7 @@ export const Providers = () => {
         phone: editProviderForm.phone,
         email: editProviderForm.email || null,
         nationality: editProviderForm.nationality,
+        city: editProviderForm.city || '',
       });
       await refreshSelectedProvider();
       setEditProviderForm(null);
@@ -1420,6 +1426,21 @@ export const Providers = () => {
                                 ))}
                               </select>
                             </div>
+                            <div className="md:col-span-2">
+                              <label className="block text-sm font-semibold text-gray-700 mb-1">المدينة</label>
+                              <select
+                                value={editProviderForm.city || ''}
+                                onChange={(e) => setEditProviderForm(f => ({ ...f, city: e.target.value }))}
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                              >
+                                <option value="">اختر المدينة</option>
+                                {SAUDI_CITIES.map((city) => (
+                                  <option key={city.value} value={city.value}>
+                                    {city.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
                           </div>
                           <div className="flex gap-2 pt-2">
                             <button
@@ -1459,6 +1480,10 @@ export const Providers = () => {
                             <p className="text-gray-800">{NATIONALITIES.find(n => n.value === selectedProvider.nationality)?.label || selectedProvider.nationality || 'غير محدد'}</p>
                           </div>
                           <div>
+                            <h3 className="font-semibold text-gray-700 mb-2">المدينة</h3>
+                            <p className="text-gray-800">{SAUDI_CITIES.find((c) => c.value === selectedProvider.city)?.label || selectedProvider.city || 'غير محددة'}</p>
+                          </div>
+                          <div>
                             <h3 className="font-semibold text-gray-700 mb-2">نوع المزود</h3>
                             <div className="flex items-center gap-3">
                               <span
@@ -1482,6 +1507,7 @@ export const Providers = () => {
                                 phone: selectedProvider.phone || '',
                                 email: selectedProvider.email || '',
                                 nationality: selectedProvider.nationality || '',
+                                city: selectedProvider.city || '',
                               })}
                               className="inline-flex items-center gap-2 px-4 py-2 bg-teal-50 text-teal-700 rounded-lg hover:bg-teal-100 font-semibold"
                             >

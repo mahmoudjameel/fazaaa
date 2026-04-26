@@ -18,6 +18,7 @@ import { collection, getDocs } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../services/firebase';
 import { NATIONALITIES } from './Providers';
+import SAUDI_CITIES_RAW from '../services/cities.json';
 
 // نفس تصنيفات المستندات كما في تسجيل المزود الجديد (DocumentsScreen)
 const DOCUMENT_FIELDS = [
@@ -28,6 +29,13 @@ const DOCUMENT_FIELDS = [
     { key: 'licensePhoto', title: 'رخصة القيادة', subtitle: 'صورة أو ملف PDF أو Word', icon: FileText },
     { key: 'registrationPhoto', title: 'استمارة السيارة', subtitle: 'صورة أو ملف PDF أو Word', icon: FileText },
 ];
+
+const SAUDI_CITIES = [...SAUDI_CITIES_RAW]
+    .sort((a, b) => (a.name || '').localeCompare((b.name || ''), 'ar'))
+    .map((city) => ({
+        value: city.id,
+        label: city.name,
+    }));
 
 export const AddProvider = () => {
     const navigate = useNavigate();
@@ -48,6 +56,7 @@ export const AddProvider = () => {
         phone: '',
         email: '',
         nationality: '',
+        city: '',
         services: [],
     });
 
@@ -90,6 +99,10 @@ export const AddProvider = () => {
         }
         if (!phone) {
             alert('يرجى إدخال رقم الهاتف');
+            return;
+        }
+        if (!providerFormData.city) {
+            alert('يرجى اختيار المدينة');
             return;
         }
         if (!providerFormData.services || providerFormData.services.length === 0) {
@@ -239,6 +252,25 @@ export const AddProvider = () => {
                                     {NATIONALITIES.map((nat) => (
                                         <option key={nat.value} value={nat.value}>
                                             {nat.label}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                                <label className="block text-sm font-semibold text-gray-700 mb-2">المدينة *</label>
+                                <select
+                                    required
+                                    value={providerFormData.city}
+                                    onChange={(e) => setProviderFormData({ ...providerFormData, city: e.target.value })}
+                                    className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-xl focus:border-blue-400 focus:outline-none transition-all"
+                                >
+                                    <option value="">اختر المدينة</option>
+                                    {SAUDI_CITIES.map((city) => (
+                                        <option key={city.value} value={city.value}>
+                                            {city.label}
                                         </option>
                                     ))}
                                 </select>

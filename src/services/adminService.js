@@ -86,6 +86,7 @@ export const createManualProvider = async (providerData) => {
       phone: phone,
       email: providerData.email || null,
       nationality: providerData.nationality || '',
+      city: providerData.city || '',
       services: services,
       status: 'approved',
       approvalStatus: 'approved',
@@ -168,6 +169,8 @@ export const updateProviderStatus = async (providerId, status) => {
     await updateDoc(providerRef, {
       approvalStatus: status, // حالة الموافقة
       status: status, // تحديث status أيضاً للتوافق
+      // أي حالة غير approved يجب أن توقف استقبال الطلبات فوراً
+      ...(status === 'approved' ? {} : { isOnline: false }),
       updatedAt: new Date().toISOString(),
     });
     return { success: true };
@@ -260,6 +263,7 @@ export const updateProvider = async (providerId, data) => {
     if (data.phone !== undefined) updates.phone = data.phone;
     if (data.email !== undefined) updates.email = data.email;
     if (data.nationality !== undefined) updates.nationality = data.nationality;
+    if (data.city !== undefined) updates.city = data.city;
     await updateDoc(providerRef, updates);
     return { success: true };
   } catch (error) {
@@ -1335,6 +1339,7 @@ export const approveProviderProfileChange = async (requestId) => {
       phone: requested.phone,
       email: requested.email ?? null,
       nationality: requested.nationality,
+      city: requested.city ?? '',
       fullName: [requested.firstName, requested.lastName].filter(Boolean).join(' ').trim() || data.providerName,
       updatedAt: serverTimestamp(),
     };
@@ -1363,6 +1368,7 @@ export const approveProviderProfileChange = async (requestId) => {
               type: 'profile_change_approved',
               requestId,
               nationality: requested.nationality,
+              city: requested.city ?? '',
             },
             priority: 'high',
             ttl: 3600,

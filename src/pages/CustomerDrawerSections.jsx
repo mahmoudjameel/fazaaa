@@ -38,6 +38,7 @@ const FIXED_DRAWER_ITEMS = [
   { key: 'notifications', label: 'الإشعارات' },
   { key: 'profile', label: 'حسابي' },
   { key: 'terms', label: 'الشروط والأحكام' },
+  { key: 'privacy', label: 'سياسة الخصوصية' },
   { key: 'about', label: 'من نحن' },
   { key: 'help', label: 'مركز المساعدة' },
   { key: 'contact', label: 'تواصل معنا' },
