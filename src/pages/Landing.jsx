@@ -21,6 +21,7 @@ const SCROLL_LINKS = [
 const PAGE_LINKS = [
   { label: 'سياسة الخصوصية', to: '/privacy' },
   { label: 'الشروط والأحكام', to: '/terms' },
+  { label: 'طلب حذف الحساب', to: '/delete-account' },
 ];
 
 const NAV_LINKS = SCROLL_LINKS;

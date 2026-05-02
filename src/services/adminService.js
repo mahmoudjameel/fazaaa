@@ -106,6 +106,9 @@ export const createManualProvider = async (providerData) => {
         initialBalance: 50.0,
       },
       hasSeenWelcomeAlert: false,
+      // تمت إضافة الرصيد الابتدائي يدويًا من لوحة التحكم، لذلك نعتبر بونص الاعتماد مستلمًا
+      // حتى لا يقوم التطبيق بإضافته مرة ثانية عند أول دخول.
+      hasReceivedApprovalBonus: true,
     };
 
     // إضافة الوثائق (نفس المفاتيح المستخدمة في تسجيل المزود الجديد)

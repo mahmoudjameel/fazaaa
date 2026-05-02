@@ -175,7 +175,9 @@ export const PrivacyPolicy = () => {
               ))}
             </ul>
             <p className="mt-3">
-              للاستخدام أي من هذه الحقوق، تواصل معنا على: <a href="mailto:support@fzaeen.com" className="text-orange-500 font-medium hover:underline">support@fzaeen.com</a>
+              لطلب حذف الحساب عبر الموقع (عميل أو مزوّد) بعد التحقق من الجوال:{' '}
+              <Link to="/delete-account" className="text-orange-500 font-medium hover:underline">صفحة طلب حذف الحساب</Link>
+              . وللاستفسارات العامة: <a href="mailto:support@fzaeen.com" className="text-orange-500 font-medium hover:underline">support@fzaeen.com</a>
             </p>
           </Section>
 

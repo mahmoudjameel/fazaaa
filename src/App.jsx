@@ -29,6 +29,7 @@ import { Login } from './pages/Login';
 import ProviderDrawerSections from './pages/ProviderDrawerSections';
 import CustomerDrawerSections from './pages/CustomerDrawerSections';
 import LandingSettings from './pages/LandingSettings';
+import { DeleteAccount } from './pages/DeleteAccount';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -73,6 +74,7 @@ function App() {
         <Route path="/" element={<Landing />} />
         <Route path="/privacy" element={<PrivacyPolicy />} />
         <Route path="/terms" element={<Terms />} />
+        <Route path="/delete-account" element={<DeleteAccount />} />
 
         {/* Admin login */}
         <Route path="/login" element={<Login onLogin={() => setIsAuthenticated(true)} />} />

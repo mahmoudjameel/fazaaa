@@ -1,6 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
+import { getFunctions } from 'firebase/functions';
 import { getStorage } from 'firebase/storage';
 
 // TODO: استبدل هذه القيم بقيم Firebase الخاصة بك
@@ -27,10 +28,12 @@ const db = getFirestore(app);
 // Initialize Storage
 const storage = getStorage(app);
 
+const functions = getFunctions(app, 'us-central1');
+
 // Secondary App for creating users without logging out
 const secondaryApp = initializeApp(firebaseConfig, "Secondary");
 const secondaryAuth = getAuth(secondaryApp);
 
-export { auth, db, storage, secondaryAuth };
+export { auth, db, storage, secondaryAuth, functions };
 export default app;
 
