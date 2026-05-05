@@ -685,7 +685,7 @@ export const Providers = () => {
         <div className="flex gap-3">
           {hasAddPermission && (
             <button
-              onClick={() => navigate('/add-provider')}
+              onClick={() => navigate('/admin/add-provider')}
               className="flex items-center gap-2 px-6 py-3 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition-all font-semibold shadow-md"
             >
               <Plus size={20} />

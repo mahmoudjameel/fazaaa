@@ -102,7 +102,7 @@ export const AddProvider = () => {
             return;
         }
         if (!providerFormData.city) {
-            alert('يرجى اختيار المدينة');
+            alert('يرجى اختيار مدينة العمل');
             return;
         }
         if (!providerFormData.services || providerFormData.services.length === 0) {
@@ -260,20 +260,21 @@ export const AddProvider = () => {
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div>
-                                <label className="block text-sm font-semibold text-gray-700 mb-2">المدينة *</label>
+                                <label className="block text-sm font-semibold text-gray-700 mb-2">مدينة العمل *</label>
                                 <select
                                     required
                                     value={providerFormData.city}
                                     onChange={(e) => setProviderFormData({ ...providerFormData, city: e.target.value })}
                                     className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-xl focus:border-blue-400 focus:outline-none transition-all"
                                 >
-                                    <option value="">اختر المدينة</option>
+                                    <option value="">اختر مدينة العمل</option>
                                     {SAUDI_CITIES.map((city) => (
                                         <option key={city.value} value={city.value}>
                                             {city.label}
                                         </option>
                                     ))}
                                 </select>
+                                <p className="text-xs text-gray-500 mt-1">المقصود المدينة التي سيعمل فيها المزود ويستقبل منها الطلبات.</p>
                             </div>
                         </div>
 
