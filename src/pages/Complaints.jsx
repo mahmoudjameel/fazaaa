@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Search, MessageSquare, AlertTriangle, CheckCircle, Clock, User, Calendar, Filter } from 'lucide-react';
+import { Search, MessageSquare, AlertTriangle, CheckCircle, Clock, User, Calendar, Filter, Phone, MapPin, Wrench } from 'lucide-react';
 import { collection, getDocs, query, orderBy, doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { format } from 'date-fns';
@@ -17,6 +17,7 @@ export const Complaints = () => {
   const [updatingPriority, setUpdatingPriority] = useState(false);
   const [adminNoteText, setAdminNoteText] = useState('');
   const [requestDetails, setRequestDetails] = useState(null);
+  const [requestProviderDetails, setRequestProviderDetails] = useState(null);
 
   useEffect(() => {
     fetchComplaints();
@@ -25,18 +26,54 @@ export const Complaints = () => {
   useEffect(() => {
     if (!selectedComplaint || selectedComplaint.type !== 'order_report' || !selectedComplaint.requestId) {
       setRequestDetails(null);
+      setRequestProviderDetails(null);
       return;
     }
     const fetchRequest = async () => {
       try {
         const reqSnap = await getDoc(doc(db, 'requests', selectedComplaint.requestId));
-        setRequestDetails(reqSnap.exists() ? reqSnap.data() : null);
+        if (!reqSnap.exists()) {
+          setRequestDetails(null);
+          setRequestProviderDetails(null);
+          return;
+        }
+
+        const requestData = reqSnap.data();
+        setRequestDetails(requestData);
+
+        const providerId = requestData.providerId;
+        if (providerId) {
+          const providerSnap = await getDoc(doc(db, 'providers', providerId));
+          setRequestProviderDetails(providerSnap.exists() ? providerSnap.data() : null);
+        } else {
+          setRequestProviderDetails(null);
+        }
       } catch {
         setRequestDetails(null);
+        setRequestProviderDetails(null);
       }
     };
     fetchRequest();
   }, [selectedComplaint?.id, selectedComplaint?.requestId, selectedComplaint?.type]);
+
+  const firstFilled = (...values) => {
+    for (const value of values) {
+      if (value === undefined || value === null) continue;
+      if (typeof value === 'string' && value.trim() === '') continue;
+      return value;
+    }
+    return null;
+  };
+
+  const getCoordinates = (data) => {
+    if (!data || typeof data !== 'object') return null;
+    const direct = data.coordinates || data.locationCoordinates || data.location;
+    if (!direct || typeof direct !== 'object') return null;
+    const latitude = direct.latitude ?? direct.lat;
+    const longitude = direct.longitude ?? direct.lng;
+    if (latitude == null || longitude == null) return null;
+    return { latitude, longitude };
+  };
 
   useEffect(() => {
     filterComplaints();
@@ -365,6 +402,39 @@ export const Complaints = () => {
       {/* Complaint Details Modal */}
       {selectedComplaint && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4 md:p-6">
+          {(() => {
+            const requestRef = firstFilled(
+              selectedComplaint.orderNumber,
+              requestDetails?.orderNumber,
+              selectedComplaint.requestId
+            );
+            const providerName = firstFilled(
+              requestDetails?.providerName,
+              requestProviderDetails?.name,
+              selectedComplaint.providerName
+            );
+            const providerPhone = firstFilled(
+              requestDetails?.providerPhone,
+              requestProviderDetails?.phone,
+              selectedComplaint.providerPhone
+            );
+            const serviceName = firstFilled(
+              requestDetails?.serviceName,
+              requestDetails?.serviceType,
+              selectedComplaint.serviceName
+            );
+            const requestLocationText = firstFilled(
+              requestDetails?.location,
+              selectedComplaint.location
+            );
+            const requestCoords = getCoordinates(requestDetails) || getCoordinates(selectedComplaint);
+            const requestMapHref = requestCoords
+              ? `https://www.google.com/maps?q=${requestCoords.latitude},${requestCoords.longitude}`
+              : (requestLocationText
+                ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(requestLocationText)}`
+                : null);
+
+            return (
           <div className="bg-white rounded-xl sm:rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-auto">
             <div className="p-4 sm:p-5 md:p-6 border-b border-gray-200">
               <div className="flex items-center justify-between">
@@ -408,20 +478,21 @@ export const Complaints = () => {
               </div>
 
               {/* بيانات المزود - للبلاغ عن طلب */}
-              {selectedComplaint.type === 'order_report' && requestDetails && (requestDetails.providerName || requestDetails.providerPhone) && (
+              {selectedComplaint.type === 'order_report' && (providerName || providerPhone) && (
                 <div className="bg-green-50 border border-green-200 rounded-lg p-3 sm:p-4">
                   <h3 className="font-semibold text-sm sm:text-base text-green-800 mb-2">بيانات المزود</h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 text-sm">
-                    {requestDetails.providerName && (
+                    {providerName && (
                       <div>
                         <span className="text-gray-600">اسم المزود:</span>{' '}
-                        <span className="font-medium text-gray-800">{requestDetails.providerName}</span>
+                        <span className="font-medium text-gray-800">{providerName}</span>
                       </div>
                     )}
-                    {requestDetails.providerPhone && (
+                    {providerPhone && (
                       <div>
+                        <Phone className="inline-block w-4 h-4 text-green-700 ml-1" />
                         <span className="text-gray-600">رقم هاتف المزود:</span>{' '}
-                        <span className="font-medium text-gray-800 break-all">{requestDetails.providerPhone}</span>
+                        <span className="font-medium text-gray-800 break-all">{providerPhone}</span>
                       </div>
                     )}
                   </div>
@@ -433,36 +504,44 @@ export const Complaints = () => {
                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 sm:p-4 space-y-2">
                   <h3 className="font-semibold text-sm sm:text-base text-amber-800 mb-2">بيانات الطلب المُبلَغ عنه</h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 text-sm">
-                    {(selectedComplaint.orderNumber || selectedComplaint.requestId) && (
+                    {requestRef && (
                       <div>
-                        <span className="text-gray-600">رقم الطلب:</span>{' '}
-                        <span className="font-medium text-gray-800">{selectedComplaint.orderNumber || selectedComplaint.requestId}</span>
+                        <span className="text-gray-600">مرجع الطلب:</span>{' '}
+                        <span className="font-medium text-gray-800">{requestRef}</span>
                       </div>
                     )}
                     {selectedComplaint.requestId && (
                       <div>
-                        <span className="text-gray-600">معرف الطلب:</span>{' '}
+                        <span className="text-gray-600">رقم الطلب:</span>{' '}
                         <span className="font-mono text-gray-800 break-all">{selectedComplaint.requestId}</span>
                       </div>
                     )}
-                    {selectedComplaint.serviceName && (
+                    {serviceName && (
                       <div className="sm:col-span-2">
+                        <Wrench className="inline-block w-4 h-4 text-amber-700 ml-1" />
                         <span className="text-gray-600">الخدمة:</span>{' '}
-                        <span className="text-gray-800">{selectedComplaint.serviceName}</span>
+                        <span className="text-gray-800">{serviceName}</span>
                       </div>
                     )}
-                    {selectedComplaint.location && (
+                    {(requestLocationText || requestCoords) && (
                       <div className="sm:col-span-2">
+                        <MapPin className="inline-block w-4 h-4 text-amber-700 ml-1" />
                         <span className="text-gray-600">الموقع:</span>{' '}
-                        <a
-                          href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedComplaint.location)}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-teal-600 hover:text-teal-800 underline font-medium break-all"
-                        >
-                          {selectedComplaint.location}
-                        </a>
-                        <span className="text-xs text-gray-500 block mt-0.5">اضغط لفتح الموقع في خرائط جوجل</span>
+                        {requestMapHref ? (
+                          <a
+                            href={requestMapHref}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-teal-600 hover:text-teal-800 underline font-medium break-all"
+                          >
+                            {requestLocationText || `${requestCoords.latitude}, ${requestCoords.longitude}`}
+                          </a>
+                        ) : (
+                          <span className="text-gray-800">{requestLocationText || 'غير محدد'}</span>
+                        )}
+                        {requestMapHref && (
+                          <span className="text-xs text-gray-500 block mt-0.5">اضغط لفتح الموقع في خرائط جوجل</span>
+                        )}
                       </div>
                     )}
                   </div>
@@ -558,6 +637,8 @@ export const Complaints = () => {
               </div>
             </div>
           </div>
+            );
+          })()}
         </div>
       )}
     </div>

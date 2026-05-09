@@ -4,6 +4,11 @@ import { collection, addDoc, getDocs, query, orderBy, serverTimestamp, deleteDoc
 import { db } from '../services/firebase';
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
+import SAUDI_CITIES_RAW from '../services/cities.json';
+
+const SAUDI_CITIES = [...SAUDI_CITIES_RAW]
+    .sort((a, b) => (a.name || '').localeCompare((b.name || ''), 'ar'))
+    .map((city) => ({ value: String(city.id), label: city.name }));
 
 export const Notifications = () => {
     const [activeTab, setActiveTab] = useState('send'); // 'send' or 'history'
@@ -13,7 +18,8 @@ export const Notifications = () => {
     const [formData, setFormData] = useState({
         title: '',
         message: '',
-        target: 'all' // 'all', 'customer', 'provider'
+        target: 'all', // 'all', 'customer', 'provider'
+        providerCities: [], // فلترة خاصة بالمزودين حسب مدينة العمل
     });
 
     useEffect(() => {
@@ -50,12 +56,15 @@ export const Notifications = () => {
         try {
             await addDoc(collection(db, 'admin_notifications'), {
                 ...formData,
+                providerCityNames: SAUDI_CITIES
+                    .filter((c) => formData.providerCities.includes(c.value))
+                    .map((c) => c.label),
                 createdAt: serverTimestamp(),
                 type: 'admin_broadcast'
             });
 
             alert('تم إرسال الإشعار بنجاح');
-            setFormData({ title: '', message: '', target: 'all' });
+            setFormData({ title: '', message: '', target: 'all', providerCities: [] });
             setActiveTab('history');
         } catch (error) {
             console.error('Error sending notification:', error);
@@ -82,6 +91,16 @@ export const Notifications = () => {
             case 'provider': return 'المزودين فقط';
             default: return target;
         }
+    };
+
+    const targetIncludesProviders = formData.target === 'provider' || formData.target === 'all';
+    const toggleProviderCity = (cityId) => {
+        setFormData((prev) => ({
+            ...prev,
+            providerCities: prev.providerCities.includes(cityId)
+                ? prev.providerCities.filter((id) => id !== cityId)
+                : [...prev.providerCities, cityId],
+        }));
     };
 
     return (
@@ -170,6 +189,36 @@ export const Notifications = () => {
                             </div>
                         </div>
 
+                        {targetIncludesProviders && (
+                            <div className="space-y-3">
+                                <label className="block text-sm font-bold text-gray-700 pr-1">
+                                    مدن عمل المزوّدين (اختياري)
+                                </label>
+                                <p className="text-xs text-gray-500">
+                                    إذا اخترت مدناً محددة، سيصل الإشعار فقط للمزوّدين الذين مدينة عملهم ضمن الاختيار.
+                                    عند تركها بدون اختيار سيصل لجميع المزوّدين المستهدفين.
+                                </p>
+                                <div className="max-h-48 overflow-y-auto bg-gray-50 border-2 border-gray-100 rounded-2xl p-3 grid grid-cols-2 md:grid-cols-3 gap-2">
+                                    {SAUDI_CITIES.map((city) => {
+                                        const selected = formData.providerCities.includes(city.value);
+                                        return (
+                                            <button
+                                                key={city.value}
+                                                type="button"
+                                                onClick={() => toggleProviderCity(city.value)}
+                                                className={`px-3 py-2 rounded-xl text-sm font-bold border transition-all ${selected
+                                                    ? 'bg-primary-orange/10 border-primary-orange text-primary-orange'
+                                                    : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
+                                                    }`}
+                                            >
+                                                {city.label}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
+
                         <div className="space-y-2">
                             <label className="block text-sm font-bold text-gray-700 pr-1">نص الرسالة</label>
                             <textarea
@@ -241,8 +290,18 @@ export const Notifications = () => {
                                                     }`}>
                                                     {getTargetLabel(notification.target)}
                                                 </span>
+                                                {Array.isArray(notification.providerCityNames) && notification.providerCityNames.length > 0 && (
+                                                    <span className="px-3 py-1 rounded-full text-[10px] font-black bg-amber-100 text-amber-700">
+                                                        مدن مزودين محددة ({notification.providerCityNames.length})
+                                                    </span>
+                                                )}
                                             </div>
                                             <p className="text-gray-600 font-medium">{notification.message}</p>
+                                            {Array.isArray(notification.providerCityNames) && notification.providerCityNames.length > 0 && (
+                                                <p className="text-xs text-gray-500">
+                                                    المدن: {notification.providerCityNames.join('، ')}
+                                                </p>
+                                            )}
                                             <div className="flex items-center gap-4 pt-2">
                                                 <div className="flex items-center gap-1.5 text-gray-400 text-xs font-bold">
                                                     <Clock size={14} />

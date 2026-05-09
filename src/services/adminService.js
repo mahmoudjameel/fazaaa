@@ -26,15 +26,128 @@ export const getAllProviders = async () => {
     const querySnapshot = await getDocs(q);
     const providers = [];
     querySnapshot.forEach((doc) => {
+      const data = doc.data();
+      // إخفاء السجلات المدمجة (المكررة) من لوحة الإدارة
+      if (data?.mergedInto) return;
       // id: doc.id يجب أن يكون أخيراً لضمان استخدام Firestore document ID دائماً
       // وعدم تجاوزه بحقل id داخل بيانات المستند
-      providers.push({ ...doc.data(), id: doc.id });
+      providers.push({ ...data, id: doc.id });
     });
     return { success: true, providers };
   } catch (error) {
     console.error('Get providers error:', error);
     throw error;
   }
+};
+
+const normalizePhoneTo966 = (phone) => {
+  const clean = String(phone || '').replace(/[^0-9]/g, '');
+  if (!clean) return '';
+  if (clean.startsWith('966')) return clean;
+  if (clean.startsWith('0')) return '966' + clean.slice(1);
+  if (clean.startsWith('5') && clean.length === 9) return '966' + clean;
+  return clean.length >= 9 ? '966' + clean.slice(-9) : '966' + clean;
+};
+
+const toMillis = (value) => {
+  if (!value) return 0;
+  if (value?.toMillis) return value.toMillis();
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+/**
+ * إصلاح شامل للمزوّدين المكررين حسب رقم الهاتف
+ * - اختيار سجل أساسي (approved أولاً ثم الأحدث)
+ * - دمج بيانات مهمة في السجل الأساسي
+ * - تحويل السجلات المكررة إلى merged وعدم السماح بمطابقتها برقم الهاتف
+ */
+export const repairDuplicateProviders = async () => {
+  const providersRef = collection(db, 'providers');
+  const allSnap = await getDocs(providersRef);
+  const all = allSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+  const groups = new Map();
+  all.forEach((p) => {
+    if (p?.mergedInto) return; // متجاوز مسبقاً
+    const key = normalizePhoneTo966(p.phone);
+    if (!key) return;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(p);
+  });
+
+  const statusOrder = { approved: 0, pending: 1, rejected: 2 };
+  const result = {
+    scanned: all.length,
+    duplicateGroups: 0,
+    mergedRecords: 0,
+    fixedRequests: 0,
+    keepers: [],
+  };
+
+  for (const [phoneKey, records] of groups.entries()) {
+    if (records.length <= 1) continue;
+    result.duplicateGroups++;
+
+    const sorted = [...records].sort((a, b) => {
+      const aStatus = a.approvalStatus || a.status;
+      const bStatus = b.approvalStatus || b.status;
+      const oa = statusOrder[aStatus] ?? 9;
+      const ob = statusOrder[bStatus] ?? 9;
+      if (oa !== ob) return oa - ob;
+      return toMillis(b.updatedAt || b.createdAt) - toMillis(a.updatedAt || a.createdAt);
+    });
+
+    const keeper = sorted[0];
+    const duplicates = sorted.slice(1);
+    result.keepers.push(keeper.id);
+
+    let mergedServices = { ...(keeper.services || {}) };
+    let mergedDocs = { ...(keeper.documents || {}) };
+    let pushToken = keeper.pushToken || null;
+
+    for (const dup of duplicates) {
+      mergedServices = { ...(dup.services || {}), ...mergedServices };
+      mergedDocs = { ...(dup.documents || {}), ...mergedDocs };
+      if (!pushToken && dup.pushToken) pushToken = dup.pushToken;
+
+      const requestsQ = query(collection(db, 'requests'), where('providerId', '==', dup.id));
+      const requestsSnap = await getDocs(requestsQ);
+      for (const req of requestsSnap.docs) {
+        await updateDoc(req.ref, {
+          providerId: keeper.id,
+          providerName: keeper.fullName || `${keeper.firstName || ''} ${keeper.lastName || ''}`.trim() || 'مزود',
+          providerPhone: keeper.phone || '',
+          updatedAt: new Date().toISOString(),
+        });
+        result.fixedRequests++;
+      }
+
+      // تحويل السجل المكرر إلى merged بدل حذفه (أكثر أماناً)
+      await updateDoc(doc(db, 'providers', dup.id), {
+        mergedInto: keeper.id,
+        mergedAt: new Date().toISOString(),
+        isActive: false,
+        isOnline: false,
+        approvalStatus: 'rejected',
+        status: 'rejected',
+        phone: `merged_${dup.id}_${dup.phone || ''}`,
+        updatedAt: new Date().toISOString(),
+      });
+      result.mergedRecords++;
+    }
+
+    await updateDoc(doc(db, 'providers', keeper.id), {
+      services: mergedServices,
+      documents: mergedDocs,
+      ...(pushToken ? { pushToken } : {}),
+      phone: phoneKey, // توحيد الرقم على صيغة 966
+      deduplicatedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
+  return { success: true, ...result };
 };
 
 export const createManualProvider = async (providerData) => {
@@ -173,12 +286,68 @@ export const updateProviderStatus = async (providerId, status) => {
       approvalStatus: status, // حالة الموافقة
       status: status, // تحديث status أيضاً للتوافق
       // أي حالة غير approved يجب أن توقف استقبال الطلبات فوراً
-      ...(status === 'approved' ? {} : { isOnline: false }),
+      ...(status === 'approved'
+        ? {
+          accountActivatedAt: new Date().toISOString(),
+          approvedAt: new Date().toISOString(),
+          notificationsStartAt: new Date().toISOString(),
+        }
+        : { isOnline: false }),
       updatedAt: new Date().toISOString(),
     });
     return { success: true };
   } catch (error) {
     console.error('Update provider status error:', error);
+    throw error;
+  }
+};
+
+/**
+ * اعتماد المزود واعتماد جميع خدماته دفعة واحدة
+ */
+export const approveProviderWithAllServices = async (providerId) => {
+  try {
+    const providerRef = doc(db, 'providers', providerId);
+    const providerSnap = await getDoc(providerRef);
+    if (!providerSnap.exists()) {
+      throw new Error('المزود غير موجود');
+    }
+
+    const providerData = providerSnap.data() || {};
+    const currentServices = providerData.services || {};
+    const approvedServices = {};
+    const nowIso = new Date().toISOString();
+
+    Object.entries(currentServices).forEach(([serviceId, serviceData]) => {
+      if (serviceData && typeof serviceData === 'object') {
+        approvedServices[serviceId] = {
+          ...serviceData,
+          status: 'approved',
+          updatedAt: nowIso,
+        };
+      } else {
+        approvedServices[serviceId] = {
+          status: 'approved',
+          requestedAt: nowIso,
+          updatedAt: nowIso,
+        };
+      }
+    });
+
+    await updateDoc(providerRef, {
+      approvalStatus: 'approved',
+      status: 'approved',
+      isActive: true,
+      services: approvedServices,
+      accountActivatedAt: nowIso,
+      approvedAt: nowIso,
+      notificationsStartAt: nowIso,
+      updatedAt: nowIso,
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error('Approve provider with all services error:', error);
     throw error;
   }
 };
