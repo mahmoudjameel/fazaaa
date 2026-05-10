@@ -1080,28 +1080,62 @@ export const listenToAllProviders = (callback) => {
  */
 export const getUsersBySearch = async (term) => {
   try {
-    const searchLower = term.toLowerCase().trim();
-    const normalize = (val) => String(val || '').replace(/\D/g, '');
-    const searchDigits = normalize(term);
+    const cleanTerm = term.trim();
+    const searchLower = cleanTerm.toLowerCase();
 
-    // نجلب عينة من المجموعتين للتصفية (Firestore محدود في البحث النصي)
+    // تطبيع رقم الجوال: يزيل المقدمة السعودية +966 / 966 / الصفر البادئ
+    const normalizePhone = (val) => {
+      let d = String(val || '').replace(/\D/g, '');
+      if (d.startsWith('966')) d = d.slice(3);
+      else if (d.startsWith('0')) d = d.slice(1);
+      return d;
+    };
+
+    const searchDigits = normalizePhone(cleanTerm);   // رقم بدون مقدمة
+    const rawDigits = cleanTerm.replace(/\D/g, '');   // الأرقام كما هي للمطابقة الجزئية
+
+    // نجلب 500 سجل من كل مجموعة لضمان تغطية قواعد البيانات الكبيرة
     const [usersSnap, customersSnap] = await Promise.all([
-      getDocs(query(collection(db, 'users'), limit(100))),
-      getDocs(query(collection(db, 'customers'), limit(100)))
+      getDocs(query(collection(db, 'users'), limit(500))),
+      getDocs(query(collection(db, 'customers'), limit(500)))
     ]);
 
     const resultsMap = new Map();
 
     const processDoc = (doc) => {
       const data = doc.data();
-      const phoneMatch = searchDigits && normalize(data.phone).includes(searchDigits);
-      const textMatch = data.name?.toLowerCase().includes(searchLower) ||
+
+      // مطابقة الجوال: نطبّع الرقم المخزّن ونقارن بكل الصيغ
+      const storedNorm = normalizePhone(data.phone || data.phoneNumber || '');
+      const storedRaw  = String(data.phone || data.phoneNumber || '').replace(/\D/g, '');
+      const phoneMatch = searchDigits.length >= 3 && (
+        storedNorm.includes(searchDigits) ||
+        storedNorm.startsWith(searchDigits) ||
+        (rawDigits.length >= 3 && storedRaw.includes(rawDigits))
+      );
+
+      // مطابقة النص: الاسم + الإيميل + displayName
+      const fullName = [data.firstName, data.lastName].filter(Boolean).join(' ').toLowerCase();
+      const textMatch =
+        data.name?.toLowerCase().includes(searchLower) ||
         data.firstName?.toLowerCase().includes(searchLower) ||
         data.lastName?.toLowerCase().includes(searchLower) ||
-        data.email?.toLowerCase().includes(searchLower);
+        fullName.includes(searchLower) ||
+        data.email?.toLowerCase().includes(searchLower) ||
+        data.displayName?.toLowerCase().includes(searchLower);
 
       if (phoneMatch || textMatch) {
-        resultsMap.set(doc.id, { id: doc.id, ...data });
+        resultsMap.set(doc.id, {
+          id: doc.id,
+          // توحيد حقل الاسم
+          name: data.name ||
+                [data.firstName, data.lastName].filter(Boolean).join(' ') ||
+                data.displayName ||
+                'مستخدم',
+          phone: data.phone || data.phoneNumber || '',
+          email: data.email || '',
+          ...data,
+        });
       }
     };
 

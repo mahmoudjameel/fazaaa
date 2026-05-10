@@ -25,7 +25,9 @@ import {
   Trash2,
   Edit,
   Plus,
-  Info
+  Info,
+  RefreshCw,
+  ChevronDown
 } from 'lucide-react';
 import {
   listenToAllRequests,
@@ -246,6 +248,7 @@ export const Orders = () => {
     notes: ''
   });
   const [showMapPicker, setShowMapPicker] = useState(false);
+  const customerSearchTimerRef = useRef(null);
 
   // Edit Order State
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -668,24 +671,30 @@ export const Orders = () => {
     }
   };
 
-  const handleCustomerSearch = async (term) => {
+  const handleCustomerSearch = (term) => {
     setCustomerSearchTerm(term);
-    if (term.length < 3) {
+    if (customerSearchTimerRef.current) clearTimeout(customerSearchTimerRef.current);
+
+    if (term.trim().length < 2) {
       setCustomerSearchResults([]);
+      setIsSearchingCustomer(false);
       return;
     }
 
     setIsSearchingCustomer(true);
-    try {
-      const result = await getUsersBySearch(term);
-      if (result.success) {
-        setCustomerSearchResults(result.users);
+    customerSearchTimerRef.current = setTimeout(async () => {
+      try {
+        const result = await getUsersBySearch(term);
+        if (result.success) {
+          setCustomerSearchResults(result.users);
+        }
+      } catch (error) {
+        console.error('Customer search error:', error);
+        setCustomerSearchResults([]);
+      } finally {
+        setIsSearchingCustomer(false);
       }
-    } catch (error) {
-      console.error('Customer search error:', error);
-    } finally {
-      setIsSearchingCustomer(false);
-    }
+    }, 400);
   };
 
   const handleCreateManualOrder = async (e) => {
@@ -818,117 +827,126 @@ export const Orders = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-gray-500">جاري التحميل...</div>
+      <div className="flex flex-col items-center justify-center min-h-[420px] gap-4">
+        <RefreshCw className="animate-spin text-gray-400" size={36} />
+        <p className="text-gray-400 font-bold text-sm">جاري تحميل الطلبات…</p>
       </div>
     );
   }
 
   return (
-    <div>
-      <div className="mb-4 sm:mb-6 md:mb-8 flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-black text-gray-800 mb-1 sm:mb-2">إدارة الطلبات</h1>
-          <p className="text-sm sm:text-base text-gray-600">عرض ومتابعة جميع الطلبات</p>
+    <div className="max-w-7xl mx-auto" dir="rtl">
+
+      {/* ── رأس الصفحة ── */}
+      <div className="mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-11 h-11 bg-teal-100 rounded-2xl flex items-center justify-center flex-shrink-0">
+            <ShoppingBag size={22} className="text-teal-600" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-black text-gray-800 leading-tight">إدارة الطلبات</h1>
+            <p className="text-gray-400 text-sm font-medium">عرض ومتابعة جميع طلبات الخدمة — تحديث فوري</p>
+          </div>
         </div>
         <button
           onClick={() => setIsManualModalOpen(true)}
-          className="flex items-center gap-2 px-6 py-3 bg-primary-teal text-white rounded-xl hover:bg-teal-600 transition-all font-bold shadow-lg"
+          className="flex items-center gap-2 px-5 py-2.5 bg-teal-600 text-white rounded-xl hover:bg-teal-700 transition-all font-bold shadow-sm text-sm flex-shrink-0"
         >
-          <Plus size={20} />
+          <Plus size={17} />
           إنشاء طلب يدوي
         </button>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-3 sm:gap-4 md:gap-4 mb-4 sm:mb-6">
-        <div
-          onClick={() => setStatusFilter('active')}
-          className={`cursor-pointer transition-all hover:scale-105 rounded-xl sm:rounded-2xl p-4 sm:p-5 shadow-lg ${statusFilter === 'active' ? 'bg-primary-teal text-white' : 'bg-white'}`}
-        >
-          <div className="flex items-center justify-between mb-2">
-            <Clock className={`${statusFilter === 'active' ? 'text-white' : 'text-yellow-500'} w-5 h-5 sm:w-6 sm:h-6`} />
-            <span className={`text-xs sm:text-sm ${statusFilter === 'active' ? 'text-teal-50' : 'text-gray-600'}`}>قيد التنفيذ</span>
-          </div>
-          <p className={`text-2xl sm:text-3xl font-black ${statusFilter === 'active' ? 'text-white' : 'text-gray-800'}`}>
-            {requests.filter((o) => ['searching', 'assigned', 'en_route', 'arrived', 'in_progress', 'pending_legal_docs'].includes(o.status)).length}
-          </p>
-        </div>
-
-        <div
-          onClick={() => setStatusFilter('pending_review')}
-          className={`cursor-pointer transition-all hover:scale-105 rounded-xl sm:rounded-2xl p-4 sm:p-5 shadow-lg ${statusFilter === 'pending_review' ? 'bg-amber-500 text-white' : 'bg-white border-b-4 border-amber-400'}`}
-        >
-          <div className="flex items-center justify-between mb-2">
-            <AlertTriangle className={`${statusFilter === 'pending_review' ? 'text-white' : 'text-amber-500'} w-5 h-5 sm:w-6 sm:h-6`} />
-            <span className={`text-xs sm:text-sm ${statusFilter === 'pending_review' ? 'text-amber-50' : 'text-gray-600'}`}>قيد المراجعة</span>
-          </div>
-          <p className={`text-2xl sm:text-3xl font-black ${statusFilter === 'pending_review' ? 'text-white' : 'text-gray-800'}`}>
-            {requests.filter((o) => o.status === 'pending_review').length}
-          </p>
-        </div>
-
-        <div
-          onClick={() => setStatusFilter('no_providers_timeout')}
-          className={`cursor-pointer transition-all hover:scale-105 rounded-xl sm:rounded-2xl p-4 sm:p-5 shadow-lg ${statusFilter === 'no_providers_timeout' ? 'bg-purple-600 text-white' : 'bg-white border-b-4 border-purple-400'}`}
-        >
-          <div className="flex items-center justify-between mb-2">
-            <XCircle className={`${statusFilter === 'no_providers_timeout' ? 'text-white' : 'text-purple-500'} w-5 h-5 sm:w-6 sm:h-6`} />
-            <span className={`text-xs sm:text-sm ${statusFilter === 'no_providers_timeout' ? 'text-purple-50' : 'text-gray-600'}`}>انتهاء المهلة</span>
-          </div>
-          <p className={`text-2xl sm:text-3xl font-black ${statusFilter === 'no_providers_timeout' ? 'text-white' : 'text-gray-800'}`}>
-            {requests.filter(o => {
+      {/* ── بطاقات الإحصاء — قابلة للنقر كفلتر ── */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
+        {[
+          {
+            key: 'active',
+            label: 'قيد التنفيذ',
+            icon: Clock,
+            value: requests.filter(o => ['searching','assigned','en_route','arrived','in_progress','pending_legal_docs'].includes(o.status)).length,
+            dot: 'bg-teal-500',
+            active: 'bg-teal-600 border-teal-600 text-white',
+            inactive: 'bg-white border-gray-200 hover:border-teal-300 text-gray-800',
+          },
+          {
+            key: 'pending_review',
+            label: 'قيد المراجعة',
+            icon: AlertTriangle,
+            value: requests.filter(o => o.status === 'pending_review').length,
+            dot: 'bg-amber-500',
+            active: 'bg-amber-500 border-amber-500 text-white',
+            inactive: 'bg-white border-gray-200 hover:border-amber-300 text-gray-800',
+          },
+          {
+            key: 'no_providers_timeout',
+            label: 'انتهاء المهلة',
+            icon: XCircle,
+            value: requests.filter(o => {
               if (o.status === 'timed_out') return true;
               if (o.status !== 'canceled_by_client' && o.status !== 'canceled_by_client_with_reason') return false;
               const wasAccepted = o.assignedAt || (Array.isArray(o.history) && o.history.some(h => h.status === 'assigned'));
               if (wasAccepted) return false;
               const cancelReason = o.cancelReason || (Array.isArray(o.history) ? o.history.find(h => h.cancelReason)?.cancelReason : '') || '';
-              const timeoutReasons = ['لا يوجد مزودين متاحين', 'ضغط على الشبكة', 'انتهى وقت البحث', 'لايوجد شبكة متاحة', 'ضغط على الشبكة', 'نعتذر لايوجد شبكة متاحة في منطقتكم', 'نعتذر يوجد ضغط على الشبكة في الوقت الحالي'];
-              return timeoutReasons.some(r => cancelReason.includes(r));
-            }).length}
-          </p>
-        </div>
-
-        <div
-          onClick={() => setStatusFilter('rejections_after_accept')}
-          className={`cursor-pointer transition-all hover:scale-105 rounded-xl sm:rounded-2xl p-4 sm:p-5 shadow-lg ${statusFilter === 'rejections_after_accept' ? 'bg-red-600 text-white' : 'bg-white border-b-4 border-red-400'}`}
-        >
-          <div className="flex items-center justify-between mb-2">
-            <AlertCircle className={`${statusFilter === 'rejections_after_accept' ? 'text-white' : 'text-red-500'} w-5 h-5 sm:w-6 sm:h-6`} />
-            <span className={`text-xs sm:text-sm ${statusFilter === 'rejections_after_accept' ? 'text-red-50' : 'text-gray-600'}`}>إلغاء بعد القبول</span>
-          </div>
-          <p className={`text-2xl sm:text-3xl font-black ${statusFilter === 'rejections_after_accept' ? 'text-white' : 'text-gray-800'}`}>
-            {requests.filter(o => {
+              return ['لا يوجد مزودين متاحين','ضغط على الشبكة','انتهى وقت البحث','لايوجد شبكة متاحة','نعتذر لايوجد شبكة متاحة في منطقتكم'].some(r => cancelReason.includes(r));
+            }).length,
+            dot: 'bg-purple-500',
+            active: 'bg-purple-600 border-purple-600 text-white',
+            inactive: 'bg-white border-gray-200 hover:border-purple-300 text-gray-800',
+          },
+          {
+            key: 'rejections_after_accept',
+            label: 'إلغاء بعد القبول',
+            icon: AlertCircle,
+            value: requests.filter(o => {
               const wasAccepted = o.assignedAt || (Array.isArray(o.history) && o.history.some(h => h.status === 'assigned'));
               if (!wasAccepted) return false;
               return o.status?.includes('canceled') || (Array.isArray(o.history) && o.history.some(h => h.status?.includes('canceled') || h.action?.includes('cancellation')));
-            }).length}
-          </p>
-        </div>
-
-        <div
-          onClick={() => setStatusFilter('completed')}
-          className={`cursor-pointer transition-all hover:scale-105 rounded-xl sm:rounded-2xl p-4 sm:p-5 shadow-lg ${statusFilter === 'completed' ? 'bg-green-600 text-white' : 'bg-white'}`}
-        >
-          <div className="flex items-center justify-between mb-2">
-            <DollarSign className={`${statusFilter === 'completed' ? 'text-white' : 'text-green-500'} w-5 h-5 sm:w-6 sm:h-6`} />
-            <span className={`text-xs sm:text-sm ${statusFilter === 'completed' ? 'text-green-50' : 'text-gray-600'}`}>مكتملة</span>
-          </div>
-          <p className={`text-2xl sm:text-3xl font-black ${statusFilter === 'completed' ? 'text-white' : 'text-gray-800'}`}>
-            {requests.filter((o) => o.status === 'completed').length}
-          </p>
-        </div>
-
-        <div
-          onClick={() => setStatusFilter('all')}
-          className={`cursor-pointer transition-all hover:scale-105 rounded-xl sm:rounded-2xl p-4 sm:p-5 shadow-lg ${statusFilter === 'all' ? 'bg-blue-600 text-white' : 'bg-white'}`}
-        >
-          <div className="flex items-center justify-between mb-2">
-            <MapPin className={`${statusFilter === 'all' ? 'text-white' : 'text-blue-500'} w-5 h-5 sm:w-6 sm:h-6`} />
-            <span className={`text-xs sm:text-sm ${statusFilter === 'all' ? 'text-blue-50' : 'text-gray-600'}`}>إجمالي الطلبات</span>
-          </div>
-          <p className={`text-2xl sm:text-3xl font-black ${statusFilter === 'all' ? 'text-white' : 'text-gray-800'}`}>{requests.length}</p>
-        </div>
+            }).length,
+            dot: 'bg-red-500',
+            active: 'bg-red-600 border-red-600 text-white',
+            inactive: 'bg-white border-gray-200 hover:border-red-300 text-gray-800',
+          },
+          {
+            key: 'completed',
+            label: 'مكتملة',
+            icon: CheckCircle,
+            value: requests.filter(o => o.status === 'completed').length,
+            dot: 'bg-green-500',
+            active: 'bg-green-600 border-green-600 text-white',
+            inactive: 'bg-white border-gray-200 hover:border-green-300 text-gray-800',
+          },
+          {
+            key: 'all',
+            label: 'إجمالي الطلبات',
+            icon: Package,
+            value: requests.length,
+            dot: 'bg-blue-500',
+            active: 'bg-blue-600 border-blue-600 text-white',
+            inactive: 'bg-white border-gray-200 hover:border-blue-300 text-gray-800',
+          },
+        ].map(card => {
+          const Icon = card.icon;
+          const isActive = statusFilter === card.key;
+          return (
+            <button
+              key={card.key}
+              onClick={() => setStatusFilter(card.key)}
+              className={`rounded-2xl p-4 border-2 text-right transition-all shadow-sm hover:shadow-md ${isActive ? card.active : card.inactive}`}
+            >
+              <div className="flex items-center justify-between mb-3">
+                <div className={`w-2 h-2 rounded-full flex-shrink-0 ${isActive ? 'bg-white/60' : card.dot}`} />
+                <Icon size={18} className={isActive ? 'text-white/80' : 'text-gray-400'} />
+              </div>
+              <p className={`text-2xl font-black leading-none mb-1.5 ${isActive ? 'text-white' : 'text-gray-800'}`}>
+                {card.value}
+              </p>
+              <p className={`text-xs font-bold leading-tight ${isActive ? 'text-white/80' : 'text-gray-500'}`}>
+                {card.label}
+              </p>
+            </button>
+          );
+        })}
       </div>
 
       {/* No Providers / Timeout - Alert Section */}
@@ -1247,289 +1265,318 @@ export const Orders = () => {
         return null;
       })()}
 
-      {/* Filters */}
-      <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
-        <div className="flex flex-col md:flex-row gap-4">
-          <div className="flex-1 relative">
-            <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-            <input
-              type="text"
-              placeholder="ابحث برقم الطلب، أو جوال العميل، أو جوال المزود (بحث شامل)..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pr-10 pl-10 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none"
-            />
-            {isSearchingUids && (
-              <div className="absolute left-3 top-1/2 transform -translate-y-1/2">
-                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-teal-500"></div>
-              </div>
-            )}
+      {/* ── شريط الفلاتر والبحث ── */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-5 space-y-3">
+
+        {/* صف البحث */}
+        <div className="relative">
+          <Search className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
+          <input
+            type="text"
+            placeholder="ابحث برقم الطلب، جوال العميل، اسم المزود، نوع الخدمة…"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pr-10 pl-10 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:border-teal-400 focus:bg-white focus:outline-none transition-all"
+            dir="rtl"
+          />
+          {isSearchingUids && (
+            <div className="absolute left-3.5 top-1/2 -translate-y-1/2">
+              <RefreshCw size={15} className="animate-spin text-teal-500" />
+            </div>
+          )}
+        </div>
+
+        {/* صف الفلاتر */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {/* الحالة */}
+          <div className="relative">
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="w-full appearance-none pr-3 pl-7 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-700 focus:outline-none focus:border-teal-400 cursor-pointer"
+            >
+              <option value="all">كل الحالات</option>
+              <option value="active">قيد التنفيذ</option>
+              <option value="pending_client_confirmation">بانتظار التأكيد</option>
+              <option value="pending_review">قيد المراجعة</option>
+              <option value="completed">مكتملة</option>
+              <option value="cancelled">ملغاة (الكل)</option>
+              <option value="no_providers_timeout">فشل العثور على مزود</option>
+            </select>
+            <ChevronDown size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           </div>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="w-full md:w-auto px-4 py-3 border-2 border-gray-100 rounded-xl focus:border-teal-400 focus:outline-none font-semibold text-gray-700"
-          >
-            <option value="all">كل الحالات</option>
-            <option value="active">قيد التنفيذ (نشط)</option>
-            <option value="pending_client_confirmation">بانتظار تأكيد العميل</option>
-            <option value="pending_review">قيد المراجعة (اعتراض)</option>
-            <option value="completed">مكتملة</option>
-            <option value="cancelled">ملغاة (الكل)</option>
-            <option value="no_providers_timeout">فشل العثور على مزود</option>
-          </select>
 
-          <select
-            value={cityFilter}
-            onChange={(e) => setCityFilter(e.target.value)}
-            className="w-full md:w-auto px-4 py-3 border-2 border-gray-100 rounded-xl focus:border-teal-400 focus:outline-none font-semibold text-gray-700"
-          >
-            <option value="all">كل المدن</option>
-            {cities.map(city => (
-              <option key={city.id} value={city.id}>{city.name}</option>
-            ))}
-          </select>
+          {/* المدينة */}
+          <div className="relative">
+            <select
+              value={cityFilter}
+              onChange={(e) => setCityFilter(e.target.value)}
+              className="w-full appearance-none pr-3 pl-7 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-700 focus:outline-none focus:border-teal-400 cursor-pointer"
+            >
+              <option value="all">كل المدن</option>
+              {cities.map(city => (
+                <option key={city.id} value={city.id}>{city.name}</option>
+              ))}
+            </select>
+            <ChevronDown size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          </div>
 
-          <select
-            value={serviceFilter}
-            onChange={(e) => setServiceFilter(e.target.value)}
-            className="w-full md:w-auto px-4 py-3 border-2 border-gray-100 rounded-xl focus:border-teal-400 focus:outline-none font-semibold text-gray-700"
-          >
-            <option value="all">كل الخدمات</option>
-            {services.map(service => (
-              <option key={service.id} value={service.id}>{service.name}</option>
-            ))}
-          </select>
+          {/* الخدمة */}
+          <div className="relative">
+            <select
+              value={serviceFilter}
+              onChange={(e) => setServiceFilter(e.target.value)}
+              className="w-full appearance-none pr-3 pl-7 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-700 focus:outline-none focus:border-teal-400 cursor-pointer"
+            >
+              <option value="all">كل الخدمات</option>
+              {services.map(service => (
+                <option key={service.id} value={service.id}>{service.name}</option>
+              ))}
+            </select>
+            <ChevronDown size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          </div>
 
-          {/* Dropdown Filter for SLA */}
-          <select
-            value={slaFilter}
-            onChange={(e) => setSlaFilter(e.target.value)}
-            className={`w-full md:w-auto px-4 py-3 border-2 rounded-xl focus:outline-none font-semibold ${
-              slaFilter !== 'all' 
-                ? 'bg-red-50 text-red-700 border-red-300 shadow-sm focus:border-red-400' 
-                : 'border-gray-100 focus:border-teal-400 text-gray-700'
-            }`}
-          >
-            <option value="all">كل الاستجابات (SLA)</option>
-            <option value="over_15">مسافة الاستجابة أكثر من 15 دقيقة</option>
-            <option value="under_15">مسافة الاستجابة 15 دقيقة فأقل</option>
-          </select>
+          {/* SLA */}
+          <div className="relative">
+            <select
+              value={slaFilter}
+              onChange={(e) => setSlaFilter(e.target.value)}
+              className={`w-full appearance-none pr-3 pl-7 py-2 border rounded-xl text-sm font-semibold focus:outline-none cursor-pointer transition-colors ${
+                slaFilter !== 'all'
+                  ? 'bg-red-50 border-red-300 text-red-700 focus:border-red-400'
+                  : 'bg-gray-50 border-gray-200 text-gray-700 focus:border-teal-400'
+              }`}
+            >
+              <option value="all">كل الاستجابات (SLA)</option>
+              <option value="over_15">استجابة &gt; 15 دقيقة</option>
+              <option value="under_15">استجابة ≤ 15 دقيقة</option>
+            </select>
+            <ChevronDown size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          </div>
         </div>
       </div>
 
-      {/* Orders List */}
-      <div className="space-y-4">
+      {/* ── قائمة الطلبات ── */}
+      <div className="flex items-center justify-between mb-3 px-1">
+        <span className="text-sm text-gray-500 font-medium">
+          يعرض <strong className="text-gray-800">{filteredRequests.length}</strong> طلب
+        </span>
+        {searchTerm && (
+          <button onClick={() => setSearchTerm('')} className="text-xs text-teal-600 font-bold hover:underline">
+            مسح البحث ✕
+          </button>
+        )}
+      </div>
+
+      <div className="space-y-3">
         {filteredRequests.length === 0 ? (
-          <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
-            <p className="text-gray-500">لا توجد طلبات</p>
+          <div className="bg-white rounded-2xl border border-gray-100 p-14 flex flex-col items-center text-center">
+            <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-4">
+              <ShoppingBag size={28} className="text-gray-300" />
+            </div>
+            <h3 className="text-base font-bold text-gray-600 mb-1">لا توجد طلبات</h3>
+            <p className="text-gray-400 text-sm">جرّب تغيير الفلاتر أو مصطلح البحث</p>
           </div>
         ) : (
           filteredRequests.map((order) => {
             const statusBadge = getStatusBadge(order.status);
+            const isActive = ['searching','assigned','en_route','arrived','in_progress'].includes(order.status);
             return (
               <div
                 key={order.id}
-                className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all"
+                className={`bg-white rounded-2xl border-2 overflow-hidden transition-all hover:shadow-md ${
+                  order.status === 'completed'       ? 'border-green-200' :
+                  order.status === 'pending_review'  ? 'border-amber-300' :
+                  order.status === 'timed_out'       ? 'border-purple-200' :
+                  isActive                           ? 'border-teal-200'  :
+                  order.status?.includes('canceled') ? 'border-red-200'   : 'border-gray-100'
+                }`}
               >
-                <div className="flex items-start justify-between">
-                  <div className="flex items-start gap-4 flex-1">
-                    <div className="text-4xl">{getServiceIcon(order.serviceType)}</div>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        <h3 className="text-xl font-bold text-gray-800">
+                <div className="p-4 sm:p-5">
+                  {/* ── صف الرأس: أيقونة + معلومات + سعر + أزرار ── */}
+                  <div className="flex items-start gap-3">
+                    {/* أيقونة الخدمة */}
+                    <div className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                      isActive ? 'bg-teal-100' :
+                      order.status === 'completed' ? 'bg-green-100' :
+                      order.status === 'pending_review' ? 'bg-amber-100' :
+                      order.status === 'timed_out' ? 'bg-purple-100' :
+                      order.status?.includes('canceled') ? 'bg-red-50' : 'bg-gray-100'
+                    }`}>
+                      <ShoppingBag size={20} className={
+                        isActive ? 'text-teal-600' :
+                        order.status === 'completed' ? 'text-green-600' :
+                        order.status === 'pending_review' ? 'text-amber-600' :
+                        order.status === 'timed_out' ? 'text-purple-500' :
+                        order.status?.includes('canceled') ? 'text-red-400' : 'text-gray-400'
+                      } />
+                    </div>
+
+                    {/* المعلومات الرئيسية */}
+                    <div className="flex-1 min-w-0">
+                      {/* عنوان + رقم + شارة الحالة + تقييم */}
+                      <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                        <h3 className="text-base font-bold text-gray-800 leading-tight">
                           {order.serviceName || order.serviceType || 'خدمة'}
-                          <span className="text-xs font-normal text-gray-500 mr-2">
-                            رقم {order.orderNumber != null ? order.orderNumber : (order.id ? `#${order.id.substring(0, 8)}` : '--')}
-                          </span>
                         </h3>
-                        <span
-                          className={`px-3 py-1 rounded-full text-xs font-semibold ${statusBadge.color}`}
-                        >
+                        <span className="text-[11px] text-gray-400 font-medium bg-gray-50 px-2 py-0.5 rounded-full border border-gray-100">
+                          #{order.orderNumber != null ? order.orderNumber : (order.id ? order.id.substring(0, 8) : '--')}
+                        </span>
+                        <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${statusBadge.color}`}>
                           {statusBadge.text}
                         </span>
                         {order.status === 'completed' && (
-                          <span className="flex items-center gap-0.5 text-amber-600" title="تقييم العميل">
-                            <Star size={14} className={order.rated ? 'fill-amber-500 text-amber-500' : 'text-gray-300'} />
-                            <span className="text-xs font-semibold text-gray-700">
+                          <span className="flex items-center gap-0.5">
+                            <Star size={13} className={order.rated ? 'fill-amber-500 text-amber-500' : 'text-gray-300'} />
+                            <span className="text-xs font-semibold text-gray-600">
                               {order.rated ? `${order.rating ?? '—'}/5` : 'لم يُقيّم'}
                             </span>
                           </span>
                         )}
                       </div>
-                      <div className="space-y-1 text-sm text-gray-600">
+
+                      {/* شريط المعلومات: مدينة + موقع + تاريخ + مزود */}
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500">
                         {(order.city || order.cityId) && (
-                          <div className="flex items-center gap-2 text-teal-600 font-semibold mb-1">
-                            <MapPin size={16} className="shrink-0" />
-                            <span>
-                              {SAUDI_CITIES.find(c => c.id === order.cityId)?.name || order.city}
-                            </span>
-                          </div>
+                          <span className="flex items-center gap-1 text-teal-600 font-semibold">
+                            <MapPin size={12} className="shrink-0" />
+                            {cities.find(c => c.id === order.cityId)?.name || order.city}
+                          </span>
                         )}
                         {order.location && (
-                          <div className="flex items-center gap-2">
-                             <MapPin size={16} className="shrink-0 text-gray-400" />
-                             <button 
-                               onClick={() => handleOpenLocation(order)}
-                               className="text-teal-600 hover:text-teal-700 font-bold hover:underline transition-all text-sm text-right"
-                             >
-                               {order.location}
-                             </button>
-                          </div>
+                          <button
+                            onClick={() => handleOpenLocation(order)}
+                            className="flex items-center gap-1 text-gray-500 hover:text-teal-600 transition-colors"
+                          >
+                            <MapPin size={12} className="shrink-0 text-gray-400" />
+                            <span className="truncate max-w-[200px]">{order.location}</span>
+                          </button>
                         )}
-                        <div className="flex items-center gap-2">
-                          <Clock size={16} className="shrink-0 text-gray-400" />
-                          <span>
-                            {(() => {
-                              if (!order.createdAt) return '-';
-
-                              // التعامل مع Firebase Timestamp
-                              let date;
-                              if (order.createdAt?.toMillis) {
-                                date = new Date(order.createdAt.toMillis());
-                              } else if (order.createdAt?.toDate) {
-                                date = order.createdAt.toDate();
-                              } else if (order.createdAt?.seconds) {
-                                date = new Date(order.createdAt.seconds * 1000);
-                              } else {
-                                date = new Date(order.createdAt);
-                              }
-
-                              return isNaN(date.getTime()) ? '-' : format(date, 'dd MMM yyyy, HH:mm', { locale: ar });
-                            })()}
-                          </span>
-                        </div>
-
-                        {/* SLA Info Label */}
-                        {(() => {
-                          if (!order.providerId && !order.providerAcceptedDurationMin) return null;
-
-                          let durationMin = order.providerAcceptedDurationMin;
-                          let distanceKm = order.providerAcceptedDistanceKm;
-                          let isCalculated = false;
-
-                          if (durationMin == null && order.coordinates && order.coordinates.latitude && order.coordinates.longitude && order.providerId) {
-                            const pData = providersDict[order.providerId];
-                            if (pData) {
-                              const loc = pData.locationCoordinates || pData.location || pData.coordinates;
-                              if (loc && (loc.latitude ?? loc.lat) && (loc.longitude ?? loc.lng)) {
-                                const pLat = loc.latitude ?? loc.lat;
-                                const pLng = loc.longitude ?? loc.lng;
-                                distanceKm = calculateDistanceKm(order.coordinates.latitude, order.coordinates.longitude, pLat, pLng);
-                                durationMin = Math.round((distanceKm / 40) * 60) || 1;
-                                isCalculated = true;
-                              }
-                            }
-                          }
-
-                          if (durationMin == null) return null;
-
-                          const isSlaExceeded = durationMin > 15;
-                          const colorClass = isSlaExceeded ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700';
-
-                          return (
-                            <div className={`mt-2 flex flex-col gap-1 px-3 py-2 rounded-lg border w-fit ${isSlaExceeded ? 'border-red-200' : 'border-green-200'} ${colorClass}`}>
-                              <div className="flex justify-between items-center gap-2">
-                                <span className={`text-xs font-bold ${isSlaExceeded ? 'text-red-700' : 'text-green-700'}`}>
-                                  ⏳ مسافة الاستجابة {isCalculated ? '(تقديرية)' : '(مؤرشفة)'}:
-                                </span>
-                                <span className="text-sm font-black" dir="ltr">
-                                  {durationMin} Min {distanceKm != null ? `(${distanceKm.toFixed(1)} Km)` : ''}
-                                </span>
-                              </div>
-                              {isSlaExceeded && (
-                                <p className="text-[10px] text-red-600 font-bold mt-0.5">⚠️ الطلب تجاوز مسافة الـ 15 دقيقة</p>
-                              )}
-                            </div>
-                          );
-                        })()}
-
+                        <span className="flex items-center gap-1">
+                          <Clock size={12} className="shrink-0" />
+                          {(() => {
+                            if (!order.createdAt) return '-';
+                            let date;
+                            if (order.createdAt?.toMillis) date = new Date(order.createdAt.toMillis());
+                            else if (order.createdAt?.toDate) date = order.createdAt.toDate();
+                            else if (order.createdAt?.seconds) date = new Date(order.createdAt.seconds * 1000);
+                            else date = new Date(order.createdAt);
+                            return isNaN(date.getTime()) ? '-' : format(date, 'dd MMM yyyy, HH:mm', { locale: ar });
+                          })()}
+                        </span>
                         {order.providerName && (
-                          <div className="text-xs">
-                            <span className="text-gray-600">مزود: </span>
+                          <span className="flex items-center gap-1">
+                            <User size={12} className="shrink-0 text-gray-400" />
                             <button
                               type="button"
                               onClick={(e) => handleProviderClick(order, e)}
-                              className="text-teal-600 hover:text-teal-700 font-semibold underline decoration-dotted cursor-pointer"
+                              className="text-teal-600 hover:text-teal-700 font-semibold underline decoration-dotted"
                             >
                               {order.providerName}
                             </button>
-                          </div>
-                        )}
-                        {/* Provider Cancellation / Rejection */}
-                        {(() => {
-                          const cancelEvent = Array.isArray(order.history)
-                            ? [...order.history].reverse().find(h => h.action === 'provider_cancellation' || h.status === 'canceled_by_provider' || h.status === 'canceled_by_provider_with_reason')
-                            : null;
-                          const reason = order.cancelReason || cancelEvent?.cancelReason || cancelEvent?.message?.split('السبب: ')[1];
-                          const wasAccepted = order.assignedAt || (Array.isArray(order.history) && order.history.some(h => h.status === 'assigned'));
-
-                          if (reason && wasAccepted) {
-                            return (
-                              <div className="mt-2 p-2 bg-red-50 border-r-4 border-red-500 rounded">
-                                <p className="text-xs text-red-700 font-semibold">
-                                  ⚠️ رفض المزود بعد القبول
-                                </p>
-                                <p className="text-xs text-red-600 mt-1">
-                                  السبب: {reason}
-                                </p>
-                              </div>
-                            );
-                          }
-                          return null;
-                        })()}
-
-                        {/* Client Cancellation */}
-                        {(order.status === 'canceled_by_client' || order.status === 'canceled_by_client_with_reason') && (order.cancelReason || order.history) && (
-                          (() => {
-                            const cancelEvent = Array.isArray(order.history)
-                              ? order.history.find(h => h.status === 'canceled_by_client' || h.status === 'canceled_by_client_with_reason')
-                              : null;
-                            const reason = order.cancelReason || cancelEvent?.cancelReason;
-                            const wasAccepted = order.assignedAt || (Array.isArray(order.history) && order.history.some(h => h.status === 'assigned'));
-
-                            if (reason && wasAccepted) {
-                              return (
-                                <div className="mt-2 p-2 bg-orange-50 border-r-4 border-orange-500 rounded">
-                                  <p className="text-xs text-orange-700 font-semibold">
-                                    ⚠️ إلغاء العميل بعد القبول
-                                  </p>
-                                  <p className="text-xs text-orange-600 mt-1">
-                                    السبب: {reason}
-                                  </p>
-                                </div>
-                              );
-                            }
-                            return null;
-                          })()
+                          </span>
                         )}
                       </div>
                     </div>
-                  </div>
-                  <div className="text-left ml-4">
-                    <div className="mb-2">
-                      <p className="text-2xl font-black text-green-600">{order.price || 0} ر.س</p>
-                      {order.status === 'completed' && (
-                        <p className="text-xs font-bold text-teal-600">العمولة: {order.commission || 0} ر.س</p>
-                      )}
+
+                    {/* السعر + الأزرار */}
+                    <div className="flex flex-col items-end gap-2.5 flex-shrink-0">
+                      <div className="text-left">
+                        <p className="text-xl font-black text-green-600 leading-none">
+                          {order.price || 0} <span className="text-sm font-bold text-green-500">ر.س</span>
+                        </p>
+                        {order.status === 'completed' && order.commission != null && (
+                          <p className="text-[11px] font-bold text-teal-600 mt-0.5">عمولة: {order.commission} ر.س</p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => setSelectedRequest(order)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-teal-50 text-teal-700 rounded-lg hover:bg-teal-100 transition-all text-xs font-bold border border-teal-100"
+                        >
+                          <Eye size={13} />
+                          عرض
+                        </button>
+                        <button
+                          onClick={(e) => handleEditClick(order, e)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 text-gray-600 rounded-lg hover:bg-gray-100 transition-all text-xs font-bold border border-gray-200"
+                        >
+                          <Edit size={13} />
+                          تعديل
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex flex-col gap-2">
-                      <button
-                        onClick={() => setSelectedRequest(order)}
-                        className="flex items-center justify-center gap-2 px-4 py-2 bg-primary-blue/10 text-primary-blue rounded-lg hover:bg-primary-blue/20 transition-all text-sm font-semibold"
-                      >
-                        <Eye size={16} />
-                        التفاصيل
-                      </button>
-                      <button
-                        onClick={(e) => handleEditClick(order, e)}
-                        className="flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-all text-sm font-semibold"
-                      >
-                        <Edit size={16} />
-                        تعديل
-                      </button>
-                    </div>
                   </div>
+
+                  {/* ── شريط التنبيهات: SLA + إلغاء المزود + إلغاء العميل ── */}
+                  {(() => {
+                    const chips = [];
+
+                    // SLA
+                    let durationMin = order.providerAcceptedDurationMin;
+                    let distanceKm = order.providerAcceptedDistanceKm;
+                    let isCalculated = false;
+                    if (durationMin == null && order.coordinates?.latitude && order.coordinates?.longitude && order.providerId) {
+                      const pData = providersDict[order.providerId];
+                      if (pData) {
+                        const loc = pData.locationCoordinates || pData.location || pData.coordinates;
+                        if (loc && (loc.latitude ?? loc.lat) && (loc.longitude ?? loc.lng)) {
+                          const pLat = loc.latitude ?? loc.lat;
+                          const pLng = loc.longitude ?? loc.lng;
+                          distanceKm = calculateDistanceKm(order.coordinates.latitude, order.coordinates.longitude, pLat, pLng);
+                          durationMin = Math.round((distanceKm / 40) * 60) || 1;
+                          isCalculated = true;
+                        }
+                      }
+                    }
+                    if (durationMin != null) {
+                      const exceeded = durationMin > 15;
+                      chips.push(
+                        <span key="sla" className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border ${exceeded ? 'bg-red-50 text-red-700 border-red-200' : 'bg-green-50 text-green-700 border-green-200'}`}>
+                          <Clock size={11} />
+                          SLA: {durationMin} د {distanceKm != null ? `(${distanceKm.toFixed(1)} km)` : ''}{isCalculated ? ' ‎*' : ''}
+                          {exceeded && <span className="text-[10px] font-black">⚠ تجاوز</span>}
+                        </span>
+                      );
+                    }
+
+                    // رفض المزود بعد القبول
+                    const provCancelEvent = Array.isArray(order.history)
+                      ? [...order.history].reverse().find(h => h.action === 'provider_cancellation' || h.status === 'canceled_by_provider' || h.status === 'canceled_by_provider_with_reason')
+                      : null;
+                    const provReason = order.cancelReason || provCancelEvent?.cancelReason || provCancelEvent?.message?.split('السبب: ')[1];
+                    const wasAcceptedProv = order.assignedAt || (Array.isArray(order.history) && order.history.some(h => h.status === 'assigned'));
+                    if (provReason && wasAcceptedProv) {
+                      chips.push(
+                        <span key="prov-cancel" className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border bg-red-50 text-red-700 border-red-200 max-w-xs truncate">
+                          ⚠ رفض المزود: {provReason}
+                        </span>
+                      );
+                    }
+
+                    // إلغاء العميل بعد القبول
+                    if (order.status === 'canceled_by_client' || order.status === 'canceled_by_client_with_reason') {
+                      const clientCancelEvent = Array.isArray(order.history)
+                        ? order.history.find(h => h.status === 'canceled_by_client' || h.status === 'canceled_by_client_with_reason')
+                        : null;
+                      const clientReason = order.cancelReason || clientCancelEvent?.cancelReason;
+                      const wasAcceptedClient = order.assignedAt || (Array.isArray(order.history) && order.history.some(h => h.status === 'assigned'));
+                      if (clientReason && wasAcceptedClient) {
+                        chips.push(
+                          <span key="client-cancel" className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border bg-orange-50 text-orange-700 border-orange-200 max-w-xs truncate">
+                            ⚠ إلغاء العميل: {clientReason}
+                          </span>
+                        );
+                      }
+                    }
+
+                    if (chips.length === 0) return null;
+                    return (
+                      <div className="mt-3 pt-3 border-t border-gray-100 flex flex-wrap gap-2">
+                        {chips}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             );
@@ -2597,38 +2644,87 @@ export const Orders = () => {
                     <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                     <input
                       type="text"
-                      placeholder="ابحث بالاسم أو الهاتف (3 أحرف على الأقل)..."
+                      placeholder="ابحث بالاسم، الجوال (بمقدمة أو بدونها)، الإيميل…"
                       value={customerSearchTerm}
                       onChange={(e) => handleCustomerSearch(e.target.value)}
-                      className="w-full pr-10 pl-4 py-3 border-2 border-gray-100 rounded-xl focus:border-primary-teal outline-none transition-all"
+                      className="w-full pr-10 pl-10 py-3 border-2 border-gray-200 rounded-xl focus:border-teal-400 outline-none transition-all text-sm"
+                      dir="rtl"
                     />
-                    {isSearchingCustomer && (
+                    {isSearchingCustomer ? (
                       <div className="absolute left-3 top-1/2 -translate-y-1/2">
-                        <div className="w-5 h-5 border-2 border-primary-teal border-t-transparent rounded-full animate-spin"></div>
+                        <RefreshCw size={16} className="animate-spin text-teal-500" />
                       </div>
+                    ) : customerSearchTerm.trim().length >= 2 && !isSearchingCustomer && (
+                      <button
+                        type="button"
+                        onClick={() => { setCustomerSearchTerm(''); setCustomerSearchResults([]); }}
+                        className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      >
+                        <X size={15} />
+                      </button>
                     )}
                   </div>
 
                   {/* Search Results */}
-                  {customerSearchResults.length > 0 && !selectedCustomerForOrder && (
-                    <div className="mt-2 border border-gray-100 rounded-xl overflow-hidden shadow-sm max-h-48 overflow-y-auto">
-                      {customerSearchResults.map(customer => (
-                        <div
-                          key={customer.id}
-                          onClick={() => {
-                            setSelectedCustomerForOrder(customer);
-                            setCustomerSearchTerm(customer.name || customer.phone);
-                            setCustomerSearchResults([]);
-                          }}
-                          className="p-3 hover:bg-gray-50 cursor-pointer border-b last:border-0 flex items-center justify-between"
-                        >
-                          <div>
-                            <p className="font-bold text-gray-800">{customer.name || 'مستخدم'}</p>
-                            <p className="text-xs text-gray-500">{customer.phone}</p>
+                  {!selectedCustomerForOrder && customerSearchTerm.trim().length >= 2 && !isSearchingCustomer && (
+                    <div className="border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                      {customerSearchResults.length === 0 ? (
+                        <div className="p-5 text-center">
+                          <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                            <User size={18} className="text-gray-400" />
                           </div>
-                          <UserPlus size={16} className="text-primary-teal" />
+                          <p className="text-sm font-semibold text-gray-600">لا توجد نتائج</p>
+                          <p className="text-xs text-gray-400 mt-0.5">جرّب بصيغة أخرى: الرقم بدون صفر، بـ +966، أو بالاسم كاملاً</p>
                         </div>
-                      ))}
+                      ) : (
+                        <div className="max-h-52 overflow-y-auto divide-y divide-gray-100">
+                          <div className="px-3 py-2 bg-gray-50 flex items-center justify-between">
+                            <span className="text-xs text-gray-500 font-medium">النتائج</span>
+                            <span className="text-xs font-bold text-teal-600 bg-teal-50 px-2 py-0.5 rounded-full">
+                              {customerSearchResults.length} عميل
+                            </span>
+                          </div>
+                          {customerSearchResults.map(customer => {
+                            const displayName = customer.name ||
+                              [customer.firstName, customer.lastName].filter(Boolean).join(' ') ||
+                              customer.displayName || 'مستخدم';
+                            const initials = displayName.trim().split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
+                            return (
+                              <button
+                                key={customer.id}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedCustomerForOrder(customer);
+                                  setCustomerSearchTerm(displayName);
+                                  setCustomerSearchResults([]);
+                                }}
+                                className="w-full text-right px-4 py-3 hover:bg-teal-50 cursor-pointer flex items-center gap-3 transition-colors"
+                              >
+                                <div className="w-9 h-9 rounded-full bg-teal-100 flex items-center justify-center flex-shrink-0">
+                                  <span className="text-xs font-black text-teal-700">{initials || '—'}</span>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="font-bold text-gray-800 text-sm truncate">{displayName}</p>
+                                  <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-0.5">
+                                    {customer.phone && (
+                                      <span className="text-xs text-gray-500 flex items-center gap-1">
+                                        <Phone size={10} className="text-gray-400" />
+                                        {customer.phone}
+                                      </span>
+                                    )}
+                                    {customer.email && (
+                                      <span className="text-xs text-gray-400 truncate max-w-[160px]">
+                                        {customer.email}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                                <UserPlus size={15} className="text-teal-500 flex-shrink-0" />
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   )}
 

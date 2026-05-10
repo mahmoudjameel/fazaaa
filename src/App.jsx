@@ -25,6 +25,7 @@ import Banners from './pages/Banners';
 import { SupportTickets } from './pages/SupportTickets';
 import { AddProvider } from './pages/AddProvider';
 import { SLATracking } from './pages/SLATracking';
+import { Escalations } from './pages/Escalations';
 import { Login } from './pages/Login';
 import ProviderDrawerSections from './pages/ProviderDrawerSections';
 import CustomerDrawerSections from './pages/CustomerDrawerSections';
@@ -96,6 +97,7 @@ function App() {
           <Route path="users" element={<Users />} />
           <Route path="notifications" element={<Notifications />} />
           <Route path="sla-tracking" element={<SLATracking />} />
+          <Route path="escalations" element={<Escalations />} />
           <Route path="complaints" element={<Complaints />} />
           <Route path="chats" element={<Chats />} />
           <Route path="bank-settings" element={<BankSettings />} />

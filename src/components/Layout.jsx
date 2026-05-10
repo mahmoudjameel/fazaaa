@@ -4,7 +4,7 @@ import {
   MessageSquare, MessageCircle, UserCheck, Sliders, MapPin,
   UserCog, CreditCard, Banknote, AlertCircle, Shield,
   ChevronLeft, UserPlus, Bell, ImageIcon, Ticket, Timer,
-  PanelRight, PanelLeft, Route, Globe
+  PanelRight, PanelLeft, Route, Globe, AlertTriangle
 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
@@ -17,6 +17,7 @@ export const Layout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [pendingReviewCount, setPendingReviewCount] = useState(0);
   const [openTicketsCount, setOpenTicketsCount] = useState(0);
+  const [newEscalationsCount, setNewEscalationsCount] = useState(0);
   const lastCountRef = useRef(0);
   const audioRef = useRef(new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3'));
 
@@ -43,7 +44,23 @@ export const Layout = () => {
     const unsubTickets = onSnapshot(tq, (snapshot) => {
       setOpenTicketsCount(snapshot.size);
     });
-    return () => { unsubscribe(); unsubTickets(); };
+
+    const eq = query(collection(db, 'admin_escalations'), where('status', '==', 'new'));
+    const unsubEscalations = onSnapshot(eq, (snapshot) => {
+      const count = snapshot.size;
+      if (count > newEscalationsCount) {
+        audioRef.current.play().catch(() => {});
+        if ('Notification' in window && Notification.permission === 'granted') {
+          new Notification('فزّاعين: تصعيد جديد', {
+            body: `${count} طلبات لم تُلبَّ — تحتاج مراجعة.`,
+            icon: '/fzaeen-logo.jpeg',
+          });
+        }
+      }
+      setNewEscalationsCount(count);
+    });
+
+    return () => { unsubscribe(); unsubTickets(); unsubEscalations(); };
   }, []);
 
   useEffect(() => {
@@ -80,6 +97,7 @@ export const Layout = () => {
     { id: 'add_provider',            path: '/admin/add-provider',             icon: UserPlus,        label: 'إضافة مزود',              category: 'management' },
     { id: 'orders',                  path: '/admin/orders',                   icon: ShoppingBag,     label: 'الطلبات',                  category: 'management' },
     { id: 'sla_tracking',            path: '/admin/sla-tracking',             icon: Timer,           label: 'متابعة SLA',               category: 'management' },
+    { id: 'escalations',             path: '/admin/escalations',              icon: AlertTriangle,   label: 'تصعيدات النظام',           category: 'management' },
     { id: 'users',                   path: '/admin/users',                    icon: UserCheck,       label: 'العملاء',                  category: 'management' },
     { id: 'notifications',           path: '/admin/notifications',            icon: Bell,            label: 'الإشعارات',                category: 'management' },
     { id: 'support_tickets',         path: '/admin/support-tickets',          icon: Ticket,          label: 'تذاكر الدعم',              category: 'management' },
@@ -160,6 +178,11 @@ export const Layout = () => {
             {item.id === 'support_tickets' && openTicketsCount > 0 && (
               <span className="bg-emerald-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
                 {openTicketsCount}
+              </span>
+            )}
+            {item.id === 'escalations' && newEscalationsCount > 0 && (
+              <span className="bg-orange-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full min-w-[18px] text-center animate-pulse">
+                {newEscalationsCount}
               </span>
             )}
           </>
