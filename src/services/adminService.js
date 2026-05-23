@@ -9,6 +9,7 @@ import {
   limit,
   getDoc,
   deleteDoc,
+  deleteField,
   addDoc,
   setDoc,
   serverTimestamp,
@@ -16,7 +17,10 @@ import {
   runTransaction,
   collectionGroup,
 } from 'firebase/firestore';
-import { db } from './firebase';
+import { auth, db, functions } from './firebase';
+import { httpsCallable } from 'firebase/functions';
+import { normalizeDocumentsForStorage } from '../utils/documentUtils';
+import { diagnoseProviderForRequest } from '../utils/dispatchDiagnostics';
 
 // Providers Management
 export const getAllProviders = async () => {
@@ -224,16 +228,8 @@ export const createManualProvider = async (providerData) => {
       hasReceivedApprovalBonus: true,
     };
 
-    // إضافة الوثائق (نفس المفاتيح المستخدمة في تسجيل المزود الجديد)
-    const docs = providerData.documents || {};
-    newProvider.documents = {
-      id_photo: docs.id_photo || providerData.idImage || '',
-      equipment_photo: docs.equipment_photo || '',
-      driver_license: docs.driver_license || '',
-      car_registration: docs.car_registration || '',
-      car_front: docs.car_front || '',
-      car_side: docs.car_side || ''
-    };
+    // توحيد المفاتيح مع تطبيق المزود (carPhotoFront, idImage, ...)
+    newProvider.documents = normalizeDocumentsForStorage(providerData.documents || {});
 
     const docRef = await addDoc(providersRef, newProvider);
     // تحديث المستند بـ uid ليتوافق مع هيكلة التطبيق
@@ -276,23 +272,142 @@ export const getProviderById = async (providerId) => {
   }
 };
 
+/**
+ * تشخيص: لماذا لم يصل طلب لمزود معيّن؟ (نفس منطق performStagedSearch)
+ */
+export const runDispatchDiagnostics = async (requestId, providerId) => {
+  if (!requestId?.trim() || !providerId?.trim()) {
+    return { success: false, error: 'أدخل معرّف الطلب ومعرّف المزود' };
+  }
+
+  const [requestSnap, providerSnap, settingsSnap, onlineSnap] = await Promise.all([
+    getDoc(doc(db, 'requests', requestId.trim())),
+    getDoc(doc(db, 'providers', providerId.trim())),
+    getDoc(doc(db, 'settings', 'distribution')),
+    getDocs(query(collection(db, 'providers'), where('isOnline', '==', true))),
+  ]);
+
+  if (!requestSnap.exists()) {
+    return { success: false, error: 'الطلب غير موجود' };
+  }
+  if (!providerSnap.exists()) {
+    return { success: false, error: 'المزود غير موجود' };
+  }
+
+  const request = { id: requestSnap.id, ...requestSnap.data() };
+  const provider = { id: providerSnap.id, ...providerSnap.data() };
+  const distributionSettings = settingsSnap.exists() ? settingsSnap.data() : {};
+
+  const onlineProviders = [];
+  onlineSnap.forEach((d) => {
+    onlineProviders.push({ id: d.id, data: d.data() });
+  });
+
+  const report = diagnoseProviderForRequest(
+    provider.id,
+    provider,
+    request,
+    onlineProviders,
+    distributionSettings
+  );
+
+  return {
+    success: true,
+    request,
+    provider,
+    distributionSettings,
+    onlineCount: onlineSnap.size,
+    report,
+  };
+};
+
+/**
+ * حذف مزود نهائياً (Cloud Function — مدير عام فقط)
+ */
+export const permanentlyDeleteProvider = async (providerId) => {
+  const user = auth.currentUser;
+  if (!user) {
+    throw new Error('انتهت جلسة الدخول — سجّل الخروج ثم ادخل من جديد');
+  }
+  await user.getIdToken(true);
+
+  const fn = httpsCallable(functions, 'adminDeleteProviderPermanently');
+  try {
+    const result = await fn({ providerId, confirm: true });
+    return result.data;
+  } catch (error) {
+    const code = error?.code || '';
+    if (code === 'functions/unauthenticated' || code === 'unauthenticated') {
+      throw new Error('انتهت جلسة الدخول — سجّل الخروج ثم ادخل من جديد');
+    }
+    throw error;
+  }
+};
+
+/**
+ * بناء كائن services بكل الخدمات معتمدة (للتوافق مع تطبيق المزود و Cloud Functions)
+ */
+const buildApprovedServicesMap = (currentServices, nowIso = new Date().toISOString()) => {
+  const approvedServices = {};
+
+  if (Array.isArray(currentServices)) {
+    currentServices.forEach((entry) => {
+      const serviceId = typeof entry === 'string' ? entry : entry?.id || entry?.serviceId;
+      if (!serviceId) return;
+      const key = String(serviceId);
+      approvedServices[key] = {
+        ...(typeof entry === 'object' && entry !== null ? entry : {}),
+        status: 'approved',
+        approved: true,
+        requestedAt: entry?.requestedAt || nowIso,
+        updatedAt: nowIso,
+      };
+    });
+    return approvedServices;
+  }
+
+  if (currentServices && typeof currentServices === 'object') {
+    Object.entries(currentServices).forEach(([serviceId, serviceData]) => {
+      const key = String(serviceId);
+      if (serviceData && typeof serviceData === 'object' && !Array.isArray(serviceData)) {
+        approvedServices[key] = {
+          ...serviceData,
+          status: 'approved',
+          approved: true,
+          updatedAt: nowIso,
+        };
+      } else if (serviceData === true) {
+        approvedServices[key] = {
+          status: 'approved',
+          approved: true,
+          requestedAt: nowIso,
+          updatedAt: nowIso,
+        };
+      } else {
+        approvedServices[key] = {
+          status: 'approved',
+          approved: true,
+          requestedAt: nowIso,
+          updatedAt: nowIso,
+        };
+      }
+    });
+  }
+
+  return approvedServices;
+};
+
 export const updateProviderStatus = async (providerId, status) => {
   try {
+    if (status === 'approved') {
+      return await approveProviderWithAllServices(providerId);
+    }
+
     const providerRef = doc(db, 'providers', providerId);
-    // تحديث كلاً من approvalStatus و status للتوافق
-    // approvalStatus: حالة الموافقة (pending, approved, rejected)
-    // status: نحدثها أيضاً لضمان التوافق مع الكود القديم
     await updateDoc(providerRef, {
-      approvalStatus: status, // حالة الموافقة
-      status: status, // تحديث status أيضاً للتوافق
-      // أي حالة غير approved يجب أن توقف استقبال الطلبات فوراً
-      ...(status === 'approved'
-        ? {
-          accountActivatedAt: new Date().toISOString(),
-          approvedAt: new Date().toISOString(),
-          notificationsStartAt: new Date().toISOString(),
-        }
-        : { isOnline: false }),
+      approvalStatus: status,
+      status,
+      isOnline: false,
       updatedAt: new Date().toISOString(),
     });
     return { success: true };
@@ -314,25 +429,8 @@ export const approveProviderWithAllServices = async (providerId) => {
     }
 
     const providerData = providerSnap.data() || {};
-    const currentServices = providerData.services || {};
-    const approvedServices = {};
     const nowIso = new Date().toISOString();
-
-    Object.entries(currentServices).forEach(([serviceId, serviceData]) => {
-      if (serviceData && typeof serviceData === 'object') {
-        approvedServices[serviceId] = {
-          ...serviceData,
-          status: 'approved',
-          updatedAt: nowIso,
-        };
-      } else {
-        approvedServices[serviceId] = {
-          status: 'approved',
-          requestedAt: nowIso,
-          updatedAt: nowIso,
-        };
-      }
-    });
+    const approvedServices = buildApprovedServicesMap(providerData.services || {}, nowIso);
 
     await updateDoc(providerRef, {
       approvalStatus: 'approved',
@@ -345,11 +443,43 @@ export const approveProviderWithAllServices = async (providerId) => {
       updatedAt: nowIso,
     });
 
-    return { success: true };
+    return { success: true, services: approvedServices };
   } catch (error) {
     console.error('Approve provider with all services error:', error);
     throw error;
   }
+};
+
+/**
+ * إصلاح المزودين المعتمدين مسبقاً وخدماتهم ما زالت pending
+ */
+export const repairApprovedProvidersPendingServices = async () => {
+  const { providers } = await getAllProviders();
+  let fixed = 0;
+
+  for (const provider of providers) {
+    const approvalStatus = provider.approvalStatus || provider.status;
+    if (approvalStatus !== 'approved') continue;
+
+    const services = provider.services || {};
+    const entries = Array.isArray(services)
+      ? services.map((s) => ({ id: typeof s === 'string' ? s : s?.id, data: s }))
+      : Object.entries(services).map(([id, data]) => ({ id, data }));
+
+    const hasPending = entries.some(({ data }) => {
+      if (!data) return false;
+      if (typeof data !== 'object') return data !== true;
+      const st = data.status;
+      return st !== 'approved' && st !== 'rejected';
+    });
+
+    if (hasPending) {
+      await approveProviderWithAllServices(provider.id);
+      fixed += 1;
+    }
+  }
+
+  return { success: true, fixed, scanned: providers.length };
 };
 
 // Cities Management
@@ -522,38 +652,122 @@ export const removeProviderService = async (providerId, serviceId) => {
   }
 };
 
+export const BLOCK_REASON_LABELS = {
+  provider_rejected_request: 'رفض الطلب من المزود',
+  provider_cancelled_request: 'إلغاء الطلب من المزود',
+};
+
+function parseBlockedUntilMs(blockedUntil) {
+  if (!blockedUntil) return 0;
+  if (typeof blockedUntil.toMillis === 'function') return blockedUntil.toMillis();
+  if (blockedUntil.seconds) return blockedUntil.seconds * 1000;
+  return new Date(blockedUntil).getTime();
+}
+
+function normalizeBlockDoc(docSnap, customerIdOverride = null) {
+  const customerId = customerIdOverride || docSnap.ref.parent?.parent?.id;
+  const data = docSnap.data();
+  const blockedUntilMs = parseBlockedUntilMs(data.blockedUntil);
+  const now = Date.now();
+  return {
+    id: docSnap.id,
+    providerId: data.providerId || docSnap.id,
+    customerId,
+    requestId: data.requestId || null,
+    reason: data.reason || null,
+    blockedAt: data.blockedAt || null,
+    blockedUntil: data.blockedUntil || null,
+    blockedUntilMs,
+    isActive: blockedUntilMs > now,
+  };
+}
+
 /**
  * جلب جميع السجلات التي تحظر هذا المزود من جميع العملاء
- * @param {string} providerId 
- * @returns {Promise<Array>}
+ * @param {string} providerId
  */
 export const getProviderBlocks = async (providerId) => {
   try {
-    const blockedQuery = query(
-      collectionGroup(db, 'blocked_providers'),
-      where('providerId', '==', providerId)
-    );
-    const snapshot = await getDocs(blockedQuery);
-    const blocks = [];
-    snapshot.forEach(docSnap => {
-      const customerId = docSnap.ref.parent.parent.id; // Get customerId from path
-      blocks.push({
-        id: docSnap.id,
-        customerId,
-        ...docSnap.data()
+    let blocks = [];
+    try {
+      const blockedQuery = query(
+        collectionGroup(db, 'blocked_providers'),
+        where('providerId', '==', providerId)
+      );
+      const snapshot = await getDocs(blockedQuery);
+      snapshot.forEach((docSnap) => {
+        blocks.push(normalizeBlockDoc(docSnap));
       });
-    });
+    } catch (groupErr) {
+      console.warn('collectionGroup blocked_providers failed, skipping:', groupErr?.message);
+    }
+
+    const customerIds = [...new Set(blocks.map((b) => b.customerId).filter(Boolean))];
+    const customerMap = {};
+    await Promise.all(
+      customerIds.map(async (cid) => {
+        try {
+          const snap = await getDoc(doc(db, 'customers', cid));
+          if (snap.exists()) customerMap[cid] = snap.data();
+        } catch (_) { /* ignore */ }
+      })
+    );
+
+    blocks = blocks.map((b) => ({
+      ...b,
+      customerName: customerMap[b.customerId]?.name || customerMap[b.customerId]?.fullName || null,
+      customerPhone: customerMap[b.customerId]?.phone || null,
+    }));
+
+    blocks.sort((a, b) => (b.blockedUntilMs || 0) - (a.blockedUntilMs || 0));
     return { success: true, blocks };
   } catch (error) {
     console.error('Get provider blocks error:', error);
-    return { success: false, error: error.message };
+    return { success: false, error: error.message, blocks: [] };
+  }
+};
+
+/**
+ * جلب المزودين المحظورين لعميل معيّن
+ * @param {string} customerId
+ */
+export const getCustomerBlockedProviders = async (customerId) => {
+  try {
+    const blockedRef = collection(db, 'customers', customerId, 'blocked_providers');
+    const snapshot = await getDocs(blockedRef);
+    let blocks = snapshot.docs.map((docSnap) => normalizeBlockDoc(docSnap, customerId));
+
+    const providerIds = [...new Set(blocks.map((b) => b.providerId).filter(Boolean))];
+    const providerMap = {};
+    await Promise.all(
+      providerIds.map(async (pid) => {
+        try {
+          const snap = await getDoc(doc(db, 'providers', pid));
+          if (snap.exists()) providerMap[pid] = snap.data();
+        } catch (_) { /* ignore */ }
+      })
+    );
+
+    blocks = blocks.map((b) => {
+      const p = providerMap[b.providerId];
+      const name = p
+        ? [p.firstName, p.lastName].filter(Boolean).join(' ') || p.fullName || p.name
+        : null;
+      return { ...b, providerName: name, providerPhone: p?.phone || null };
+    });
+
+    blocks.sort((a, b) => (b.blockedUntilMs || 0) - (a.blockedUntilMs || 0));
+    return { success: true, blocks };
+  } catch (error) {
+    console.error('Get customer blocked providers error:', error);
+    return { success: false, error: error.message, blocks: [] };
   }
 };
 
 /**
  * رفع الحظر عن مزود لعميل معين
- * @param {string} customerId 
- * @param {string} providerId 
+ * @param {string} customerId
+ * @param {string} providerId
  */
 export const unblockProviderForCustomer = async (customerId, providerId) => {
   try {
@@ -1190,6 +1404,43 @@ export const getProvidersBySearch = async (term) => {
  * @param {Object} orderData - بيانات الطلب
  * @returns {Promise<Object>}
  */
+/**
+ * تحرير المزود من حالة الانشغال العالقة (isBusy / activeRequestId)
+ */
+export const releaseProviderBusy = async (providerId) => {
+  if (!providerId?.trim()) throw new Error('معرّف المزود مطلوب');
+  const providerRef = doc(db, 'providers', providerId.trim());
+  const snap = await getDoc(providerRef);
+  if (!snap.exists()) throw new Error('المزود غير موجود');
+  const before = snap.data();
+  await updateDoc(providerRef, {
+    isBusy: false,
+    activeRequestId: deleteField(),
+    updatedAt: serverTimestamp(),
+  });
+  return {
+    success: true,
+    previous: {
+      isBusy: before.isBusy,
+      activeRequestId: before.activeRequestId || null,
+    },
+  };
+};
+
+/**
+ * إنشاء طلب اختبار من لوحة التحكم (searching + تشغيل onRequestCreated)
+ */
+export const createTestDispatchOrder = async (orderData) => {
+  const payload = {
+    ...orderData,
+    status: 'searching',
+    providerIdsToNotify: [],
+    notifiedProviders: [],
+    source: 'admin_test_lab',
+  };
+  return createManualOrder(payload);
+};
+
 export const createManualOrder = async (orderData) => {
   try {
     const requestsRef = collection(db, 'requests');
@@ -1235,6 +1486,16 @@ export const createManualOrder = async (orderData) => {
  * @param {Object} updateData - البيانات المراد تحديثها
  * @returns {Promise<Object>}
  */
+const TERMINAL_ORDER_STATUSES = [
+  'completed',
+  'timed_out',
+  'canceled_by_client',
+  'canceled_by_client_with_reason',
+  'canceled_by_provider',
+  'canceled_by_provider_with_reason',
+  'escalated_to_city_manager',
+];
+
 export const updateOrderDetails = async (orderId, updateData) => {
   try {
     const orderRef = doc(db, 'requests', orderId);
@@ -1258,6 +1519,26 @@ export const updateOrderDetails = async (orderId, updateData) => {
         changes: updateData
       });
       updatePayload.history = history;
+
+      // عند إلغاء/إكمال الطلب من الأدمن — تحرير انشغال المزود
+      if (updateData.status && TERMINAL_ORDER_STATUSES.includes(updateData.status)) {
+        const providerId = currentData.providerId;
+        if (providerId) {
+          await releaseProviderBusy(providerId).catch((e) =>
+            console.warn('releaseProviderBusy on admin update:', e?.message)
+          );
+        }
+        const stuckQ = query(
+          collection(db, 'providers'),
+          where('activeRequestId', '==', orderId)
+        );
+        const stuckSnap = await getDocs(stuckQ);
+        for (const pDoc of stuckSnap.docs) {
+          if (pDoc.id !== providerId) {
+            await releaseProviderBusy(pDoc.id).catch(() => {});
+          }
+        }
+      }
     }
 
     await updateDoc(orderRef, updatePayload);

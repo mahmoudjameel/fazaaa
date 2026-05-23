@@ -1,5 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
+import { onAuthStateChanged } from 'firebase/auth';
+import { auth } from './services/firebase';
 import { Layout } from './components/Layout';
 import { Landing } from './pages/Landing';
 import { PrivacyPolicy } from './pages/PrivacyPolicy';
@@ -11,6 +13,8 @@ import { Providers } from './pages/Providers';
 import { Cities } from './pages/Cities';
 import { Orders } from './pages/Orders';
 import { DistributionSettings } from './pages/DistributionSettings';
+import { DispatchDiagnostics } from './pages/DispatchDiagnostics';
+import { OrderTestLab } from './pages/OrderTestLab';
 import { CityManagers } from './pages/CityManagers';
 import { Users } from './pages/Users';
 import { Notifications } from './pages/Notifications';
@@ -37,26 +41,25 @@ function App() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const checkAuth = () => {
-      const authStatus = localStorage.getItem('admin_authenticated') === 'true';
-      setIsAuthenticated(authStatus);
+    const unsubAuth = onAuthStateChanged(auth, (user) => {
+      const flag = localStorage.getItem('admin_authenticated') === 'true';
+      setIsAuthenticated(!!user && flag);
+      if (flag && !user) {
+        localStorage.removeItem('admin_authenticated');
+      }
       setIsLoading(false);
-    };
-
-    checkAuth();
+    });
 
     const handleStorageChange = (e) => {
       if (e.key === 'admin_authenticated') {
-        setIsAuthenticated(e.newValue === 'true');
+        setIsAuthenticated(e.newValue === 'true' && !!auth.currentUser);
       }
     };
 
     window.addEventListener('storage', handleStorageChange);
-    const interval = setInterval(checkAuth, 100);
-
     return () => {
       window.removeEventListener('storage', handleStorageChange);
-      clearInterval(interval);
+      unsubAuth();
     };
   }, []);
 
@@ -93,6 +96,8 @@ function App() {
           <Route path="cities" element={<Cities />} />
           <Route path="orders" element={<Orders />} />
           <Route path="distribution" element={<DistributionSettings />} />
+          <Route path="dispatch-diagnostics" element={<DispatchDiagnostics />} />
+          <Route path="order-test-lab" element={<OrderTestLab />} />
           <Route path="city-managers" element={<CityManagers />} />
           <Route path="users" element={<Users />} />
           <Route path="notifications" element={<Notifications />} />

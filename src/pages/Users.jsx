@@ -1,11 +1,16 @@
 import { useEffect, useState } from 'react';
-import { Search, Users as UsersIcon, Mail, Phone, Calendar, MapPin, Filter, Loader2, UserCheck, Package, Clock, AlertCircle, CheckCircle, XCircle, Plus } from 'lucide-react';
+import { Search, Users as UsersIcon, Mail, Phone, Calendar, MapPin, Filter, Loader2, UserCheck, Package, Clock, AlertCircle, CheckCircle, XCircle, Plus, ShieldBan, ShieldOff } from 'lucide-react';
 import { collection, getDocs, query, orderBy, where, doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { db, secondaryAuth } from '../services/firebase';
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
-import { getAllCities } from '../services/adminService';
+import {
+  getAllCities,
+  getCustomerBlockedProviders,
+  unblockProviderForCustomer,
+  BLOCK_REASON_LABELS,
+} from '../services/adminService';
 import SAUDI_CITIES_FALLBACK from '../services/cities.json';
 
 
@@ -28,6 +33,9 @@ export const Users = () => {
     password: ''
   });
   const [isAddingUser, setIsAddingUser] = useState(false);
+  const [customerBlocks, setCustomerBlocks] = useState([]);
+  const [loadingCustomerBlocks, setLoadingCustomerBlocks] = useState(false);
+  const [unblockingBlockKey, setUnblockingBlockKey] = useState(null);
 
   useEffect(() => {
     // Fetch Cities
@@ -100,7 +108,52 @@ export const Users = () => {
     };
 
     fetchUserOrders();
+    fetchCustomerBlocks();
   }, [selectedUser]);
+
+  const fetchCustomerBlocks = async () => {
+    if (!selectedUser) {
+      setCustomerBlocks([]);
+      return;
+    }
+    const customerId = selectedUser.id || selectedUser.uid;
+    if (!customerId) {
+      setCustomerBlocks([]);
+      return;
+    }
+    setLoadingCustomerBlocks(true);
+    try {
+      const result = await getCustomerBlockedProviders(customerId);
+      setCustomerBlocks(result.success ? result.blocks || [] : []);
+    } catch (error) {
+      console.error('Error fetching customer blocks:', error);
+      setCustomerBlocks([]);
+    } finally {
+      setLoadingCustomerBlocks(false);
+    }
+  };
+
+  const handleUnblockForCustomer = async (customerId, providerId) => {
+    const key = `${customerId}:${providerId}`;
+    if (!window.confirm('رفع الحظر عن هذا المزود لهذا العميل؟')) return;
+    setUnblockingBlockKey(key);
+    try {
+      await unblockProviderForCustomer(customerId, providerId);
+      setCustomerBlocks((prev) => prev.filter(
+        (b) => !(b.customerId === customerId && b.providerId === providerId)
+      ));
+    } catch (error) {
+      alert(error?.message || 'فشل رفع الحظر');
+    } finally {
+      setUnblockingBlockKey(null);
+    }
+  };
+
+  const formatBlockUntil = (block) => {
+    if (!block.blockedUntilMs) return '—';
+    const d = new Date(block.blockedUntilMs);
+    return isNaN(d.getTime()) ? '—' : format(d, 'dd MMM yyyy, HH:mm', { locale: ar });
+  };
 
   const fetchUsers = async () => {
     try {
@@ -455,6 +508,73 @@ export const Users = () => {
                     </p>
                   </div>
                 )}
+
+                {/* المزودون المحظورون */}
+                <div className="border-t border-gray-200 pt-4 mt-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <ShieldBan className="w-5 h-5 text-amber-600" />
+                    <h3 className="font-semibold text-base sm:text-lg text-gray-700">المزودون المحظورون</h3>
+                    <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full text-xs font-semibold">
+                      {customerBlocks.filter((b) => b.isActive).length} نشط
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-500 mb-3">
+                    يُنشأ الحظر تلقائياً لمدة ساعة عندما يرفض المزود طلباً أو يلغيه بعد القبول.
+                  </p>
+                  {loadingCustomerBlocks ? (
+                    <div className="flex items-center gap-2 text-gray-500 py-4">
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      <span className="text-sm">جاري التحميل...</span>
+                    </div>
+                  ) : customerBlocks.length === 0 ? (
+                    <p className="text-sm text-gray-500 bg-gray-50 rounded-lg p-4">لا يوجد حظر مسجّل لهذا العميل.</p>
+                  ) : (
+                    <div className="space-y-2 max-h-48 overflow-y-auto mb-2">
+                      {customerBlocks.map((block) => {
+                        const blockKey = `${block.customerId}:${block.providerId}`;
+                        return (
+                          <div
+                            key={blockKey}
+                            className={`rounded-lg border p-3 text-sm ${block.isActive ? 'border-amber-200 bg-amber-50' : 'border-gray-200 bg-gray-50'}`}
+                          >
+                            <div className="flex flex-wrap items-start justify-between gap-2">
+                              <div>
+                                <p className="font-semibold text-gray-800">
+                                  {block.providerName || 'مزود'}
+                                  {block.providerPhone && (
+                                    <span className="text-gray-500 font-normal mr-1" dir="ltr">
+                                      ({block.providerPhone})
+                                    </span>
+                                  )}
+                                </p>
+                                <p className="text-xs text-gray-600 mt-1">
+                                  {BLOCK_REASON_LABELS[block.reason] || block.reason || '—'}
+                                </p>
+                                <p className="text-xs text-gray-500">
+                                  ينتهي: {formatBlockUntil(block)}
+                                  {!block.isActive && <span className="mr-1">(منتهٍ)</span>}
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleUnblockForCustomer(block.customerId, block.providerId)}
+                                disabled={unblockingBlockKey === blockKey}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 bg-teal-600 text-white text-xs font-semibold rounded-lg hover:bg-teal-700 disabled:opacity-50 shrink-0"
+                              >
+                                {unblockingBlockKey === blockKey ? (
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                ) : (
+                                  <ShieldOff className="w-3.5 h-3.5" />
+                                )}
+                                رفع الحظر
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
 
                 {/* قائمة الطلبات */}
                 <div className="border-t border-gray-200 pt-4 mt-4">

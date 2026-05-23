@@ -4,11 +4,12 @@ import {
   MessageSquare, MessageCircle, UserCheck, Sliders, MapPin,
   UserCog, CreditCard, Banknote, AlertCircle, Shield,
   ChevronLeft, UserPlus, Bell, ImageIcon, Ticket, Timer,
-  PanelRight, PanelLeft, Route, Globe, AlertTriangle
+  PanelRight, PanelLeft,   Route, Globe, AlertTriangle, Stethoscope, FlaskConical
 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
-import { db } from '../services/firebase';
+import { auth, db } from '../services/firebase';
+import { signOut } from 'firebase/auth';
 
 export const Layout = () => {
   const navigate = useNavigate();
@@ -74,9 +75,14 @@ export const Layout = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     if (window.confirm('هل أنت متأكد من تسجيل الخروج؟')) {
       localStorage.removeItem('admin_authenticated');
+      localStorage.removeItem('admin_role');
+      localStorage.removeItem('admin_permissions');
+      try {
+        await signOut(auth);
+      } catch (_) { /* ignore */ }
       navigate('/login');
     }
   };
@@ -107,6 +113,8 @@ export const Layout = () => {
     { id: 'cities',                  path: '/admin/cities',                   icon: MapPin,          label: 'المدن',                    category: 'settings' },
     { id: 'city_managers',           path: '/admin/city-managers',            icon: UserCog,         label: 'مديرو المدن',              category: 'settings' },
     { id: 'distribution',            path: '/admin/distribution',             icon: Route,           label: 'إعدادات التوزيع',          category: 'settings' },
+    { id: 'dispatch_diagnostics',    path: '/admin/dispatch-diagnostics',     icon: Stethoscope,     label: 'تشخيص التوزيع',            category: 'settings' },
+    { id: 'order_test_lab',          path: '/admin/order-test-lab',           icon: FlaskConical,    label: 'مختبر اختبار الطلبات',      category: 'settings' },
     { id: 'bank_settings',           path: '/admin/bank-settings',            icon: CreditCard,      label: 'إعدادات البنك',            category: 'settings' },
     { id: 'app_settings',            path: '/admin/app-settings',             icon: Sliders,         label: 'إعدادات التطبيق',          category: 'settings' },
     { id: 'provider_drawer_sections',path: '/admin/provider-drawer-sections', icon: PanelRight,      label: 'Drawer المزود',            category: 'settings' },

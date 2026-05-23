@@ -27,7 +27,10 @@ import {
   Plus,
   Info,
   RefreshCw,
-  ChevronDown
+  ChevronDown,
+  Copy,
+  Check,
+  Stethoscope,
 } from 'lucide-react';
 import {
   listenToAllRequests,
@@ -220,6 +223,7 @@ export const Orders = () => {
 
   const [providersDict, setProvidersDict] = useState({});
   const [selectedRequest, setSelectedRequest] = useState(null);
+  const [copiedRequestId, setCopiedRequestId] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState(null);
   const [loadingProvider, setLoadingProvider] = useState(false);
@@ -1616,6 +1620,42 @@ export const Orders = () => {
                 </div>
               </div>
               <div className="p-4 sm:p-5 md:p-6 space-y-3 sm:space-y-4">
+                {selectedRequest.id && (
+                  <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 sm:p-4">
+                    <p className="text-xs font-semibold text-gray-500 mb-1">معرّف Firebase (للتشخيص)</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <code className="text-xs sm:text-sm text-gray-800 break-all font-mono flex-1" dir="ltr">
+                        {selectedRequest.id}
+                      </code>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(selectedRequest.id);
+                            setCopiedRequestId(true);
+                            setTimeout(() => setCopiedRequestId(false), 2000);
+                          } catch {
+                            alert('تعذر النسخ — انسخ النص يدوياً');
+                          }
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-teal-600 text-white text-xs font-semibold rounded-lg hover:bg-teal-700 shrink-0"
+                      >
+                        {copiedRequestId ? <Check size={14} /> : <Copy size={14} />}
+                        {copiedRequestId ? 'تم النسخ' : 'نسخ'}
+                      </button>
+                      <a
+                        href={`/admin/dispatch-diagnostics?requestId=${encodeURIComponent(selectedRequest.id)}`}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 bg-amber-100 text-amber-900 text-xs font-semibold rounded-lg hover:bg-amber-200 shrink-0"
+                      >
+                        <Stethoscope size={14} />
+                        تشخيص التوزيع
+                      </a>
+                    </div>
+                    <p className="text-[11px] text-gray-400 mt-2">
+                      رقم الطلب {selectedRequest.orderNumber ?? '—'} للعرض فقط؛ التشخيص يحتاج المعرّف أعلاه.
+                    </p>
+                  </div>
+                )}
                 {/* تفاصيل العميل */}
                 {loadingCustomer ? (
                   <div className="bg-blue-50 rounded-xl p-4 text-center">

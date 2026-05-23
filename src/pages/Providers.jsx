@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   Search, CheckCircle, XCircle, Clock, Eye, Phone, Mail, Star, Power,
-  UserCheck, Users, Plus, Edit2, Trash2, Tag, X, FileText
+  UserCheck, Users, Plus, Edit2, Trash2, Tag, X, FileText, ShieldBan, ShieldOff, Loader2
 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -25,8 +25,18 @@ import {
   getProviderWalletHistory,
   adjustProviderWallet,
   repairDuplicateProviders,
+  repairApprovedProvidersPendingServices,
+  permanentlyDeleteProvider,
+  getProviderBlocks,
+  unblockProviderForCustomer,
+  BLOCK_REASON_LABELS,
 } from '../services/adminService';
 import ProviderProfileRequests from './ProviderProfileRequests';
+import {
+  resolveProfileDocuments,
+  listDocumentsForDisplay,
+  getDocumentLabel,
+} from '../utils/documentUtils';
 import { doc, updateDoc, collection, getDocs } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../services/firebase';
@@ -115,12 +125,19 @@ export const Providers = () => {
   const [editProviderForm, setEditProviderForm] = useState(null);
   const [savingEdit, setSavingEdit] = useState(false);
   const [repairingDuplicates, setRepairingDuplicates] = useState(false);
+  const [repairingServices, setRepairingServices] = useState(false);
   const [approvingAll, setApprovingAll] = useState(false);
   const [deletingDocKey, setDeletingDocKey] = useState(null);
   const [removingServiceId, setRemovingServiceId] = useState(null);
   const [uploadingDocument, setUploadingDocument] = useState(false);
   const [addDocType, setAddDocType] = useState(DOCUMENT_TYPE_OPTIONS[0].key);
   const [addDocFile, setAddDocFile] = useState(null);
+  const [showDeleteProviderModal, setShowDeleteProviderModal] = useState(false);
+  const [deletingProvider, setDeletingProvider] = useState(false);
+  const [providerBlocks, setProviderBlocks] = useState([]);
+  const [loadingProviderBlocks, setLoadingProviderBlocks] = useState(false);
+  const [unblockingBlockKey, setUnblockingBlockKey] = useState(null);
+  const isSuperAdmin = typeof window !== 'undefined' && localStorage.getItem('admin_role') === 'super_admin';
 
   useEffect(() => {
     if (selectedProvider) {
@@ -257,13 +274,74 @@ export const Providers = () => {
     }
   };
 
+  const handlePermanentDeleteProvider = async () => {
+    if (!selectedProvider) return;
+    setDeletingProvider(true);
+    try {
+      await permanentlyDeleteProvider(selectedProvider.id);
+      alert('تم', 'تم حذف المزود');
+      setShowDeleteProviderModal(false);
+      setSelectedProvider(null);
+      await fetchProviders();
+    } catch (error) {
+      const msg = error?.message || error?.details || 'فشل الحذف';
+      alert('خطأ', msg);
+    } finally {
+      setDeletingProvider(false);
+    }
+  };
+
   useEffect(() => {
     if (selectedProvider) {
       fetchWalletData();
       fetchOrderStats();
+      fetchProviderBlocks();
       setActiveTab('info');
+    } else {
+      setProviderBlocks([]);
     }
   }, [selectedProvider]);
+
+  const fetchProviderBlocks = async () => {
+    if (!selectedProvider?.id) return;
+    setLoadingProviderBlocks(true);
+    try {
+      const result = await getProviderBlocks(selectedProvider.id);
+      if (result.success) {
+        setProviderBlocks(result.blocks || []);
+      } else {
+        setProviderBlocks([]);
+      }
+    } catch (error) {
+      console.error('Error fetching provider blocks:', error);
+      setProviderBlocks([]);
+    } finally {
+      setLoadingProviderBlocks(false);
+    }
+  };
+
+  const handleUnblockProvider = async (customerId, providerId) => {
+    const key = `${customerId}:${providerId}`;
+    if (!window.confirm('رفع الحظر؟ سيتمكن المزود من استقبال طلبات هذا العميل فوراً.')) return;
+    setUnblockingBlockKey(key);
+    try {
+      await unblockProviderForCustomer(customerId, providerId);
+      setProviderBlocks((prev) => prev.filter(
+        (b) => !(b.customerId === customerId && b.providerId === providerId)
+      ));
+    } catch (error) {
+      console.error('Unblock error:', error);
+      alert(error?.message || 'فشل رفع الحظر');
+    } finally {
+      setUnblockingBlockKey(null);
+    }
+  };
+
+  const formatBlockUntil = (block) => {
+    if (!block.blockedUntilMs) return '—';
+    const d = new Date(block.blockedUntilMs);
+    return isNaN(d.getTime()) ? '—' : format(d, 'dd MMM yyyy, HH:mm', { locale: ar });
+  };
 
   const fetchWalletData = async () => {
     if (!selectedProvider) return;
@@ -528,21 +606,26 @@ export const Providers = () => {
     }
 
     if (cityFilter !== 'all') {
+      // اسم المدينة العربي للفلتر المحدد
       const selectedCityLabel =
         SAUDI_CITIES.find((city) => city.value === cityFilter)?.label || cityFilter;
-      const selectedCityValueNormalized = normalizeCityText(cityFilter);
-      const selectedCityLabelNormalized = normalizeCityText(selectedCityLabel);
+      const selectedCityValueNorm = normalizeCityText(cityFilter);
+      const selectedCityLabelNorm = normalizeCityText(selectedCityLabel);
 
       filtered = filtered.filter((p) => {
-        const providerCityRaw = p.city;
+        // ① مطابقة cityName (الاسم العربي المخزون مباشرة — المزودون الجدد)
+        if (p.cityName) {
+          const providerCityNameNorm = normalizeCityText(p.cityName);
+          if (providerCityNameNorm === selectedCityLabelNorm) return true;
+        }
+        // ② مطابقة city عبر ID أو بحث في SAUDI_CITIES (المزودون القدامى)
+        const providerCityRaw = p.city || '';
+        if (!providerCityRaw) return false;
         const providerCityLabel =
           SAUDI_CITIES.find((city) => city.value === providerCityRaw)?.label || providerCityRaw;
-        const providerCityValueNormalized = normalizeCityText(providerCityRaw);
-        const providerCityLabelNormalized = normalizeCityText(providerCityLabel);
-
         return (
-          providerCityValueNormalized === selectedCityValueNormalized ||
-          providerCityLabelNormalized === selectedCityLabelNormalized
+          normalizeCityText(providerCityRaw) === selectedCityValueNorm ||
+          normalizeCityText(providerCityLabel) === selectedCityLabelNorm
         );
       });
     }
@@ -586,6 +669,56 @@ export const Providers = () => {
       alert('خطأ', 'تعذر تنفيذ القبول الشامل');
     } finally {
       setApprovingAll(false);
+    }
+  };
+
+  // قبول سريع من قائمة المزودين — يقبل المزود + جميع خدماته دفعة واحدة
+  const handleQuickApproveAll = async (providerId) => {
+    if (!window.confirm('سيتم قبول المزود واعتماد جميع خدماته دفعة واحدة. هل تريد المتابعة؟')) return;
+    try {
+      const result = await approveProviderWithAllServices(providerId);
+      await fetchProviders();
+      if (selectedProvider?.id === providerId) {
+        await refreshSelectedProvider();
+      } else if (result?.services) {
+        setProviders((prev) =>
+          prev.map((p) =>
+            p.id === providerId
+              ? { ...p, approvalStatus: 'approved', status: 'approved', services: result.services }
+              : p
+          )
+        );
+      }
+      alert('تم قبول المزود وجميع خدماته بنجاح');
+    } catch (error) {
+      console.error('Quick approve all error:', error);
+      alert('فشل قبول المزود');
+    }
+  };
+
+  const handleRepairApprovedServices = async () => {
+    if (
+      !window.confirm(
+        'سيتم اعتماد جميع الخدمات للمزودين المعتمدين مسبقاً وخدماتهم ما زالت «قيد المراجعة». هل تريد المتابعة؟'
+      )
+    ) {
+      return;
+    }
+    setRepairingServices(true);
+    try {
+      const result = await repairApprovedProvidersPendingServices();
+      await fetchProviders();
+      if (selectedProvider) await refreshSelectedProvider();
+      alert(
+        `تمت المزامنة\n\n` +
+          `عدد المزودين المفحوصين: ${result.scanned}\n` +
+          `عدد المزودين الذين تم إصلاح خدماتهم: ${result.fixed}`
+      );
+    } catch (error) {
+      console.error('Repair approved services error:', error);
+      alert('فشل مزامنة خدمات المزودين المعتمدين');
+    } finally {
+      setRepairingServices(false);
     }
   };
 
@@ -832,6 +965,15 @@ export const Providers = () => {
           >
             <Tag size={20} />
             {repairingDuplicates ? 'جاري الإصلاح...' : 'إصلاح التكرار'}
+          </button>
+          <button
+            onClick={handleRepairApprovedServices}
+            disabled={repairingServices}
+            className="flex items-center gap-2 px-6 py-3 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-all font-semibold shadow-md disabled:opacity-60"
+            title="اعتماد خدمات المزودين المعتمدين الذين ما زالت خدماتهم قيد المراجعة"
+          >
+            <CheckCircle size={20} />
+            {repairingServices ? 'جاري المزامنة...' : 'مزامنة خدمات المعتمدين'}
           </button>
           <button
             onClick={() => setShowGroupsSection(!showGroupsSection)}
@@ -1241,8 +1383,9 @@ export const Providers = () => {
                                     {approvalStatus === 'pending' && (
                                       <>
                                         <button
-                                          onClick={() => handleStatusChange(provider.id, 'approved')}
+                                          onClick={() => handleQuickApproveAll(provider.id)}
                                           className="inline-flex items-center gap-1.5 min-w-[88px] justify-center px-3 py-2 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 shadow-sm transition-all text-xs font-bold"
+                                          title="قبول المزود وجميع خدماته دفعة واحدة"
                                         >
                                           <CheckCircle size={14} />
                                           قبول
@@ -1277,8 +1420,9 @@ export const Providers = () => {
                                     {approvalStatus === 'rejected' && (
                                       <>
                                         <button
-                                          onClick={() => handleStatusChange(provider.id, 'approved')}
+                                          onClick={() => handleQuickApproveAll(provider.id)}
                                           className="inline-flex items-center gap-1.5 min-w-[88px] justify-center px-3 py-2 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 shadow-sm transition-all text-xs font-bold"
+                                          title="قبول المزود وجميع خدماته دفعة واحدة"
                                         >
                                           <CheckCircle size={14} />
                                           قبول
@@ -1443,6 +1587,37 @@ export const Providers = () => {
                       المزوّدون المحددون: {selectedProvidersForGroup.length}
                     </p>
                   </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* تأكيد الحذف النهائي */}
+          {showDeleteProviderModal && selectedProvider && (
+            <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
+              <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6">
+                <h3 className="text-lg font-bold text-gray-900 mb-2">حذف المزود؟</h3>
+                <p className="text-sm text-gray-600 mb-5">
+                  {selectedProvider.fullName || selectedProvider.firstName || 'مزود'}{' '}
+                  <span dir="ltr">({selectedProvider.phone})</span>
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    disabled={deletingProvider}
+                    onClick={handlePermanentDeleteProvider}
+                    className="flex-1 py-2.5 bg-red-600 text-white rounded-xl font-semibold hover:bg-red-700 disabled:opacity-50"
+                  >
+                    {deletingProvider ? 'جاري الحذف...' : 'حذف نهائي'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={deletingProvider}
+                    onClick={() => setShowDeleteProviderModal(false)}
+                    className="flex-1 py-2.5 bg-gray-200 text-gray-800 rounded-xl font-semibold hover:bg-gray-300"
+                  >
+                    إلغاء
+                  </button>
                 </div>
               </div>
             </div>
@@ -1756,16 +1931,29 @@ export const Providers = () => {
                       {/* Documents - صور أو PDF أو Word */}
                       <div>
                         <h3 className="font-semibold text-gray-700 mb-4">المستندات والصور</h3>
-                        {selectedProvider.documents && Object.keys(selectedProvider.documents).length > 0 && (
+                        {selectedProvider.documents && (
+                          <div className="flex flex-wrap gap-2 mb-4">
+                            {resolveProfileDocuments(selectedProvider.documents).map((doc) => (
+                              <span
+                                key={doc.key}
+                                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold ${
+                                  doc.status === 'verified'
+                                    ? 'bg-green-50 text-green-700 border border-green-200'
+                                    : 'bg-amber-50 text-amber-800 border border-amber-200'
+                                }`}
+                              >
+                                {doc.status === 'verified' ? <CheckCircle size={14} /> : <Clock size={14} />}
+                                {doc.label}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        {selectedProvider.documents && listDocumentsForDisplay(selectedProvider.documents).length > 0 && (
                           <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
-                            {Object.entries(selectedProvider.documents).map(([key, value]) => {
-                              const url = typeof value === 'string' ? value : value?.url;
-                              const type = (typeof value === 'object' && value ? value.type : null) || 'image';
-                              const docLabel = DOCUMENT_TYPE_OPTIONS.find(o => o.key === key)?.label || key;
-                              if (!url) return null;
+                            {listDocumentsForDisplay(selectedProvider.documents).map(({ key, url, type, label: docLabel }) => {
                               const isImage = type === 'image';
                               return (
-                                <div key={key} className="relative group rounded-xl overflow-hidden border-2 border-gray-100 hover:border-teal-400 transition-all bg-gray-50">
+                                <div key={`${key}-${url}`} className="relative group rounded-xl overflow-hidden border-2 border-gray-100 hover:border-teal-400 transition-all bg-gray-50">
                                   {isImage ? (
                                     <>
                                       <img src={url} alt={docLabel} className="w-full h-32 object-cover" />
@@ -1846,6 +2034,100 @@ export const Providers = () => {
                           </form>
                         </div>
                       </div>
+
+                      <div className="border-t border-gray-200 pt-6">
+                        <h3 className="font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                          <ShieldBan size={20} className="text-amber-600" />
+                          حظر من العملاء
+                        </h3>
+                        <p className="text-xs text-gray-500 mb-4">
+                          عند رفض أو إلغاء المزود لطلب، يُحظر ساعة واحدة من نفس العميل ولا يستقبل طلباته الجديدة.
+                        </p>
+                        {loadingProviderBlocks ? (
+                          <div className="flex items-center gap-2 text-gray-500 py-4">
+                            <Loader2 size={18} className="animate-spin" />
+                            <span className="text-sm">جاري التحميل...</span>
+                          </div>
+                        ) : providerBlocks.length === 0 ? (
+                          <p className="text-sm text-gray-500 bg-gray-50 rounded-lg p-4">
+                            لا يوجد حظر نشط أو منتهٍ مسجّل لهذا المزود.
+                          </p>
+                        ) : (
+                          <div className="space-y-3">
+                            {providerBlocks.map((block) => {
+                              const blockKey = `${block.customerId}:${block.providerId}`;
+                              return (
+                                <div
+                                  key={blockKey}
+                                  className={`rounded-xl border p-4 ${block.isActive ? 'border-amber-200 bg-amber-50' : 'border-gray-200 bg-gray-50'}`}
+                                >
+                                  <div className="flex flex-wrap items-start justify-between gap-3">
+                                    <div className="min-w-0 flex-1">
+                                      <p className="font-semibold text-gray-800 text-sm">
+                                        {block.customerName || 'عميل'}
+                                        {block.customerPhone && (
+                                          <span className="text-gray-500 font-normal mr-2" dir="ltr">
+                                            ({block.customerPhone})
+                                          </span>
+                                        )}
+                                      </p>
+                                      <p className="text-xs text-gray-500 mt-1">
+                                        معرف العميل: <span className="font-mono">{block.customerId?.slice(-8)}</span>
+                                      </p>
+                                      <p className="text-xs text-gray-600 mt-2">
+                                        السبب: {BLOCK_REASON_LABELS[block.reason] || block.reason || '—'}
+                                      </p>
+                                      {block.requestId && (
+                                        <p className="text-xs text-gray-500">
+                                          الطلب: <span className="font-mono">{block.requestId.slice(-8)}</span>
+                                        </p>
+                                      )}
+                                      <p className="text-xs text-gray-600 mt-1">
+                                        ينتهي: {formatBlockUntil(block)}
+                                        {!block.isActive && (
+                                          <span className="mr-2 text-gray-400">(منتهٍ)</span>
+                                        )}
+                                      </p>
+                                    </div>
+                                    <div className="flex flex-col items-end gap-2">
+                                      <span
+                                        className={`px-2 py-1 rounded-full text-xs font-semibold ${block.isActive ? 'bg-amber-200 text-amber-900' : 'bg-gray-200 text-gray-600'}`}
+                                      >
+                                        {block.isActive ? 'نشط' : 'منتهٍ'}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleUnblockProvider(block.customerId, block.providerId)}
+                                        disabled={unblockingBlockKey === blockKey}
+                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-teal-600 text-white text-xs font-semibold rounded-lg hover:bg-teal-700 disabled:opacity-50"
+                                      >
+                                        {unblockingBlockKey === blockKey ? (
+                                          <Loader2 size={14} className="animate-spin" />
+                                        ) : (
+                                          <ShieldOff size={14} />
+                                        )}
+                                        رفع الحظر
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+
+                      {isSuperAdmin && (
+                        <div className="pt-4 border-t border-gray-200">
+                          <button
+                            type="button"
+                            onClick={() => setShowDeleteProviderModal(true)}
+                            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-semibold"
+                          >
+                            حذف نهائي
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
 

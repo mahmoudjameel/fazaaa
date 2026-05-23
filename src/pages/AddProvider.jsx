@@ -120,14 +120,18 @@ export const AddProvider = () => {
         };
         let documentUrls = {};
         try {
+            const wrapUrl = (url) => (url ? { url, type: 'image' } : null);
             documentUrls = {
-                id_photo: await uploadOne(documentFiles.idImage, 'id'),
-                equipment_photo: await uploadOne(documentFiles.equipmentPhoto, 'equipment'),
-                car_front: await uploadOne(documentFiles.carFront, 'car_front'),
-                car_side: await uploadOne(documentFiles.carSide, 'car_side'),
-                driver_license: await uploadOne(documentFiles.licensePhoto, 'license'),
-                car_registration: await uploadOne(documentFiles.registrationPhoto, 'registration'),
+                idImage: wrapUrl(await uploadOne(documentFiles.idImage, 'id')),
+                equipmentPhoto: wrapUrl(await uploadOne(documentFiles.equipmentPhoto, 'equipment')),
+                carPhotoFront: wrapUrl(await uploadOne(documentFiles.carFront, 'car_front')),
+                carPhotoSide: wrapUrl(await uploadOne(documentFiles.carSide, 'car_side')),
+                licensePhoto: wrapUrl(await uploadOne(documentFiles.licensePhoto, 'license')),
+                registrationPhoto: wrapUrl(await uploadOne(documentFiles.registrationPhoto, 'registration')),
             };
+            Object.keys(documentUrls).forEach((k) => {
+                if (!documentUrls[k]) delete documentUrls[k];
+            });
         } catch (uploadError) {
             console.error('Document upload failed:', uploadError);
             alert('فشل رفع أحد المستندات. تأكد من حجم الملفات وحاول مرة أخرى.');
