@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Search, Users as UsersIcon, Mail, Phone, Calendar, MapPin, Filter, Loader2, UserCheck, Package, Clock, AlertCircle, CheckCircle, XCircle, Plus, ShieldBan, ShieldOff } from 'lucide-react';
+import { Search, Users as UsersIcon, Mail, Phone, Calendar, MapPin, Filter, Loader2, Package, Clock, AlertCircle, XCircle, Plus, ShieldBan, ShieldOff, Trash2, Award, UserX, ArrowUpDown } from 'lucide-react';
 import { collection, getDocs, query, orderBy, where, doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { db, secondaryAuth } from '../services/firebase';
@@ -10,6 +10,8 @@ import {
   getCustomerBlockedProviders,
   unblockProviderForCustomer,
   BLOCK_REASON_LABELS,
+  permanentlyDeleteCustomer,
+  buildCustomerOrderStats,
 } from '../services/adminService';
 import SAUDI_CITIES_FALLBACK from '../services/cities.json';
 
@@ -21,6 +23,8 @@ export const Users = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [cityFilter, setCityFilter] = useState('all');
+  const [behaviorFilter, setBehaviorFilter] = useState('all');
+  const [sortBy, setSortBy] = useState('registered_newest');
   const [cities, setCities] = useState(SAUDI_CITIES_FALLBACK);
   const [selectedUser, setSelectedUser] = useState(null);
   const [userOrders, setUserOrders] = useState([]);
@@ -36,6 +40,10 @@ export const Users = () => {
   const [customerBlocks, setCustomerBlocks] = useState([]);
   const [loadingCustomerBlocks, setLoadingCustomerBlocks] = useState(false);
   const [unblockingBlockKey, setUnblockingBlockKey] = useState(null);
+  const [showDeleteUserModal, setShowDeleteUserModal] = useState(false);
+  const [deletingUser, setDeletingUser] = useState(false);
+
+  const isSuperAdmin = typeof window !== 'undefined' && localStorage.getItem('admin_role') === 'super_admin';
 
   useEffect(() => {
     // Fetch Cities
@@ -52,7 +60,7 @@ export const Users = () => {
 
   useEffect(() => {
     filterUsers();
-  }, [usersList, searchTerm, statusFilter, cityFilter]);
+  }, [usersList, searchTerm, statusFilter, cityFilter, behaviorFilter, sortBy]);
 
   // جلب طلبات المستخدم عند فتح Modal
   useEffect(() => {
@@ -155,20 +163,152 @@ export const Users = () => {
     return isNaN(d.getTime()) ? '—' : format(d, 'dd MMM yyyy, HH:mm', { locale: ar });
   };
 
+  const fetchCollectionDocs = async (collectionName) => {
+    try {
+      const snap = await getDocs(
+        query(collection(db, collectionName), orderBy('createdAt', 'desc'))
+      );
+      return snap.docs;
+    } catch {
+      const snap = await getDocs(collection(db, collectionName));
+      return snap.docs;
+    }
+  };
+
   const fetchUsers = async () => {
     try {
-      const usersRef = collection(db, 'users');
-      const q = query(usersRef, orderBy('createdAt', 'desc'));
-      const querySnapshot = await getDocs(q);
-      const usersData = [];
-      querySnapshot.forEach((doc) => {
-        usersData.push({ id: doc.id, ...doc.data() });
-      });
+      const [customerDocs, legacyUserDocs, requestDocs] = await Promise.all([
+        fetchCollectionDocs('customers'),
+        fetchCollectionDocs('users'),
+        fetchCollectionDocs('requests'),
+      ]);
+
+      const orderStats = buildCustomerOrderStats(
+        requestDocs.map((d) => ({ id: d.id, ...d.data() }))
+      );
+
+      const merged = new Map();
+
+      const addEntry = (docSnap, source) => {
+        const data = docSnap.data();
+        const id = docSnap.id;
+        const existing = merged.get(id);
+        const name =
+          data.name ||
+          [data.firstName, data.lastName].filter(Boolean).join(' ') ||
+          data.displayName ||
+          'غير محدد';
+        const sources = existing?.sources ? [...new Set([...existing.sources, source])] : [source];
+
+        merged.set(id, {
+          ...(existing || {}),
+          id,
+          ...data,
+          name,
+          phone: data.phone || data.phoneNumber || existing?.phone || '',
+          email: data.email || existing?.email || '',
+          status: data.status || existing?.status || 'active',
+          sources,
+          isCustomer: source === 'customers' || existing?.isCustomer,
+        });
+      };
+
+      customerDocs.forEach((d) => addEntry(d, 'customers'));
+      legacyUserDocs.forEach((d) => addEntry(d, 'users'));
+
+      const usersData = Array.from(merged.values()).map((user) => {
+        const stats = orderStats.get(user.id) || { total: 0, completed: 0, lastOrderMs: 0 };
+        return {
+          ...user,
+          orderCount: stats.total,
+          completedOrderCount: stats.completed,
+          lastOrderAt: stats.lastOrderMs || null,
+        };
+      }).sort((a, b) => getUserCreatedMs(b) - getUserCreatedMs(a));
+
       setUsersList(usersData);
     } catch (error) {
       console.error('Error fetching users:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const getUserCreatedMs = (user) => {
+    if (user.createdAt?.toMillis) return user.createdAt.toMillis();
+    if (user.createdAt) {
+      const ms = new Date(user.createdAt).getTime();
+      return Number.isNaN(ms) ? 0 : ms;
+    }
+    return 0;
+  };
+
+  const matchesBehaviorFilter = (user, filter) => {
+    const count = user.orderCount ?? 0;
+    switch (filter) {
+      case 'no_orders':
+        return count === 0;
+      case 'has_orders':
+        return count >= 1;
+      case 'one_order':
+        return count === 1;
+      case 'returning_2_3':
+        return count >= 2 && count <= 3;
+      case 'loyal_3plus':
+        return count > 3;
+      default:
+        return true;
+    }
+  };
+
+  const sortUsers = (list) => {
+    const sorted = [...list];
+    switch (sortBy) {
+      case 'registered_oldest':
+        return sorted.sort((a, b) => getUserCreatedMs(a) - getUserCreatedMs(b));
+      case 'most_orders':
+        return sorted.sort(
+          (a, b) =>
+            (b.orderCount ?? 0) - (a.orderCount ?? 0) ||
+            getUserCreatedMs(b) - getUserCreatedMs(a)
+        );
+      case 'least_orders':
+        return sorted.sort(
+          (a, b) =>
+            (a.orderCount ?? 0) - (b.orderCount ?? 0) ||
+            getUserCreatedMs(b) - getUserCreatedMs(a)
+        );
+      case 'last_order_newest':
+        return sorted.sort(
+          (a, b) =>
+            (b.lastOrderAt ?? 0) - (a.lastOrderAt ?? 0) ||
+            getUserCreatedMs(b) - getUserCreatedMs(a)
+        );
+      default:
+        return sorted.sort((a, b) => getUserCreatedMs(b) - getUserCreatedMs(a));
+    }
+  };
+
+  const handlePermanentDeleteUser = async () => {
+    if (!selectedUser) return;
+    const userId = selectedUser.id || selectedUser.uid;
+    if (!userId) return;
+
+    setDeletingUser(true);
+    try {
+      const result = await permanentlyDeleteCustomer(userId);
+      const s = result?.summary;
+      const detail = s
+        ? `\nطلبات: ${s.requests || 0} | رسائل: ${s.chatMessages || 0} | شكاوى: ${s.complaints || 0}`
+        : '';
+      alert(`تم حذف المستخدم نهائياً${detail}`);
+      setShowDeleteUserModal(false);
+      setSelectedUser(null);
+      await fetchUsers();
+    } catch (error) {
+      alert(error?.message || 'فشل الحذف');
+    } finally {
+      setDeletingUser(false);
     }
   };
 
@@ -180,7 +320,17 @@ export const Users = () => {
     }
 
     if (cityFilter !== 'all') {
-      filtered = filtered.filter((u) => u.city === cityFilter);
+      const cityNameAr = cities.find((c) => c.id === cityFilter)?.name;
+      filtered = filtered.filter(
+        (u) =>
+          u.cityId === cityFilter ||
+          u.city === cityFilter ||
+          u.city === cityNameAr
+      );
+    }
+
+    if (behaviorFilter !== 'all') {
+      filtered = filtered.filter((u) => matchesBehaviorFilter(u, behaviorFilter));
     }
 
     if (searchTerm) {
@@ -195,7 +345,13 @@ export const Users = () => {
       );
     }
 
-    setFilteredUsers(filtered);
+    setFilteredUsers(sortUsers(filtered));
+  };
+
+  const behaviorCounts = {
+    no_orders: usersList.filter((u) => (u.orderCount ?? 0) === 0).length,
+    loyal_3plus: usersList.filter((u) => (u.orderCount ?? 0) > 3).length,
+    has_orders: usersList.filter((u) => (u.orderCount ?? 0) >= 1).length,
   };
 
   const getStatusBadge = (status) => {
@@ -295,7 +451,7 @@ export const Users = () => {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6 mb-4 sm:mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6 mb-3 sm:mb-4">
         <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-5 md:p-6 shadow-lg">
           <div className="flex items-center justify-between mb-2">
             <UsersIcon className="text-blue-500 w-5 h-5 sm:w-6 sm:h-6" />
@@ -311,6 +467,30 @@ export const Users = () => {
           <p className="text-2xl sm:text-3xl font-black text-gray-800">
             {usersList.filter((u) => u.status === 'active').length}
           </p>
+        </div>
+        <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-5 md:p-6 shadow-lg">
+          <div className="flex items-center justify-between mb-2">
+            <UserX className="text-amber-500 w-5 h-5 sm:w-6 sm:h-6" />
+            <span className="text-xs sm:text-sm text-gray-600">سجّلوا ولم يطلبوا</span>
+          </div>
+          <p className="text-2xl sm:text-3xl font-black text-gray-800">{behaviorCounts.no_orders}</p>
+        </div>
+        <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-5 md:p-6 shadow-lg">
+          <div className="flex items-center justify-between mb-2">
+            <Award className="text-purple-500 w-5 h-5 sm:w-6 sm:h-6" />
+            <span className="text-xs sm:text-sm text-gray-600">أكثر من 3 طلبات</span>
+          </div>
+          <p className="text-2xl sm:text-3xl font-black text-gray-800">{behaviorCounts.loyal_3plus}</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6 mb-4 sm:mb-6">
+        <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-5 md:p-6 shadow-lg">
+          <div className="flex items-center justify-between mb-2">
+            <Package className="text-teal-500 w-5 h-5 sm:w-6 sm:h-6" />
+            <span className="text-xs sm:text-sm text-gray-600">طلبوا خدمة</span>
+          </div>
+          <p className="text-2xl sm:text-3xl font-black text-gray-800">{behaviorCounts.has_orders}</p>
         </div>
         <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-5 md:p-6 shadow-lg">
           <div className="flex items-center justify-between mb-2">
@@ -330,41 +510,85 @@ export const Users = () => {
             {usersList.filter((u) => u.status === 'banned').length}
           </p>
         </div>
+        <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-5 md:p-6 shadow-lg border-2 border-teal-100">
+          <div className="flex items-center justify-between mb-2">
+            <Filter className="text-teal-600 w-5 h-5 sm:w-6 sm:h-6" />
+            <span className="text-xs sm:text-sm text-gray-600">نتائج الفلتر الحالي</span>
+          </div>
+          <p className="text-2xl sm:text-3xl font-black text-teal-700">{filteredUsers.length}</p>
+        </div>
       </div>
 
       {/* Filters */}
       <div className="bg-white rounded-xl sm:rounded-2xl shadow-lg p-4 sm:p-5 md:p-6 mb-4 sm:mb-6">
-        <div className="flex flex-col md:flex-row gap-3 sm:gap-4">
-          <div className="flex-1 relative">
-            <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
-            <input
-              type="text"
-              placeholder="ابحث بالاسم، البريد الإلكتروني، أو رقم الهاتف..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pr-9 sm:pr-10 pl-4 py-2.5 sm:py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none text-sm sm:text-base"
-            />
+        <div className="flex flex-col gap-3 sm:gap-4">
+          <div className="flex flex-col md:flex-row gap-3 sm:gap-4">
+            <div className="flex-1 relative">
+              <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
+              <input
+                type="text"
+                placeholder="ابحث بالاسم، البريد الإلكتروني، أو رقم الهاتف..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pr-9 sm:pr-10 pl-4 py-2.5 sm:py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none text-sm sm:text-base"
+              />
+            </div>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="w-full md:w-auto px-4 py-2.5 sm:py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none text-sm sm:text-base"
+            >
+              <option value="all">جميع الحالات</option>
+              <option value="active">نشط</option>
+              <option value="inactive">غير نشط</option>
+              <option value="banned">محظور</option>
+            </select>
+            <select
+              value={cityFilter}
+              onChange={(e) => setCityFilter(e.target.value)}
+              className="w-full md:w-auto px-4 py-2.5 sm:py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none text-sm sm:text-base text-right"
+            >
+              <option value="all">جميع المدن</option>
+              {cities.map(city => (
+                <option key={city.id} value={city.id}>{city.name}</option>
+              ))}
+            </select>
           </div>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="w-full md:w-auto px-4 py-2.5 sm:py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none text-sm sm:text-base"
-          >
-            <option value="all">جميع الحالات</option>
-            <option value="active">نشط</option>
-            <option value="inactive">غير نشط</option>
-            <option value="banned">محظور</option>
-          </select>
-          <select
-            value={cityFilter}
-            onChange={(e) => setCityFilter(e.target.value)}
-            className="w-full md:w-auto px-4 py-2.5 sm:py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none text-sm sm:text-base text-right"
-          >
-            <option value="all">جميع المدن</option>
-            {cities.map(city => (
-              <option key={city.id} value={city.id}>{city.name}</option>
-            ))}
-          </select>
+          <div className="flex flex-col md:flex-row gap-3 sm:gap-4">
+            <select
+              value={behaviorFilter}
+              onChange={(e) => setBehaviorFilter(e.target.value)}
+              className="flex-1 px-4 py-2.5 sm:py-3 border-2 border-purple-200 bg-purple-50 rounded-lg focus:border-purple-400 focus:outline-none text-sm sm:text-base text-right font-medium"
+            >
+              <option value="all">جميع العملاء — حسب السلوك</option>
+              <option value="no_orders">سجّل ولم يطلب أي خدمة (إشعار تحفيزي)</option>
+              <option value="loyal_3plus">أكثر من 3 طلبات (مكافآت / عملاء مخلصون)</option>
+              <option value="has_orders">طلب خدمة مرة على الأقل</option>
+              <option value="one_order">طلب مرة واحدة فقط</option>
+              <option value="returning_2_3">2–3 طلبات (عملاء عائدون)</option>
+            </select>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="w-full md:w-auto px-4 py-2.5 sm:py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none text-sm sm:text-base text-right"
+            >
+              <option value="registered_newest">الأحدث تسجيلاً</option>
+              <option value="registered_oldest">الأقدم تسجيلاً</option>
+              <option value="most_orders">الأكثر طلبات</option>
+              <option value="least_orders">الأقل طلبات</option>
+              <option value="last_order_newest">آخر طلب (الأحدث)</option>
+            </select>
+          </div>
+          {behaviorFilter !== 'all' && (
+            <p className="text-xs sm:text-sm text-purple-700 bg-purple-50 border border-purple-100 rounded-lg px-3 py-2 flex items-center gap-2">
+              <ArrowUpDown className="w-4 h-4 shrink-0" />
+              <span>
+                يُعرض {filteredUsers.length} عميل من أصل {usersList.length}
+                {behaviorFilter === 'no_orders' && ' — جاهزون لإشعار تحفيزي'}
+                {behaviorFilter === 'loyal_3plus' && ' — مرشّحون للمكافآت'}
+              </span>
+            </p>
+          )}
         </div>
       </div>
 
@@ -388,13 +612,37 @@ export const Users = () => {
                       <UsersIcon className="text-white w-5 h-5 sm:w-6 sm:h-6" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-2">
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-2 flex-wrap">
                         <h3 className="text-lg sm:text-xl font-bold text-gray-800 truncate">{user.name || 'غير محدد'}</h3>
                         <span
                           className={`px-2 sm:px-3 py-1 rounded-full text-xs font-semibold ${statusBadge.color} whitespace-nowrap`}
                         >
                           {statusBadge.text}
                         </span>
+                        {(user.orderCount ?? 0) === 0 ? (
+                          <span className="inline-flex items-center gap-1 px-2 sm:px-3 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 whitespace-nowrap">
+                            <UserX className="w-3 h-3" />
+                            لم يطلب بعد
+                          </span>
+                        ) : (
+                          <span
+                            className={`inline-flex items-center gap-1 px-2 sm:px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap ${
+                              (user.orderCount ?? 0) > 3
+                                ? 'bg-purple-100 text-purple-800'
+                                : 'bg-teal-100 text-teal-800'
+                            }`}
+                          >
+                            {(user.orderCount ?? 0) > 3 ? (
+                              <Award className="w-3 h-3" />
+                            ) : (
+                              <Package className="w-3 h-3" />
+                            )}
+                            {user.orderCount} {user.orderCount === 1 ? 'طلب' : 'طلبات'}
+                            {(user.completedOrderCount ?? 0) > 0 && (
+                              <span className="opacity-75">({user.completedOrderCount} مكتمل)</span>
+                            )}
+                          </span>
+                        )}
                       </div>
                       <div className="space-y-1 text-xs sm:text-sm text-gray-600">
                         {user.email && (
@@ -423,8 +671,20 @@ export const Users = () => {
                         {user.city && (
                           <div className="flex items-center gap-2">
                             <MapPin className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
-                            <span>المدينة: {cities.find(c => c.id === user.city)?.name || user.city}</span>
+                            <span>المدينة: {cities.find(c => c.id === (user.cityId || user.city))?.name || user.city || '—'}</span>
                           </div>
+                        )}
+                        {user.lastOrderAt ? (
+                          <div className="flex items-center gap-2">
+                            <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
+                            <span>
+                              آخر طلب:{' '}
+                              {format(new Date(user.lastOrderAt), 'dd MMM yyyy, HH:mm', { locale: ar })}
+                            </span>
+                          </div>
+                        ) : null}
+                        {user.isCustomer && (
+                          <div className="text-xs text-teal-700 font-medium">عميل تطبيق فزاعين</div>
                         )}
                       </div>
                     </div>
@@ -504,7 +764,7 @@ export const Users = () => {
                   <div>
                     <h3 className="font-semibold text-sm sm:text-base text-gray-700 mb-1 sm:mb-2">المدينة</h3>
                     <p className="text-sm sm:text-base text-gray-800">
-                      {cities.find(c => c.id === selectedUser.city)?.name || selectedUser.city}
+                      {cities.find(c => c.id === (selectedUser.cityId || selectedUser.city))?.name || selectedUser.city}
                     </p>
                   </div>
                 )}
@@ -706,11 +966,62 @@ export const Users = () => {
                     </div>
                   )}
                 </div>
+
+                {isSuperAdmin && (
+                  <div className="pt-4 border-t border-gray-200">
+                    <p className="text-xs text-gray-500 mb-3">
+                      يحذف الحساب نهائياً من قاعدة البيانات: الطلبات، المحادثات، التقييمات، الشكاوى، تذاكر الدعم، وإشعارات العميل.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setShowDeleteUserModal(true)}
+                      className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-semibold text-sm"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      حذف نهائي
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           </div>
         )
       }
+
+      {showDeleteUserModal && selectedUser && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
+            <h3 className="text-lg font-bold text-gray-900 mb-2">حذف المستخدم نهائياً؟</h3>
+            <p className="text-sm text-gray-600 mb-2">
+              {selectedUser.name || 'مستخدم'}{' '}
+              {selectedUser.phone && <span dir="ltr">({selectedUser.phone})</span>}
+            </p>
+            <p className="text-xs text-red-700 bg-red-50 border border-red-100 rounded-lg p-3 mb-5">
+              لا يمكن التراجع. سيُحذف الحساب وجميع الطلبات والمحادثات والشكاوى المرتبطة به من Firebase.
+              إن وُجد طلب نشط سيُرفض الحذف.
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={deletingUser}
+                onClick={handlePermanentDeleteUser}
+                className="flex-1 py-2.5 bg-red-600 text-white rounded-xl font-semibold hover:bg-red-700 disabled:opacity-50"
+              >
+                {deletingUser ? 'جاري الحذف...' : 'حذف نهائي'}
+              </button>
+              <button
+                type="button"
+                disabled={deletingUser}
+                onClick={() => setShowDeleteUserModal(false)}
+                className="flex-1 py-2.5 bg-gray-200 text-gray-800 rounded-xl font-semibold hover:bg-gray-300"
+              >
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Add User Modal */}
       {
         isAddUserModalOpen && (

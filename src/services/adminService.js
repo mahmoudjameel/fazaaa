@@ -345,6 +345,30 @@ export const permanentlyDeleteProvider = async (providerId) => {
 };
 
 /**
+ * حذف عميل/مستخدم نهائياً مع سجلاته (Cloud Function — مدير عام فقط)
+ */
+export const permanentlyDeleteCustomer = async (userId) => {
+  const user = auth.currentUser;
+  if (!user) {
+    throw new Error('انتهت جلسة الدخول — سجّل الخروج ثم ادخل من جديد');
+  }
+  await user.getIdToken(true);
+
+  const fn = httpsCallable(functions, 'adminDeleteCustomerPermanently');
+  try {
+    const result = await fn({ userId, confirm: true });
+    return result.data;
+  } catch (error) {
+    const code = error?.code || '';
+    if (code === 'functions/unauthenticated' || code === 'unauthenticated') {
+      throw new Error('انتهت جلسة الدخول — سجّل الخروج ثم ادخل من جديد');
+    }
+    const message = error?.message || error?.details || 'فشل الحذف';
+    throw new Error(message);
+  }
+};
+
+/**
  * بناء كائن services بكل الخدمات معتمدة (للتوافق مع تطبيق المزود و Cloud Functions)
  */
 const buildApprovedServicesMap = (currentServices, nowIso = new Date().toISOString()) => {
@@ -1284,6 +1308,32 @@ export const listenToAllProviders = (callback) => {
 };
 
 
+
+/**
+ * إحصائيات طلبات العملاء من مجموعة requests (customerId أو userId)
+ * @param {Array} requests
+ * @returns {Map<string, { total: number, completed: number, lastOrderMs: number }>}
+ */
+export const buildCustomerOrderStats = (requests = []) => {
+  const stats = new Map();
+
+  for (const req of requests) {
+    const customerId = req.customerId || req.userId;
+    if (!customerId) continue;
+
+    const current = stats.get(customerId) || { total: 0, completed: 0, lastOrderMs: 0 };
+    current.total += 1;
+    if (req.status === 'completed') current.completed += 1;
+
+    const createdMs = req.createdAt?.toMillis?.()
+      ?? (req.createdAt ? new Date(req.createdAt).getTime() : 0);
+    if (createdMs > current.lastOrderMs) current.lastOrderMs = createdMs;
+
+    stats.set(customerId, current);
+  }
+
+  return stats;
+};
 
 // ✅ Manual Order Management
 

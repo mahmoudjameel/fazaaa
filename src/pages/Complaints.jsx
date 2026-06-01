@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Search, MessageSquare, AlertTriangle, CheckCircle, Clock, User, Calendar, Filter, Phone, MapPin, Wrench } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Search, MessageSquare, AlertTriangle, CheckCircle, Clock, User, Calendar, Filter, Phone, MapPin, Wrench, ExternalLink } from 'lucide-react';
 import { collection, getDocs, query, orderBy, doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { format } from 'date-fns';
@@ -73,6 +74,36 @@ export const Complaints = () => {
     const longitude = direct.longitude ?? direct.lng;
     if (latitude == null || longitude == null) return null;
     return { latitude, longitude };
+  };
+
+  /** عرض رقم الطلب + رابط مباشر لصفحة تفاصيل الطلب */
+  const getOrderLinkMeta = (complaint, requestData = null) => {
+    const requestId = complaint?.requestId || null;
+    if (!requestId) return null;
+    const rawNumber = firstFilled(complaint?.orderNumber, requestData?.orderNumber);
+    const display = rawNumber != null
+      ? (String(rawNumber).startsWith('#') ? String(rawNumber) : `#${rawNumber}`)
+      : `#${String(requestId).slice(-8)}`;
+    return {
+      requestId,
+      display,
+      href: `/admin/orders?orderId=${encodeURIComponent(requestId)}`,
+    };
+  };
+
+  const OrderNumberLink = ({ complaint, requestData = null, className = '' }) => {
+    const meta = getOrderLinkMeta(complaint, requestData);
+    if (!meta) return null;
+    return (
+      <Link
+        to={meta.href}
+        className={`inline-flex items-center gap-1.5 font-semibold text-teal-700 hover:text-teal-900 underline underline-offset-2 decoration-teal-400/60 hover:decoration-teal-700 transition-colors ${className}`}
+        title="فتح تفاصيل الطلب (السجل الفني)"
+      >
+        {meta.display}
+        <ExternalLink className="w-3.5 h-3.5 flex-shrink-0 opacity-70" />
+      </Link>
+    );
   };
 
   useEffect(() => {
@@ -359,9 +390,10 @@ export const Complaints = () => {
                       <p className="text-xs sm:text-sm text-gray-600 mb-3 line-clamp-2">
                         {complaint.description || 'لا يوجد وصف'}
                       </p>
-                      {complaint.type === 'order_report' && (complaint.orderNumber || complaint.requestId) && (
-                        <p className="text-xs text-amber-700 font-semibold mb-2">
-                          رقم الطلب: {complaint.orderNumber || complaint.requestId}
+                      {getOrderLinkMeta(complaint) && (
+                        <p className="text-xs sm:text-sm mb-2 flex flex-wrap items-center gap-1.5">
+                          <span className="text-gray-600 font-medium">رقم الطلب:</span>
+                          <OrderNumberLink complaint={complaint} />
                         </p>
                       )}
                       <div className="space-y-1 text-xs sm:text-sm text-gray-600">
@@ -403,11 +435,6 @@ export const Complaints = () => {
       {selectedComplaint && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4 md:p-6">
           {(() => {
-            const requestRef = firstFilled(
-              selectedComplaint.orderNumber,
-              requestDetails?.orderNumber,
-              selectedComplaint.requestId
-            );
             const providerName = firstFilled(
               requestDetails?.providerName,
               requestProviderDetails?.name,
@@ -504,16 +531,17 @@ export const Complaints = () => {
                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 sm:p-4 space-y-2">
                   <h3 className="font-semibold text-sm sm:text-base text-amber-800 mb-2">بيانات الطلب المُبلَغ عنه</h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 text-sm">
-                    {requestRef && (
-                      <div>
-                        <span className="text-gray-600">مرجع الطلب:</span>{' '}
-                        <span className="font-medium text-gray-800">{requestRef}</span>
+                    {getOrderLinkMeta(selectedComplaint, requestDetails) && (
+                      <div className="sm:col-span-2">
+                        <span className="text-gray-600">رقم الطلب:</span>{' '}
+                        <OrderNumberLink complaint={selectedComplaint} requestData={requestDetails} className="text-base" />
+                        <span className="text-xs text-gray-500 block mt-1">اضغط لفتح السجل الفني للطلب</span>
                       </div>
                     )}
                     {selectedComplaint.requestId && (
-                      <div>
-                        <span className="text-gray-600">رقم الطلب:</span>{' '}
-                        <span className="font-mono text-gray-800 break-all">{selectedComplaint.requestId}</span>
+                      <div className="sm:col-span-2">
+                        <span className="text-gray-600">معرّف Firestore:</span>{' '}
+                        <span className="font-mono text-gray-800 break-all text-xs">{selectedComplaint.requestId}</span>
                       </div>
                     )}
                     {serviceName && (

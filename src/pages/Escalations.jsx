@@ -6,9 +6,10 @@ import {
 } from 'lucide-react';
 import {
     collection, query, orderBy, onSnapshot,
-    doc, updateDoc, serverTimestamp,
+    doc, updateDoc, getDoc, serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '../services/firebase';
+import { formatEscalationOrderLabel } from '../utils/orderNumber';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ar } from 'date-fns/locale';
 
@@ -71,6 +72,7 @@ export const Escalations = () => {
     const [typeFilter, setTypeFilter] = useState('all');        // 'all' | 'no_providers' | 'all_rejected' | 'search_timeout'
     const [searchText, setSearchText] = useState('');
     const [resolvingId, setResolvingId] = useState(null);
+    const [orderNumberByRequestId, setOrderNumberByRequestId] = useState({});
     const prevNewCountRef = useRef(0);
     const audioRef = useRef(null);
 
@@ -105,6 +107,38 @@ export const Escalations = () => {
 
         return () => unsubscribe();
     }, []);
+
+    // جلب orderNumber من requests للتصعيدات القديمة التي لا تحتويه
+    useEffect(() => {
+        const missing = escalations.filter(
+            (e) => e.requestId && e.orderNumber == null && orderNumberByRequestId[e.requestId] == null
+        );
+        if (missing.length === 0) return;
+
+        let cancelled = false;
+        (async () => {
+            const updates = {};
+            await Promise.all(
+                missing.slice(0, 30).map(async (e) => {
+                    try {
+                        const snap = await getDoc(doc(db, 'requests', e.requestId));
+                        if (snap.exists() && snap.data().orderNumber != null) {
+                            updates[e.requestId] = snap.data().orderNumber;
+                        }
+                    } catch (err) {
+                        console.warn('Escalations: fetch orderNumber', e.requestId, err?.message);
+                    }
+                })
+            );
+            if (!cancelled && Object.keys(updates).length > 0) {
+                setOrderNumberByRequestId((prev) => ({ ...prev, ...updates }));
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [escalations, orderNumberByRequestId]);
 
     // ── إجراءات ──────────────────────────────────────────────────────────────
     const handleResolve = async (id) => {
@@ -151,7 +185,16 @@ export const Escalations = () => {
         if (typeFilter !== 'all' && e.type !== typeFilter) return false;
         if (searchText) {
             const q = searchText.toLowerCase();
-            const hay = [e.serviceName, e.location, e.requestId, e.customerId]
+            const orderLabel = formatEscalationOrderLabel(e, orderNumberByRequestId);
+            const hay = [
+                e.serviceName,
+                e.location,
+                e.requestId,
+                e.customerId,
+                e.orderNumber,
+                orderNumberByRequestId[e.requestId],
+                orderLabel,
+            ]
                 .filter(Boolean)
                 .join(' ')
                 .toLowerCase();
@@ -353,10 +396,10 @@ export const Escalations = () => {
                                             </span>
                                         )}
                                     </div>
-                                    {/* ID الطلب */}
+                                    {/* رقم الطلب الموحّد */}
                                     {esc.requestId && (
-                                        <span className="text-xs font-mono bg-white/70 px-2 py-0.5 rounded-lg text-gray-500 flex-shrink-0">
-                                            #{esc.requestId.slice(-6).toUpperCase()}
+                                        <span className="text-xs font-mono font-bold bg-white/70 px-2 py-0.5 rounded-lg text-gray-700 flex-shrink-0">
+                                            {formatEscalationOrderLabel(esc, orderNumberByRequestId)}
                                         </span>
                                     )}
                                 </div>

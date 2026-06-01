@@ -314,12 +314,29 @@ export const Orders = () => {
     return () => unsubscribe();
   }, [location.search]);
 
-  // فتح تفاصيل طلب محدد عند القدوم من لوحة التحكم (النشاط الأخير)
+  // فتح تفاصيل طلب محدد عند القدوم من الشكاوى / لوحة التحكم
   useEffect(() => {
     const orderId = new URLSearchParams(location.search).get('orderId');
-    if (!orderId || requests.length === 0) return;
-    const req = requests.find((r) => r.id === orderId);
-    if (req) setSelectedRequest(req);
+    if (!orderId) return;
+
+    const fromList = requests.find((r) => r.id === orderId);
+    if (fromList) {
+      setSelectedRequest(fromList);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, 'requests', orderId));
+        if (cancelled || !snap.exists()) return;
+        setSelectedRequest({ id: snap.id, ...snap.data() });
+      } catch (e) {
+        console.warn('Failed to open order from deep link:', e?.message);
+      }
+    })();
+
+    return () => { cancelled = true; };
   }, [location.search, requests]);
 
 
@@ -2267,10 +2284,10 @@ export const Orders = () => {
                   </div>
                 )}
 
-                {/* Legal Documents (Ownership Proof / Disclaimer Form) */}
-                {(selectedRequest.legalOwnershipProof || selectedRequest.legalDisclaimerForm) && (
+                {/* Legal Documents (Ownership Proof / Disclaimer / Lock Form) */}
+                {(selectedRequest.legalOwnershipProof || selectedRequest.legalDisclaimerForm || selectedRequest.legalLockForm) && (
                   <div>
-                    <h3 className="font-semibold text-gray-700 mb-3">المستندات القانونية</h3>
+                    <h3 className="font-semibold text-gray-700 mb-3">المستندات والنماذج</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {/* Ownership Proof */}
                       {selectedRequest.legalOwnershipProof && (
@@ -2297,16 +2314,41 @@ export const Orders = () => {
                         </div>
                       )}
 
+                      {/* Lock Opening Service Form */}
+                      {selectedRequest.legalLockForm && (
+                        <div>
+                          <div className="mb-2 flex items-center gap-2">
+                            <span className="px-2 py-1 bg-amber-100 text-amber-800 text-xs font-semibold rounded">نموذج خدمة فتح السيارة</span>
+                          </div>
+                          <div className="relative group overflow-hidden rounded-xl border-2 border-gray-200 hover:border-amber-400 transition-all">
+                            <img
+                              src={selectedRequest.legalLockForm}
+                              alt="نموذج خدمة فتح السيارة"
+                              className="w-full h-48 object-cover cursor-pointer"
+                              onClick={() => window.open(selectedRequest.legalLockForm, '_blank')}
+                            />
+                            <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all flex items-center justify-center">
+                              <Eye className="text-white opacity-0 group-hover:opacity-100 transition-opacity" size={28} />
+                            </div>
+                          </div>
+                          {selectedRequest.legalLockFormTimestamp && (
+                            <p className="text-xs text-gray-500 mt-1">
+                              {format(new Date(selectedRequest.legalLockFormTimestamp), 'dd MMM yyyy, HH:mm', { locale: ar })}
+                            </p>
+                          )}
+                        </div>
+                      )}
+
                       {/* Disclaimer Form */}
                       {selectedRequest.legalDisclaimerForm && (
                         <div>
                           <div className="mb-2 flex items-center gap-2">
-                            <span className="px-2 py-1 bg-yellow-100 text-yellow-700 text-xs font-semibold rounded">السند القانوني (إخلاء المسؤولية)</span>
+                            <span className="px-2 py-1 bg-yellow-100 text-yellow-700 text-xs font-semibold rounded">نموذج إخلاء المسؤولية</span>
                           </div>
                           <div className="relative group overflow-hidden rounded-xl border-2 border-gray-200 hover:border-yellow-400 transition-all">
                             <img
                               src={selectedRequest.legalDisclaimerForm}
-                              alt="السند القانوني"
+                              alt="نموذج إخلاء المسؤولية"
                               className="w-full h-48 object-cover cursor-pointer"
                               onClick={() => window.open(selectedRequest.legalDisclaimerForm, '_blank')}
                             />
@@ -2330,7 +2372,8 @@ export const Orders = () => {
                   !selectedRequest.serviceDocumentationBefore &&
                   !selectedRequest.serviceDocumentationAfter &&
                   !selectedRequest.legalOwnershipProof &&
-                  !selectedRequest.legalDisclaimerForm && (
+                  !selectedRequest.legalDisclaimerForm &&
+                  !selectedRequest.legalLockForm && (
                     <div className="bg-gray-50 rounded-xl p-6 text-center">
                       <p className="text-gray-500 text-sm">لا توجد صور توثيق لهذا الطلب</p>
                     </div>
