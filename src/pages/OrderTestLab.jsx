@@ -552,6 +552,11 @@ export const OrderTestLab = () => {
                 }`}
               >
                 <p className="font-bold text-lg">{report.notifyVerdict}</p>
+                {report.failureSummary && (
+                  <p className="text-sm font-medium text-amber-900 bg-amber-100 border border-amber-200 rounded-lg px-3 py-2 mt-3">
+                    {report.failureSummary.title}: {report.failureSummary.detail}
+                  </p>
+                )}
                 <p className="text-sm text-gray-600 mt-2">
                   مؤهلون: {report.totalEligible} | ترتيب المزود: {report.rankIndex ?? '—'} | في notified:{' '}
                   {report.wasNotified ? 'نعم' : 'لا'}

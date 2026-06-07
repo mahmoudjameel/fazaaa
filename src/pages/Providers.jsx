@@ -2240,6 +2240,11 @@ export const Providers = () => {
                                     </div>
                                     <div>
                                       <p className="text-sm font-bold text-gray-800">{item.reason || 'عملية مجهولة'}</p>
+                                      {(item.orderNumber != null && item.orderNumber !== '') ? (
+                                        <p className="text-[10px] font-mono text-teal-600">رقم الطلب: #{String(item.orderNumber).padStart(9, '0')}</p>
+                                      ) : (item.requestId ? (
+                                        <p className="text-[10px] font-mono text-gray-400">الطلب: {item.requestId.slice(-8)}</p>
+                                      ) : null)}
                                       <p className="text-[10px] text-gray-500">
                                         {item.timestamp ? format(item.timestamp.toDate ? item.timestamp.toDate() : new Date(item.timestamp), 'dd MMM yyyy, HH:mm', { locale: ar }) : '-'}
                                       </p>

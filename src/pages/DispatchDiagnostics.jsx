@@ -181,6 +181,11 @@ export const DispatchDiagnostics = () => {
             }`}
           >
             <p className="font-bold text-lg text-gray-900">{report.notifyVerdict}</p>
+            {report.failureSummary && (
+              <p className="text-sm font-medium text-amber-900 bg-amber-100 border border-amber-200 rounded-lg px-3 py-2 mt-3">
+                {report.failureSummary.title}: {report.failureSummary.detail}
+              </p>
+            )}
             <p className="text-sm text-gray-600 mt-2">
               مزودون متصلون في Firestore: {result.onlineCount} | مؤهلون للطلب: {report.totalEligible}
               {report.rankIndex != null && ` | ترتيب هذا المزود: ${report.rankIndex}`}

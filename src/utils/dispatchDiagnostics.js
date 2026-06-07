@@ -4,6 +4,8 @@
  */
 
 export const MIN_BALANCE_FOR_REQUEST = 5;
+/** مطابق لـ functions/index.js — بدون نبضة خلال هذه المدة يُستبعد المزود */
+export const MAX_PROVIDER_LOCATION_AGE_MINUTES = 15;
 
 export const DEFAULT_SEARCH_STAGES = [
   { maxRadius: 4, waitTime: 60, maxProviders: 3, vipOnly: false },
@@ -230,13 +232,17 @@ export function evaluateProviderEligibility(providerId, providerData, request, d
   const locationAgeMs = locationFreshMs > 0 ? nowMs - locationFreshMs : Infinity;
   const locationAgeMin = locationAgeMs / 60000;
 
-  if (locationFreshMs <= 0) {
-    warn('location_age', 'آخر تحديث موقع', 'لا lastHeartbeat ولا locationUpdatedAt — عقوبة ترتيب +3 كم');
-  } else if (locationAgeMin > 15) {
-    warn('location_age', 'آخر تحديث موقع', `منذ ${locationAgeMin.toFixed(1)} دقيقة — قد يؤثر على الترتيب (لا يُستبعد في الكود الحالي)`);
-  } else {
-    pass('location_age', 'آخر تحديث موقع', `منذ ${locationAgeMin.toFixed(1)} دقيقة`);
+  if (locationFreshMs <= 0 || locationAgeMin > MAX_PROVIDER_LOCATION_AGE_MINUTES) {
+    fail(
+      'location_age',
+      'آخر تحديث موقع (lastHeartbeat)',
+      locationFreshMs <= 0
+        ? 'لا lastHeartbeat ولا locationUpdatedAt — Cloud Function يستبعد المزود فوراً'
+        : `منذ ${locationAgeMin.toFixed(1)} دقيقة (الحد ${MAX_PROVIDER_LOCATION_AGE_MINUTES} د) — Cloud Function يستبعد المزود`
+    );
+    return { eligible: false, checks, metrics: null };
   }
+  pass('location_age', 'آخر تحديث موقع', `منذ ${locationAgeMin.toFixed(1)} دقيقة`);
 
   const pCoords = getProviderCoords(providerData);
   if (!pCoords) {
@@ -382,6 +388,36 @@ export function buildEligibleProvidersList(onlineProviders, request, distributio
   return eligible.filter((p) => p.distanceKm <= maxDispatchRadiusKm);
 }
 
+export function inferDispatchFailureSummary(request) {
+  const notified = Array.isArray(request.notifiedProviders) ? request.notifiedProviders : [];
+  const stage = typeof request.lastSearchStage === 'number' ? request.lastSearchStage : 0;
+
+  if (request.searchAbortedEarly === true || request.timeoutReason === 'no_providers_in_radius') {
+    return {
+      code: 'aborted_no_eligible',
+      title: 'إيقاف فوري — صفر مزودين مؤهلين',
+      detail:
+        'Cloud Function لم تجد أي مزوداً يمرّ فلترة lastHeartbeat (≤15 د) + isOnline + الخدمة + الرصيد + غير مشغول لحظة بدء البحث، فأوقفت الطلب مباشرة (lastSearchStage=0).',
+    };
+  }
+  if (notified.length === 0 && stage === 0 && request.status === 'timed_out') {
+    return {
+      code: 'never_notified',
+      title: 'لم يُشعَر أحد',
+      detail:
+        'إما onRequestCreated لم تُنفَّذ (Functions غير منشورة/فشلت) أو أُوقف البحث فوراً بسبب 0 مؤهلين. راجع Firebase logs لـ onRequestCreated.',
+    };
+  }
+  if (notified.length > 0 && request.status === 'timed_out') {
+    return {
+      code: 'timeout_after_notify',
+      title: 'انتهى وقت البحث بعد الإشعار',
+      detail: `أُشعِر ${notified.length} مزوداً ولم يقبل أحد.`,
+    };
+  }
+  return null;
+}
+
 export function diagnoseProviderForRequest(providerId, providerData, request, allOnlineProviders, distributionSettings) {
   const evaluation = evaluateProviderEligibility(providerId, providerData, request, distributionSettings);
   const eligibleAll = buildEligibleProvidersList(allOnlineProviders, request, distributionSettings);
@@ -417,5 +453,6 @@ export function diagnoseProviderForRequest(providerId, providerData, request, al
     totalEligible: eligibleAll.length,
     notifyVerdict,
     wasNotified: notified.includes(providerId),
+    failureSummary: inferDispatchFailureSummary(request),
   };
 }
