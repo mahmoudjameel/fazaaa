@@ -15,6 +15,8 @@ import {
   Stethoscope,
   Copy,
   Check,
+  Clock,
+  Ban,
 } from 'lucide-react';
 import { collection, getDocs, getDoc, doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../services/firebase';
@@ -25,10 +27,37 @@ import {
   createTestDispatchOrder,
   runDispatchDiagnostics,
   releaseProviderBusy,
+  cancelRequestAsCustomer,
 } from '../services/adminService';
 import { getProviderCoords } from '../utils/dispatchDiagnostics';
 
 const RIYADH = { latitude: 24.7136, longitude: 46.6753 };
+const DEFAULT_SEARCH_SECONDS = 160;
+
+function tsToMs(value) {
+  if (!value) return null;
+  if (typeof value.toMillis === 'function') return value.toMillis();
+  if (typeof value.seconds === 'number') return value.seconds * 1000;
+  if (typeof value === 'string') return Date.parse(value);
+  return null;
+}
+
+function formatTime(seconds) {
+  const s = Math.max(0, Math.floor(seconds));
+  const mins = Math.floor(s / 60);
+  const secs = s % 60;
+  return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+}
+
+const STATUS_LABELS = {
+  searching: 'جاري البحث عن مزود',
+  assigned: 'تم قبول الطلب',
+  timed_out: 'انتهى وقت البحث',
+  canceled_by_client: 'أُلغي من العميل',
+  canceled_by_client_with_reason: 'أُلغي من العميل',
+  canceled_by_provider: 'أُلغي من المزود',
+  canceled_by_provider_with_reason: 'أُلغي من المزود',
+};
 
 const statusIcon = (status) => {
   if (status === 'pass') return <CheckCircle className="w-5 h-5 text-emerald-500 shrink-0" />;
@@ -70,6 +99,12 @@ export const OrderTestLab = () => {
   const [diagLoading, setDiagLoading] = useState(false);
   const [diagResult, setDiagResult] = useState(null);
   const [releasingBusy, setReleasingBusy] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+
+  const [timeRemaining, setTimeRemaining] = useState(DEFAULT_SEARCH_SECONDS);
+  const [searchTotalSeconds, setSearchTotalSeconds] = useState(DEFAULT_SEARCH_SECONDS);
+  const [searchTimerActive, setSearchTimerActive] = useState(false);
+  const searchEndsRef = useRef(null);
 
   const unsubRef = useRef(null);
 
@@ -179,6 +214,59 @@ export const OrderTestLab = () => {
     if (unsubRef.current) unsubRef.current();
   }, []);
 
+  // عداد الانتظار — نفس منطق WaitingProviderScreen (من searchEndsAt)
+  useEffect(() => {
+    if (!liveRequest) return;
+
+    const total = liveRequest.searchTotalSeconds ?? DEFAULT_SEARCH_SECONDS;
+    setSearchTotalSeconds(total);
+
+    if (liveRequest.status === 'timed_out' || liveRequest.searchAbortedEarly === true) {
+      searchEndsRef.current = Date.now();
+      setSearchTimerActive(false);
+      setTimeRemaining(0);
+      return;
+    }
+
+    const endMs = tsToMs(liveRequest.searchEndsAt);
+    if (endMs && liveRequest.status === 'searching') {
+      searchEndsRef.current = endMs;
+      setSearchTimerActive(true);
+      setTimeRemaining(Math.max(0, Math.floor((endMs - Date.now()) / 1000)));
+    } else if (liveRequest.status !== 'searching') {
+      setSearchTimerActive(false);
+    }
+  }, [liveRequest?.id, liveRequest?.status, liveRequest?.searchEndsAt, liveRequest?.searchTotalSeconds, liveRequest?.searchAbortedEarly]);
+
+  useEffect(() => {
+    if (!searchTimerActive || !searchEndsRef.current) return undefined;
+    const tick = setInterval(() => {
+      const endMs = searchEndsRef.current;
+      if (!endMs) return;
+      const remaining = Math.max(0, Math.floor((endMs - Date.now()) / 1000));
+      setTimeRemaining(remaining);
+    }, 1000);
+    return () => clearInterval(tick);
+  }, [searchTimerActive, createdRequestId]);
+
+  const handleCancelRequest = async () => {
+    if (!createdRequestId || !liveRequest) return;
+    if (liveRequest.status !== 'searching') {
+      alert('الطلب لم يعد في حالة البحث');
+      return;
+    }
+    if (!window.confirm('إلغاء الطلب التجريبي؟ (نفس سيناريو إلغاء العميل — يوقف الرنين عند المزودين)')) return;
+
+    setCancelling(true);
+    try {
+      await cancelRequestAsCustomer(createdRequestId);
+    } catch (e) {
+      alert(e.message || 'فشل الإلغاء');
+    } finally {
+      setCancelling(false);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSubmitError('');
@@ -186,6 +274,9 @@ export const OrderTestLab = () => {
     setLiveRequest(null);
     setCreatedRequestId('');
     setCreatedOrderNumber(null);
+    searchEndsRef.current = null;
+    setSearchTimerActive(false);
+    setTimeRemaining(DEFAULT_SEARCH_SECONDS);
 
     if (!selectedCustomer?.id) {
       setSubmitError('اختر عميلاً');
@@ -270,6 +361,21 @@ export const OrderTestLab = () => {
   const providerInNotified =
     liveRequest?.notifiedProviders?.includes(selectedProviderId) ?? false;
   const report = diagResult?.report;
+  const isSearching = liveRequest?.status === 'searching';
+  const timerDisplay = searchTimerActive ? formatTime(timeRemaining) : '--:--';
+  const timerLabel = searchTimerActive
+    ? 'الوقت المحدد لانتظار المزود'
+    : isSearching
+      ? 'جاري التحقق من المزودين القريبين...'
+      : 'انتهى البحث';
+  const progressPercent = searchTimerActive
+    ? Math.max(0, Math.min(100, (timeRemaining / Math.max(searchTotalSeconds, 1)) * 100))
+    : isSearching
+      ? 15
+      : 0;
+  const stageEndsMs = tsToMs(liveRequest?.stageEndsAt);
+  const stageRemainingSec =
+    stageEndsMs && isSearching ? Math.max(0, Math.floor((stageEndsMs - Date.now()) / 1000)) : null;
 
   return (
     <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-6">
@@ -489,15 +595,54 @@ export const OrderTestLab = () => {
             </div>
 
             {liveRequest ? (
-              <dl className="grid sm:grid-cols-2 gap-3 text-sm">
+              <>
+                {/* عداد الانتظار — مطابق لتطبيق العميل */}
+                <div className="mb-5 rounded-2xl border border-orange-200 bg-orange-50 p-4">
+                  <div className="flex items-center justify-between gap-3 mb-3">
+                    <div className="flex items-center gap-2 text-orange-900">
+                      <Clock className="w-5 h-5 shrink-0" />
+                      <span className="text-sm font-medium">{timerLabel}</span>
+                    </div>
+                    <span className="text-2xl font-bold tabular-nums text-orange-700" dir="ltr">
+                      {timerDisplay}
+                    </span>
+                  </div>
+                  <div className="h-2 rounded-full bg-orange-200 overflow-hidden">
+                    <div
+                      className="h-full bg-orange-500 transition-all duration-1000 ease-linear"
+                      style={{ width: `${progressPercent}%` }}
+                    />
+                  </div>
+                  {searchTimerActive && (
+                    <p className="text-xs text-orange-800/80 mt-2">
+                      إجمالي مدة البحث: {formatTime(searchTotalSeconds)} — متبقٍ: {formatTime(timeRemaining)}
+                    </p>
+                  )}
+                </div>
+
+                <dl className="grid sm:grid-cols-2 gap-3 text-sm">
                 <div>
                   <dt className="text-gray-500">الحالة</dt>
-                  <dd className="font-semibold">{liveRequest.status}</dd>
+                  <dd className="font-semibold">
+                    {STATUS_LABELS[liveRequest.status] || liveRequest.status}
+                  </dd>
                 </div>
                 <div>
                   <dt className="text-gray-500">آخر مرحلة بحث</dt>
                   <dd>{liveRequest.lastSearchStage ?? '—'}</dd>
                 </div>
+                {liveRequest.stageWaitSeconds != null && (
+                  <div>
+                    <dt className="text-gray-500">مدة المرحلة الحالية</dt>
+                    <dd>{liveRequest.stageWaitSeconds} ث</dd>
+                  </div>
+                )}
+                {stageRemainingSec != null && (
+                  <div>
+                    <dt className="text-gray-500">متبقٍ في المرحلة</dt>
+                    <dd className="font-mono" dir="ltr">{formatTime(stageRemainingSec)}</dd>
+                  </div>
+                )}
                 <div className="sm:col-span-2">
                   <dt className="text-gray-500">notifiedProviders ({(liveRequest.notifiedProviders || []).length})</dt>
                   <dd className="font-mono text-xs mt-1">
@@ -517,6 +662,37 @@ export const OrderTestLab = () => {
                   </dd>
                 </div>
               </dl>
+
+                {isSearching && (
+                  <button
+                    type="button"
+                    onClick={handleCancelRequest}
+                    disabled={cancelling}
+                    className="mt-4 w-full inline-flex items-center justify-center gap-2 border-2 border-red-300 bg-red-50 text-red-700 py-3 rounded-xl font-bold hover:bg-red-100 disabled:opacity-50"
+                  >
+                    {cancelling ? (
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <Ban className="w-5 h-5" />
+                    )}
+                    إلغاء الطلب (مثل العميل)
+                  </button>
+                )}
+
+                {!isSearching && liveRequest.status && (
+                  <div
+                    className={`mt-4 rounded-xl px-4 py-3 text-sm font-medium ${
+                      liveRequest.status === 'assigned'
+                        ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                        : 'bg-gray-100 text-gray-700 border border-gray-200'
+                    }`}
+                  >
+                    {liveRequest.status === 'assigned'
+                      ? '✅ قبل مزود الطلب — توقّف البحث والرنين'
+                      : `⏹ انتهى السيناريو: ${STATUS_LABELS[liveRequest.status] || liveRequest.status}`}
+                  </div>
+                )}
+              </>
             ) : (
               <p className="text-sm text-gray-500 flex items-center gap-2">
                 <Loader2 className="w-4 h-4 animate-spin" /> جاري الاتصال بالطلب...

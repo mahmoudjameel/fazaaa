@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Save, FileText, Info, Phone, Loader2, ShieldCheck } from 'lucide-react';
+import { Save, FileText, Info, Phone, Loader2, ShieldCheck, RefreshCw, Smartphone } from 'lucide-react';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 
@@ -11,7 +11,27 @@ const TABS = [
   { id: 'about', label: 'من نحن', icon: Info },
   { id: 'privacy', label: 'سياسة الخصوصية', icon: ShieldCheck },
   { id: 'support', label: 'إعدادات الدعم', icon: Phone },
+  { id: 'appVersion', label: 'تحديث التطبيق', icon: RefreshCw },
 ];
+
+const DEFAULT_APP_VERSION = {
+  customer: {
+    minVersion: '8.5.0',
+    latestVersion: '8.5.0',
+    forceUpdate: false,
+    androidUrl: 'https://play.google.com/store/apps/details?id=com.londonerazooz.app',
+    iosUrl: '',
+    message: 'يتوفر إصدار جديد من التطبيق. يرجى التحديث للمتابعة.',
+  },
+  provider: {
+    minVersion: '3.6.2',
+    latestVersion: '3.6.2',
+    forceUpdate: false,
+    androidUrl: 'https://play.google.com/store/apps/details?id=com.fazaa.provider',
+    iosUrl: '',
+    message: 'يتوفر إصدار جديد من التطبيق. يرجى التحديث للمتابعة.',
+  },
+};
 
 export default function AppSettings() {
   const [loading, setLoading] = useState(true);
@@ -27,6 +47,7 @@ export default function AppSettings() {
     providerChargeWhatsappNumber: '966539741002',
     providerChargeWhatsappDisplay: '+966 53 974 1002',
   });
+  const [appVersion, setAppVersion] = useState(DEFAULT_APP_VERSION);
 
   useEffect(() => {
     loadData();
@@ -35,16 +56,24 @@ export default function AppSettings() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [termsSnap, aboutSnap, privacySnap, supportSnap] = await Promise.all([
+      const [termsSnap, aboutSnap, privacySnap, supportSnap, appVersionSnap] = await Promise.all([
         getDoc(doc(db, 'settings', 'termsAndConditions')),
         getDoc(doc(db, 'settings', 'aboutUs')),
         getDoc(doc(db, 'settings', 'privacyPolicy')),
         getDoc(doc(db, 'settings', 'support')),
+        getDoc(doc(db, 'settings', 'appVersion')),
       ]);
       if (termsSnap.exists()) setTerms(termsSnap.data());
       if (aboutSnap.exists()) setAbout(aboutSnap.data());
       if (privacySnap.exists()) setPrivacy(privacySnap.data());
       if (supportSnap.exists()) setSupport((prev) => ({ ...prev, ...supportSnap.data() }));
+      if (appVersionSnap.exists()) {
+        const data = appVersionSnap.data();
+        setAppVersion((prev) => ({
+          customer: { ...prev.customer, ...(data.customer || {}) },
+          provider: { ...prev.provider, ...(data.provider || {}) },
+        }));
+      }
     } catch (error) {
       console.error('Error loading settings:', error);
     } finally {
@@ -67,6 +96,9 @@ export default function AppSettings() {
       } else if (activeTab === 'support') {
         await setDoc(doc(db, 'settings', 'support'), { ...support, lastUpdated: new Date().toISOString() });
         alert('تم حفظ إعدادات الدعم بنجاح');
+      } else if (activeTab === 'appVersion') {
+        await setDoc(doc(db, 'settings', 'appVersion'), { ...appVersion, lastUpdated: new Date().toISOString() });
+        alert('تم حفظ إعدادات تحديث التطبيق بنجاح');
       }
       loadData();
     } catch (error) {
@@ -283,6 +315,113 @@ export default function AppSettings() {
           </div>
         )}
 
+        {activeTab === 'appVersion' && (
+          <div className="p-6 space-y-6">
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-1">
+                <Smartphone className="w-4 h-4 text-blue-600" />
+                <h3 className="font-bold text-blue-800 text-sm">إجبار تحديث التطبيق</h3>
+              </div>
+              <p className="text-xs text-blue-700 leading-relaxed">
+                عند تفعيل «إجبار التحديث»، أي مستخدم يفتح التطبيق بإصدار أقدم من «أقل إصدار مسموح» سيظهر له
+                حاجز لا يمكن تجاوزه مع زر يفتح المتجر للتحديث.
+              </p>
+            </div>
+
+            {[
+              { key: 'customer', label: 'تطبيق العميل', accent: 'amber' },
+              { key: 'provider', label: 'تطبيق المزود', accent: 'teal' },
+            ].map(({ key, label }) => {
+              const cfg = appVersion[key] || {};
+              const update = (patch) =>
+                setAppVersion((prev) => ({ ...prev, [key]: { ...prev[key], ...patch } }));
+              return (
+                <div key={key} className="border border-gray-200 rounded-2xl p-5 space-y-5">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-bold text-gray-800">{label}</h3>
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <span className="text-sm font-semibold text-gray-600">إجبار التحديث</span>
+                      <input
+                        type="checkbox"
+                        checked={!!cfg.forceUpdate}
+                        onChange={(e) => update({ forceUpdate: e.target.checked })}
+                        className="w-5 h-5 accent-amber-500"
+                      />
+                    </label>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">أقل إصدار مسموح</label>
+                      <input
+                        type="text"
+                        value={cfg.minVersion || ''}
+                        onChange={(e) => update({ minVersion: e.target.value.trim() })}
+                        className={inputClass}
+                        placeholder="مثال: 8.5.0"
+                        dir="ltr"
+                        style={{ textAlign: 'left' }}
+                      />
+                      <p className="text-xs text-gray-400 mt-1">من يستخدم إصداراً أقل منه يُجبر على التحديث</p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">أحدث إصدار (اختياري)</label>
+                      <input
+                        type="text"
+                        value={cfg.latestVersion || ''}
+                        onChange={(e) => update({ latestVersion: e.target.value.trim() })}
+                        className={inputClass}
+                        placeholder="مثال: 8.6.0"
+                        dir="ltr"
+                        style={{ textAlign: 'left' }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">رابط متجر Google Play</label>
+                      <input
+                        type="text"
+                        value={cfg.androidUrl || ''}
+                        onChange={(e) => update({ androidUrl: e.target.value.trim() })}
+                        className={inputClass}
+                        placeholder="https://play.google.com/store/apps/details?id=..."
+                        dir="ltr"
+                        style={{ textAlign: 'left' }}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">رابط متجر App Store (iOS)</label>
+                      <input
+                        type="text"
+                        value={cfg.iosUrl || ''}
+                        onChange={(e) => update({ iosUrl: e.target.value.trim() })}
+                        className={inputClass}
+                        placeholder="https://apps.apple.com/app/id..."
+                        dir="ltr"
+                        style={{ textAlign: 'left' }}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">رسالة التحديث</label>
+                    <textarea
+                      value={cfg.message || ''}
+                      onChange={(e) => update({ message: e.target.value })}
+                      className={inputClass + ' resize-none'}
+                      placeholder="يتوفر إصدار جديد من التطبيق. يرجى التحديث للمتابعة."
+                      rows="2"
+                      dir="rtl"
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
         {/* Footer */}
         <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex items-center justify-between">
           {currentLastUpdated ? (
@@ -311,7 +450,7 @@ export default function AppSettings() {
       </div>
 
       {/* Preview - only for terms and about */}
-      {activeTab !== 'support' && (
+      {activeTab !== 'support' && activeTab !== 'appVersion' && (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-100">
             <h2 className="font-semibold text-gray-800 text-sm">معاينة المحتوى</h2>

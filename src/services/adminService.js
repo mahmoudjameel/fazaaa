@@ -1491,6 +1491,56 @@ export const createTestDispatchOrder = async (orderData) => {
   return createManualOrder(payload);
 };
 
+/**
+ * إلغاء طلب بحث — نفس مسار تطبيق العميل (canceled_by_client) لتشغيل onRequestUpdated وإيقاف الرنين
+ */
+export const cancelRequestAsCustomer = async (requestId, cancelReason = null) => {
+  if (!requestId) throw new Error('معرف الطلب مطلوب');
+  const orderRef = doc(db, 'requests', requestId);
+  const snap = await getDoc(orderRef);
+  if (!snap.exists()) throw new Error('الطلب غير موجود');
+
+  const requestData = snap.data();
+  if (requestData.status !== 'searching') {
+    throw new Error(`لا يمكن الإلغاء — الحالة: ${requestData.status}`);
+  }
+
+  const currentHistory = Array.isArray(requestData.history) ? requestData.history : [];
+  const status =
+    cancelReason && cancelReason !== 'other'
+      ? 'canceled_by_client_with_reason'
+      : 'canceled_by_client';
+
+  await updateDoc(orderRef, {
+    status,
+    cancelReason: cancelReason || 'other',
+    cancelledAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+    history: [
+      ...currentHistory,
+      {
+        status,
+        message: cancelReason ? `تم إلغاء الطلب. السبب: ${cancelReason}` : 'تم إلغاء الطلب',
+        timestamp: new Date().toISOString(),
+        updatedBy: 'customer',
+        cancelReason: cancelReason || null,
+      },
+    ],
+  });
+
+  const freshSnap = await getDoc(orderRef);
+  const freshHistoryLen = Array.isArray(freshSnap.data()?.history)
+    ? freshSnap.data().history.length
+    : 0;
+  if (freshHistoryLen) {
+    await updateDoc(orderRef, {
+      [`history.${freshHistoryLen - 1}.timestamp`]: serverTimestamp(),
+    });
+  }
+
+  return { success: true, status };
+};
+
 export const createManualOrder = async (orderData) => {
   try {
     const requestsRef = collection(db, 'requests');
