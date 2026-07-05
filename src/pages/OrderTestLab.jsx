@@ -26,6 +26,7 @@ import {
   getProviderById,
   createTestDispatchOrder,
   runDispatchDiagnostics,
+  validateProviderForTestDispatch,
   releaseProviderBusy,
   cancelRequestAsCustomer,
 } from '../services/adminService';
@@ -298,6 +299,26 @@ export const OrderTestLab = () => {
         selectedCustomer.name ||
         `${selectedCustomer.firstName || ''} ${selectedCustomer.lastName || ''}`.trim() ||
         'عميل';
+
+      const preflight = await validateProviderForTestDispatch(selectedProviderId, {
+        serviceId: selectedService.id,
+        serviceName: selectedService.name,
+        serviceCategory: selectedService.parentName || selectedService.name,
+        parentServiceId: selectedService.parentServiceId || null,
+        coordinates,
+      });
+
+      if (!preflight.eligible) {
+        setSubmitError(
+          preflight.error ||
+            'المزود غير مؤهل للبحث — افتح تطبيق المزود، اضغط «متصل»، وتأكد من الموقع والخدمة'
+        );
+        setDiagResult({
+          success: true,
+          report: { checks: preflight.checks || [] },
+        });
+        return;
+      }
 
       const payload = {
         customerId: selectedCustomer.id,

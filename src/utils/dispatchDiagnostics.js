@@ -5,7 +5,7 @@
 
 export const MIN_BALANCE_FOR_REQUEST = 5;
 /** مطابق لـ functions/index.js — بدون نبضة خلال هذه المدة يُستبعد المزود */
-export const MAX_PROVIDER_LOCATION_AGE_MINUTES = 15;
+export const MAX_PROVIDER_LOCATION_AGE_MINUTES = 30;
 
 export const DEFAULT_SEARCH_STAGES = [
   { maxRadius: 4, waitTime: 60, maxProviders: 3, vipOnly: false },
@@ -192,11 +192,23 @@ export function evaluateProviderEligibility(providerId, providerData, request, d
     return { eligible: false, checks, metrics: null };
   }
 
-  if (providerData.isOnline !== true) {
-    fail('is_online', 'متصل (isOnline)', `القيمة: ${String(providerData.isOnline)} — يجب true`);
+  const avail = providerData.availabilityStatus;
+  if (avail === 'paused' || avail === 'offline') {
+    fail(
+      'availability',
+      'حالة التوفر (availabilityStatus)',
+      `${avail}${providerData.offlineReason ? ` — ${providerData.offlineReason}` : ''} — اضغط «متصل» في التطبيق`
+    );
     return { eligible: false, checks, metrics: null };
   }
-  pass('is_online', 'متصل (isOnline)', 'true');
+  if (avail === 'available') {
+    pass('availability', 'حالة التوفر', 'available');
+  } else if (providerData.isOnline !== true) {
+    fail('is_online', 'متصل (isOnline)', `isOnline=${String(providerData.isOnline)}, availabilityStatus=${avail || '—'}`);
+    return { eligible: false, checks, metrics: null };
+  } else {
+    pass('is_online', 'متصل (isOnline)', `isOnline=true (${avail || 'legacy'})`);
+  }
 
   const approvalStatus =
     providerData.approvalStatus ||

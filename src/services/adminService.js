@@ -20,7 +20,7 @@ import {
 import { auth, db, functions } from './firebase';
 import { httpsCallable } from 'firebase/functions';
 import { normalizeDocumentsForStorage } from '../utils/documentUtils';
-import { diagnoseProviderForRequest } from '../utils/dispatchDiagnostics';
+import { diagnoseProviderForRequest, evaluateProviderEligibility } from '../utils/dispatchDiagnostics';
 
 // Providers Management
 export const getAllProviders = async () => {
@@ -1474,6 +1474,48 @@ export const releaseProviderBusy = async (providerId) => {
       isBusy: before.isBusy,
       activeRequestId: before.activeRequestId || null,
     },
+  };
+};
+
+/**
+ * فحص قبل إرسال طلب تجريبي — نفس شروط performStagedSearch (يمنع timed_out الفوري)
+ */
+export const validateProviderForTestDispatch = async (providerId, orderPreview) => {
+  if (!providerId?.trim()) {
+    return { eligible: false, error: 'اختر مزوداً', checks: [] };
+  }
+  const [providerSnap, settingsSnap] = await Promise.all([
+    getDoc(doc(db, 'providers', providerId.trim())),
+    getDoc(doc(db, 'settings', 'distribution')),
+  ]);
+  if (!providerSnap.exists()) {
+    return { eligible: false, error: 'المزود غير موجود', checks: [] };
+  }
+
+  const mockRequest = {
+    status: 'searching',
+    serviceId: orderPreview.serviceId,
+    serviceName: orderPreview.serviceName,
+    serviceCategory: orderPreview.serviceCategory,
+    parentServiceId: orderPreview.parentServiceId ?? null,
+    coordinates: orderPreview.coordinates,
+    rejectedProviders: [],
+  };
+
+  const result = evaluateProviderEligibility(
+    providerId.trim(),
+    { id: providerSnap.id, ...providerSnap.data() },
+    mockRequest,
+    settingsSnap.exists() ? settingsSnap.data() : {}
+  );
+
+  return {
+    eligible: result.eligible,
+    checks: result.checks,
+    metrics: result.metrics,
+    error: result.eligible
+      ? null
+      : result.checks.filter((c) => c.status === 'fail').map((c) => `${c.label}: ${c.detail}`).join(' — '),
   };
 };
 
