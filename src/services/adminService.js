@@ -20,6 +20,7 @@ import {
 import { auth, db, functions } from './firebase';
 import { httpsCallable } from 'firebase/functions';
 import { normalizeDocumentsForStorage } from '../utils/documentUtils';
+import { withNormalizedProviderWallet } from '../utils/providerWallet';
 import { diagnoseProviderForRequest, evaluateProviderEligibility } from '../utils/dispatchDiagnostics';
 
 // Providers Management
@@ -35,7 +36,7 @@ export const getAllProviders = async () => {
       if (data?.mergedInto) return;
       // id: doc.id يجب أن يكون أخيراً لضمان استخدام Firestore document ID دائماً
       // وعدم تجاوزه بحقل id داخل بيانات المستند
-      providers.push({ ...data, id: doc.id });
+      providers.push(withNormalizedProviderWallet({ ...data, id: doc.id }));
     });
     return { success: true, providers };
   } catch (error) {
@@ -265,7 +266,7 @@ export const getProviderById = async (providerId) => {
       return { success: false, error: 'المزود غير موجود' };
     }
 
-    return { success: true, provider: { ...providerSnap.data(), id: providerSnap.id } };
+    return { success: true, provider: withNormalizedProviderWallet({ ...providerSnap.data(), id: providerSnap.id }) };
   } catch (error) {
     console.error('Get provider by ID error:', error);
     throw error;
@@ -1742,19 +1743,21 @@ export const adjustProviderWallet = async (providerId, amount, type, reason) => 
         throw new Error('المزود غير موجود');
       }
 
-      const currentBalance = providerDoc.data().wallet?.balance || 0;
-      let newBalance = currentBalance;
+            const providerData = providerDoc.data();
+            const currentBalance = providerData.wallet?.balance ?? providerData.walletBalance ?? 0;
+            let newBalance = Number(currentBalance) || 0;
 
-      if (type === 'addition' || type === 'compensation') {
-        newBalance += Number(amount);
-      } else if (type === 'deduction') {
-        newBalance -= Number(amount);
-      }
+            if (type === 'addition' || type === 'compensation') {
+              newBalance += Number(amount);
+            } else if (type === 'deduction') {
+              newBalance -= Number(amount);
+            }
 
-      transaction.update(providerRef, {
-        'wallet.balance': newBalance,
-        'wallet.lastUpdated': serverTimestamp()
-      });
+            transaction.update(providerRef, {
+              'wallet.balance': newBalance,
+              'wallet.lastUpdated': serverTimestamp(),
+              walletBalance: deleteField(),
+            });
 
       return { newBalance };
     });

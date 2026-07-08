@@ -77,17 +77,18 @@ export const approveWithdrawalRequest = async (requestId, adminId, adminNotes = 
             }
 
             const providerData = providerDoc.data();
-            const currentBalance = providerData.walletBalance || 0;
+            const currentBalance = providerData.wallet?.balance ?? providerData.walletBalance ?? 0;
 
-            if (currentBalance < requestData.amount) {
+            if (Number(currentBalance) < requestData.amount) {
                 throw new Error('Insufficient balance');
             }
 
-            const newBalance = currentBalance - requestData.amount;
+            const newBalance = Number(currentBalance) - requestData.amount;
 
             // Update provider balance
             transaction.update(providerRef, {
-                walletBalance: newBalance,
+                'wallet.balance': newBalance,
+                'wallet.lastUpdated': serverTimestamp(),
                 updatedAt: serverTimestamp(),
             });
 
@@ -105,6 +106,7 @@ export const approveWithdrawalRequest = async (requestId, adminId, adminNotes = 
             transaction.set(doc(transactionsRef), {
                 type: 'withdrawal',
                 amount: requestData.amount,
+                balance: newBalance,
                 status: 'approved',
                 note: `سحب رصيد - ${adminNotes || 'تمت الموافقة'}`,
                 timestamp: serverTimestamp(),

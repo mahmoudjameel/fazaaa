@@ -42,6 +42,12 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../services/firebase';
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
+import {
+  resolveProviderWalletBalance,
+  withNormalizedProviderWallet,
+  isLowWalletBalance,
+  LOW_BALANCE_THRESHOLD,
+} from '../utils/providerWallet';
 import SAUDI_CITIES_RAW from '../services/cities.json';
 
 export const NATIONALITIES = [
@@ -262,7 +268,8 @@ export const Providers = () => {
   const fetchProviders = async () => {
     try {
       const result = await getAllProviders();
-      setProviders(result.providers);
+      const normalized = (result.providers || []).map((p) => withNormalizedProviderWallet(p));
+      setProviders(normalized);
     } catch (error) {
       console.error('Error fetching providers:', error);
     } finally {
@@ -288,7 +295,7 @@ export const Providers = () => {
   };
 
   useEffect(() => {
-    if (selectedProvider) {
+    if (selectedProvider?.id) {
       fetchWalletData();
       fetchOrderStats();
       fetchProviderBlocks();
@@ -296,7 +303,7 @@ export const Providers = () => {
     } else {
       setProviderBlocks([]);
     }
-  }, [selectedProvider]);
+  }, [selectedProvider?.id]);
 
   const fetchProviderBlocks = async () => {
     if (!selectedProvider?.id) return;
@@ -340,15 +347,29 @@ export const Providers = () => {
   };
 
   const fetchWalletData = async () => {
-    if (!selectedProvider) return;
+    if (!selectedProvider?.id) return;
+    const providerId = selectedProvider.id;
     setLoadingWallet(true);
     try {
-      const result = await getProviderWalletHistory(selectedProvider.id);
-      if (result.success) {
-        setWalletHistory(result.history);
+      const [historyResult, providerResult] = await Promise.all([
+        getProviderWalletHistory(providerId),
+        getProviderById(providerId),
+      ]);
+
+      const history = historyResult.success ? historyResult.history : [];
+      setWalletHistory(history);
+
+      if (providerResult.success && providerResult.provider) {
+        const normalized = withNormalizedProviderWallet(providerResult.provider, history);
+        setSelectedProvider((prev) => (prev?.id === providerId ? normalized : prev));
+        setProviders((prev) => prev.map((p) => (p.id === providerId ? normalized : p)));
+      } else if (history.length > 0) {
+        setSelectedProvider((prev) =>
+          prev?.id === providerId ? withNormalizedProviderWallet(prev, history) : prev
+        );
       }
     } catch (error) {
-      console.error('Error fetching wallet history:', error);
+      console.error('Error fetching wallet data:', error);
     } finally {
       setLoadingWallet(false);
     }
@@ -561,9 +582,12 @@ export const Providers = () => {
       );
     }
 
-    // Filter by Low Balance (<= 25 SAR)
+    // فلتر الرصيد المنخفض: 25 ريال فأقل
     if (lowBalanceFilter) {
-      filtered = filtered.filter(p => (p.wallet?.balance || 0) <= 25);
+      filtered = filtered.filter((p) => isLowWalletBalance(p));
+      filtered = [...filtered].sort(
+        (a, b) => resolveProviderWalletBalance(a) - resolveProviderWalletBalance(b)
+      );
     }
 
     if (statusFilter !== 'all') {
@@ -1191,8 +1215,13 @@ export const Providers = () => {
                   className="w-4 h-4 text-red-600 rounded focus:ring-red-500 cursor-pointer"
                 />
                 <label htmlFor="lowBalance" className="text-sm font-bold text-red-700 cursor-pointer whitespace-nowrap">
-                  رصيد منخفض (≤ 25)
+                  رصيد منخفض ({LOW_BALANCE_THRESHOLD} فأقل)
                 </label>
+                {lowBalanceFilter && (
+                  <span className="text-xs font-semibold text-red-600 bg-white px-2 py-0.5 rounded-full border border-red-100">
+                    {filteredProviders.length}
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -1204,6 +1233,7 @@ export const Providers = () => {
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-6 py-4 text-right text-sm font-semibold text-gray-700">المزود</th>
+                    <th className="px-6 py-4 text-right text-sm font-semibold text-gray-700">الرصيد</th>
                     <th className="px-6 py-4 text-right text-sm font-semibold text-gray-700">الخدمات</th>
                     <th className="px-6 py-4 text-right text-sm font-semibold text-gray-700">المجموعة</th>
                     <th className="px-6 py-4 text-right text-sm font-semibold text-gray-700">النوع</th>
@@ -1216,8 +1246,10 @@ export const Providers = () => {
                 <tbody className="divide-y divide-gray-200">
                   {filteredProviders.length === 0 ? (
                     <tr>
-                      <td colSpan="8" className="px-6 py-12 text-center text-gray-500">
-                        لا توجد نتائج
+                      <td colSpan="9" className="px-6 py-12 text-center text-gray-500">
+                        {lowBalanceFilter
+                          ? `لا يوجد مزودون برصيد ${LOW_BALANCE_THRESHOLD} ريال أو أقل`
+                          : 'لا توجد نتائج'}
                       </td>
                     </tr>
                   ) : (
@@ -1229,6 +1261,8 @@ export const Providers = () => {
                       const groupBadge = getGroupBadge(provider.groupId);
                       const StatusIcon = statusBadge.icon;
                       const TypeIcon = typeBadge.icon;
+                      const walletBalance = resolveProviderWalletBalance(provider);
+                      const isLowBalance = isLowWalletBalance(provider);
                       return (
                         <tr key={provider.id} className="hover:bg-gray-50">
                           <td className="px-6 py-4">
@@ -1260,6 +1294,17 @@ export const Providers = () => {
                                 </div>
                               )}
                             </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span
+                              className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold ${
+                                isLowBalance
+                                  ? 'bg-red-100 text-red-700'
+                                  : 'bg-emerald-50 text-emerald-700'
+                              }`}
+                            >
+                              {walletBalance.toFixed(2)} ر.س
+                            </span>
                           </td>
                           <td className="px-6 py-4">
                             <div className="flex flex-wrap gap-2">
@@ -1649,11 +1694,9 @@ export const Providers = () => {
                     >
                       <Tag size={18} />
                       <span>المحفظة</span>
-                      {selectedProvider.wallet && (
-                        <span className="bg-teal-50 text-teal-700 px-2 py-0.5 rounded-full text-xs">
-                          {selectedProvider.wallet.balance?.toFixed(1)}
-                        </span>
-                      )}
+                      <span className="bg-teal-50 text-teal-700 px-2 py-0.5 rounded-full text-xs">
+                        {resolveProviderWalletBalance(selectedProvider, walletHistory).toFixed(1)}
+                      </span>
                     </button>
                     <button
                       onClick={() => setActiveTab('orders')}
@@ -2133,7 +2176,9 @@ export const Providers = () => {
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div className="bg-gradient-to-br from-teal-500 to-teal-600 p-5 rounded-2xl text-white shadow-lg">
                           <p className="text-teal-100 text-sm font-semibold mb-1">الرصيد الحالي</p>
-                          <h4 className="text-3xl font-black">{selectedProvider.wallet?.balance?.toFixed(2) || '0.00'} ر.س</h4>
+                          <h4 className="text-3xl font-black">
+                            {resolveProviderWalletBalance(selectedProvider, walletHistory).toFixed(2)} ر.س
+                          </h4>
                         </div>
                         <div className="bg-white p-5 rounded-2xl border-2 border-gray-100 shadow-sm">
                           <p className="text-gray-500 text-sm font-semibold mb-1">إجمالي الإيداعات</p>
