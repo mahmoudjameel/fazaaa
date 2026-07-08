@@ -54,9 +54,6 @@ export function isProfileDocumentVerified(docs, fieldKey) {
 export const PROFILE_DOCUMENT_FIELDS = [
   { key: 'idImage', label: 'الهوية / الإقامة' },
   { key: 'equipmentPhoto', label: 'صورة العدة' },
-  { key: 'carPhotos', label: 'صور السيارة' },
-  { key: 'licensePhoto', label: 'رخصة القيادة' },
-  { key: 'registrationPhoto', label: 'استمارة السيارة' },
 ];
 
 export function resolveProfileDocuments(docs = {}) {

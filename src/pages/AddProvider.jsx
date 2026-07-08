@@ -6,9 +6,7 @@ import {
     Plus,
     Tag,
     FileImage,
-    Wrench,
-    Car,
-    FileText
+    Wrench
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -24,10 +22,6 @@ import SAUDI_CITIES_RAW from '../services/cities.json';
 const DOCUMENT_FIELDS = [
     { key: 'idImage', title: 'الهوية / الإقامة', subtitle: 'صورة الهوية الوطنية أو الإقامة', icon: FileImage },
     { key: 'equipmentPhoto', title: 'صورة العدة', subtitle: 'العدة والأدوات التي تعمل بها', icon: Wrench },
-    { key: 'carFront', title: 'السيارة - صورة أمامية', subtitle: 'صورة واضحة للسيارة من الأمام', icon: Car },
-    { key: 'carSide', title: 'السيارة - صورة جانبية', subtitle: 'صورة واضحة للسيارة من الجانب', icon: Car },
-    { key: 'licensePhoto', title: 'رخصة القيادة', subtitle: 'صورة أو ملف PDF أو Word', icon: FileText },
-    { key: 'registrationPhoto', title: 'استمارة السيارة', subtitle: 'صورة أو ملف PDF أو Word', icon: FileText },
 ];
 
 const SAUDI_CITIES = [...SAUDI_CITIES_RAW]
@@ -45,10 +39,6 @@ export const AddProvider = () => {
     const [documentFiles, setDocumentFiles] = useState({
         idImage: null,
         equipmentPhoto: null,
-        carFront: null,
-        carSide: null,
-        licensePhoto: null,
-        registrationPhoto: null,
     });
     const [providerFormData, setProviderFormData] = useState({
         firstName: '',
@@ -124,10 +114,6 @@ export const AddProvider = () => {
             documentUrls = {
                 idImage: wrapUrl(await uploadOne(documentFiles.idImage, 'id')),
                 equipmentPhoto: wrapUrl(await uploadOne(documentFiles.equipmentPhoto, 'equipment')),
-                carPhotoFront: wrapUrl(await uploadOne(documentFiles.carFront, 'car_front')),
-                carPhotoSide: wrapUrl(await uploadOne(documentFiles.carSide, 'car_side')),
-                licensePhoto: wrapUrl(await uploadOne(documentFiles.licensePhoto, 'license')),
-                registrationPhoto: wrapUrl(await uploadOne(documentFiles.registrationPhoto, 'registration')),
             };
             Object.keys(documentUrls).forEach((k) => {
                 if (!documentUrls[k]) delete documentUrls[k];
@@ -336,7 +322,7 @@ export const AddProvider = () => {
                     <div className="space-y-6">
                         <div>
                             <h3 className="text-lg font-bold text-gray-700 border-r-4 border-blue-500 pr-3">المستندات الثبوتية</h3>
-                            <p className="text-sm text-gray-500 mt-1">يمكنك رفع صور (JPG, PNG) أو ملفات PDF أو Word — جميع الحقول اختيارية</p>
+                            <p className="text-sm text-gray-500 mt-1">المطلوب فقط: الهوية / الإقامة + صورة العدة</p>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             {DOCUMENT_FIELDS.map((field) => {

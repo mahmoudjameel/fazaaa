@@ -28,8 +28,13 @@ export const CityManagers = () => {
       const citiesRef = collection(db, 'cities');
       const citiesSnapshot = await getDocs(citiesRef);
       const citiesList = [];
-      citiesSnapshot.forEach((doc) => {
-        citiesList.push({ id: doc.id, ...doc.data() });
+      citiesSnapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        citiesList.push({
+          ...data,
+          id: docSnap.id,
+          slug: data.slug || data.id || docSnap.id,
+        });
       });
       setCities(citiesList);
 

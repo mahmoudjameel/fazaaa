@@ -70,10 +70,6 @@ const SAUDI_CITIES = [...SAUDI_CITIES_RAW]
 const DOCUMENT_TYPE_OPTIONS = [
   { key: 'idImage', label: 'الهوية / الإقامة' },
   { key: 'equipmentPhoto', label: 'صورة العدة' },
-  { key: 'carPhotoFront', label: 'السيارة - أمام' },
-  { key: 'carPhotoSide', label: 'السيارة - جانبي' },
-  { key: 'licensePhoto', label: 'رخصة القيادة' },
-  { key: 'registrationPhoto', label: 'استمارة السيارة' },
 ];
 
 export const Providers = () => {

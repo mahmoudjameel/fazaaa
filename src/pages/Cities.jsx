@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Search, Plus, Edit2, Trash2, MapPin, Users as UsersIcon, CheckCircle, XCircle, Settings } from 'lucide-react';
-import { collection, getDocs, doc, updateDoc, deleteDoc, addDoc } from 'firebase/firestore';
+import { Search, Plus, Edit2, Trash2, MapPin, Users as UsersIcon, CheckCircle, XCircle, Settings, ArrowUp, ArrowDown } from 'lucide-react';
+import { collection, getDocs, doc, updateDoc, deleteDoc, addDoc, setDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import SAUDI_CITIES_DEFAULTS from '../services/cities.json';
 
@@ -19,7 +19,9 @@ export const Cities = () => {
     managerName: '',
     managerPhone: '',
     serviceRadius: 50,
-    priority: 'medium'
+    priority: 'medium',
+    sortOrder: 0,
+    slug: '',
   });
 
   useEffect(() => {
@@ -31,8 +33,20 @@ export const Cities = () => {
       const citiesRef = collection(db, 'cities');
       const querySnapshot = await getDocs(citiesRef);
       const citiesList = [];
-      querySnapshot.forEach((doc) => {
-        citiesList.push({ id: doc.id, ...doc.data() });
+      querySnapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        // docSnap.id هو معرّف Firestore — data.id من JSON (مثل riyadh) slug وليس مسار المستند
+        citiesList.push({
+          ...data,
+          id: docSnap.id,
+          slug: data.slug || data.id || docSnap.id,
+        });
+      });
+      citiesList.sort((a, b) => {
+        const orderA = typeof a.sortOrder === 'number' ? a.sortOrder : 9999;
+        const orderB = typeof b.sortOrder === 'number' ? b.sortOrder : 9999;
+        if (orderA !== orderB) return orderA - orderB;
+        return String(a.name || '').localeCompare(String(b.name || ''), 'ar');
       });
       setCities(citiesList);
     } catch (error) {
@@ -48,11 +62,42 @@ export const Cities = () => {
     city.managerName?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const reorderCity = async (cityId, direction) => {
+    const sorted = [...cities].sort((a, b) => {
+      const orderA = typeof a.sortOrder === 'number' ? a.sortOrder : 9999;
+      const orderB = typeof b.sortOrder === 'number' ? b.sortOrder : 9999;
+      if (orderA !== orderB) return orderA - orderB;
+      return String(a.name || '').localeCompare(String(b.name || ''), 'ar');
+    });
+    const idx = sorted.findIndex((c) => c.id === cityId);
+    const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (idx < 0 || targetIdx < 0 || targetIdx >= sorted.length) return;
+
+    [sorted[idx], sorted[targetIdx]] = [sorted[targetIdx], sorted[idx]];
+
+    try {
+      await Promise.all(
+        sorted.map((city, index) =>
+          updateDoc(doc(db, 'cities', city.id), {
+            sortOrder: index,
+            updatedAt: new Date().toISOString(),
+          })
+        )
+      );
+      await fetchCities();
+    } catch (error) {
+      console.error('Error reordering city:', error);
+      alert('فشل تغيير ترتيب المدينة');
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
       const cityData = {
         ...formData,
+        slug: formData.slug || selectedCity?.slug || undefined,
+        sortOrder: parseInt(formData.sortOrder, 10) || 0,
         coordinates: {
           lat: parseFloat(formData.coordinates.lat),
           lng: parseFloat(formData.coordinates.lng)
@@ -71,6 +116,9 @@ export const Cities = () => {
         const citiesRef = collection(db, 'cities');
         const docRef = await addDoc(citiesRef, {
           ...cityData,
+          sortOrder: Number.isFinite(parseInt(formData.sortOrder, 10))
+            ? parseInt(formData.sortOrder, 10)
+            : cities.length,
           createdAt: new Date().toISOString()
         });
         setCities([...cities, { id: docRef.id, ...cityData, createdAt: new Date().toISOString() }]);
@@ -121,7 +169,9 @@ export const Cities = () => {
       managerName: city.managerName || '',
       managerPhone: city.managerPhone || '',
       serviceRadius: city.serviceRadius || 50,
-      priority: city.priority || 'medium'
+      priority: city.priority || 'medium',
+      sortOrder: typeof city.sortOrder === 'number' ? city.sortOrder : 0,
+      slug: city.slug || '',
     });
     setIsModalOpen(true);
   };
@@ -137,7 +187,9 @@ export const Cities = () => {
       managerName: '',
       managerPhone: '',
       serviceRadius: 50,
-      priority: 'medium'
+      priority: 'medium',
+      sortOrder: cities.length,
+      slug: '',
     });
   };
 
@@ -146,18 +198,24 @@ export const Cities = () => {
     
     setLoading(true);
     try {
-      const citiesRef = collection(db, 'cities');
-      for (const defaultCity of SAUDI_CITIES_DEFAULTS) {
-        // Check if exists by name to avoid duplicates
-        const alreadyExists = cities.some(c => c.name === defaultCity.name);
+      for (let index = 0; index < SAUDI_CITIES_DEFAULTS.length; index++) {
+        const defaultCity = SAUDI_CITIES_DEFAULTS[index];
+        const slug = defaultCity.id;
+        const alreadyExists = cities.some(
+          (c) => c.slug === slug || c.id === slug || c.name === defaultCity.name
+        );
         if (!alreadyExists) {
-          await addDoc(citiesRef, {
-            ...defaultCity,
+          await setDoc(doc(db, 'cities', slug), {
+            name: defaultCity.name,
+            nameEn: defaultCity.nameEn,
+            coordinates: defaultCity.coordinates,
+            slug,
+            sortOrder: index,
             isActive: true,
             serviceRadius: 50,
             priority: 'medium',
             createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
+            updatedAt: new Date().toISOString(),
           });
         }
       }
@@ -193,7 +251,7 @@ export const Cities = () => {
       <div className="mb-4 sm:mb-6 md:mb-8 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 sm:gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-black text-gray-800 mb-1 sm:mb-2">إدارة المدن</h1>
-          <p className="text-sm sm:text-base text-gray-600">إضافة وتعديل المدن وتعيين مديري المدن</p>
+          <p className="text-sm sm:text-base text-gray-600">إضافة وتعديل المدن وترتيب ظهورها في التطبيقات</p>
         </div>
         <div className="flex flex-col sm:flex-row gap-2">
           {cities.length === 0 && (
@@ -306,6 +364,9 @@ export const Cities = () => {
                         }`}>
                           {city.isActive !== false ? 'نشط' : 'معطل'}
                         </span>
+                        <span className="px-2 sm:px-3 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 whitespace-nowrap">
+                          ترتيب: {(typeof city.sortOrder === 'number' ? city.sortOrder : 0) + 1}
+                        </span>
                       </div>
                       <div className="space-y-1 text-xs sm:text-sm text-gray-600">
                         {city.managerName && (
@@ -329,6 +390,26 @@ export const Cities = () => {
                     </div>
                   </div>
                   <div className="flex gap-2 sm:flex-shrink-0">
+                    {!searchTerm && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => reorderCity(city.id, 'up')}
+                          className="p-2 bg-gray-50 text-gray-600 rounded-lg hover:bg-gray-100 transition-all"
+                          aria-label="رفع الترتيب"
+                        >
+                          <ArrowUp className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => reorderCity(city.id, 'down')}
+                          className="p-2 bg-gray-50 text-gray-600 rounded-lg hover:bg-gray-100 transition-all"
+                          aria-label="خفض الترتيب"
+                        >
+                          <ArrowDown className="w-4 h-4" />
+                        </button>
+                      </>
+                    )}
                     <button
                       onClick={() => openEditModal(city)}
                       className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-all"
@@ -402,6 +483,30 @@ export const Cities = () => {
                     className="w-full px-3 sm:px-4 py-2 sm:py-3 border-2 border-gray-200 rounded-lg focus:border-green-400 focus:ring-green-500 focus:outline-none text-sm sm:text-base"
                     placeholder="Enter city name"
                   />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                <div>
+                  <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-1 sm:mb-2">معرّف المدينة (slug)</label>
+                  <input
+                    type="text"
+                    value={formData.slug || ''}
+                    onChange={(e) => setFormData({ ...formData, slug: e.target.value.trim().toLowerCase() })}
+                    className="w-full px-3 sm:px-4 py-2 sm:py-3 border-2 border-gray-200 rounded-lg focus:border-green-400 focus:ring-green-500 focus:outline-none text-sm sm:text-base"
+                    placeholder="riyadh"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-1 sm:mb-2">ترتيب الظهور</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={formData.sortOrder}
+                    onChange={(e) => setFormData({ ...formData, sortOrder: e.target.value })}
+                    className="w-full px-3 sm:px-4 py-2 sm:py-3 border-2 border-gray-200 rounded-lg focus:border-green-400 focus:ring-green-500 focus:outline-none text-sm sm:text-base"
+                    placeholder="0"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">0 = الأولى في القائمة</p>
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">

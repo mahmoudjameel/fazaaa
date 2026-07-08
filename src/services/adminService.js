@@ -512,8 +512,19 @@ export const getAllCities = async () => {
     const citiesRef = collection(db, 'cities');
     const querySnapshot = await getDocs(citiesRef);
     const cities = [];
-    querySnapshot.forEach((doc) => {
-      cities.push({ ...doc.data(), id: doc.id });
+    querySnapshot.forEach((docSnap) => {
+      const data = docSnap.data();
+      cities.push({
+        ...data,
+        id: docSnap.id,
+        slug: data.slug || data.id || docSnap.id,
+      });
+    });
+    cities.sort((a, b) => {
+      const orderA = typeof a.sortOrder === 'number' ? a.sortOrder : 9999;
+      const orderB = typeof b.sortOrder === 'number' ? b.sortOrder : 9999;
+      if (orderA !== orderB) return orderA - orderB;
+      return String(a.name || '').localeCompare(String(b.name || ''), 'ar');
     });
     return { success: true, cities };
   } catch (error) {
