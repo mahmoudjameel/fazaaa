@@ -1,15 +1,16 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import {
     AlertTriangle, MapPin, Clock, CheckCircle, Users,
     Timer, RefreshCw, XCircle, Wrench, PhoneOff,
     Filter, Search, ChevronDown,
 } from 'lucide-react';
 import {
-    collection, query, orderBy, onSnapshot,
+    collection, query, orderBy, onSnapshot, writeBatch,
     doc, updateDoc, getDoc, serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { formatEscalationOrderLabel } from '../utils/orderNumber';
+import { isUnresolvedEscalation, markEscalationsSeen } from '../utils/escalationStatus';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ar } from 'date-fns/locale';
 
@@ -72,16 +73,11 @@ export const Escalations = () => {
     const [typeFilter, setTypeFilter] = useState('all');        // 'all' | 'no_providers' | 'all_rejected' | 'search_timeout'
     const [searchText, setSearchText] = useState('');
     const [resolvingId, setResolvingId] = useState(null);
+    const [resolvingAll, setResolvingAll] = useState(false);
     const [orderNumberByRequestId, setOrderNumberByRequestId] = useState({});
-    const prevNewCountRef = useRef(0);
-    const audioRef = useRef(null);
 
     // ── اشتراك Firestore ─────────────────────────────────────────────────────
     useEffect(() => {
-        audioRef.current = new Audio(
-            'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3'
-        );
-
         const q = query(
             collection(db, 'admin_escalations'),
             orderBy('createdAt', 'desc')
@@ -91,22 +87,19 @@ export const Escalations = () => {
             const items = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
             setEscalations(items);
             setLoading(false);
-
-            const newCount = items.filter((e) => e.status === 'new').length;
-            if (newCount > prevNewCountRef.current) {
-                audioRef.current?.play().catch(() => {});
-                if ('Notification' in window && Notification.permission === 'granted') {
-                    new Notification('فزّاعين: تصعيد جديد', {
-                        body: 'طلب لم يُلبَّ — يحتاج مراجعة.',
-                        icon: '/fzaeen-logo.jpeg',
-                    });
-                }
-            }
-            prevNewCountRef.current = newCount;
         });
 
         return () => unsubscribe();
     }, []);
+
+    // فتح الشاشة = قراءة كل التصعيدات غير المحلولة الحالية (الشارة تُصفَّر)
+    useEffect(() => {
+        const openIds = escalations
+            .filter((e) => isUnresolvedEscalation(e))
+            .map((e) => e.id);
+        if (openIds.length === 0) return;
+        markEscalationsSeen(openIds);
+    }, [escalations]);
 
     // جلب orderNumber من requests للتصعيدات القديمة التي لا تحتويه
     useEffect(() => {
@@ -156,6 +149,37 @@ export const Escalations = () => {
         }
     };
 
+    /** حل كل التصعيدات غير المحلولة (الشارة الجانبية تنزل بعدها) */
+    const handleResolveAllVisible = async () => {
+        const openIds = escalations
+            .filter((e) => isUnresolvedEscalation(e))
+            .map((e) => e.id);
+        if (openIds.length === 0) return;
+        if (!window.confirm(`حل ${openIds.length} تصعيد غير محلول؟ لن يظهر رقمها في الشارة بعد الحل.`)) return;
+
+        setResolvingAll(true);
+        try {
+            const resolvedBy = localStorage.getItem('admin_role') || 'admin';
+            for (let i = 0; i < openIds.length; i += 400) {
+                const chunk = openIds.slice(i, i + 400);
+                const batch = writeBatch(db);
+                chunk.forEach((id) => {
+                    batch.update(doc(db, 'admin_escalations', id), {
+                        status: 'resolved',
+                        resolvedAt: serverTimestamp(),
+                        resolvedBy,
+                    });
+                });
+                await batch.commit();
+            }
+        } catch (e) {
+            console.error('Failed to resolve all escalations:', e);
+            window.alert('تعذر حل بعض التصعيدات. حاول مرة أخرى.');
+        } finally {
+            setResolvingAll(false);
+        }
+    };
+
     const handleReopen = async (id) => {
         try {
             await updateDoc(doc(db, 'admin_escalations', id), {
@@ -181,7 +205,9 @@ export const Escalations = () => {
 
     // ── تصفية ────────────────────────────────────────────────────────────────
     const filtered = escalations.filter((e) => {
-        if (statusFilter !== 'all' && e.status !== statusFilter) return false;
+        const unresolved = isUnresolvedEscalation(e);
+        if (statusFilter === 'new' && !unresolved) return false;
+        if (statusFilter === 'resolved' && unresolved) return false;
         if (typeFilter !== 'all' && e.type !== typeFilter) return false;
         if (searchText) {
             const q = searchText.toLowerCase();
@@ -203,23 +229,17 @@ export const Escalations = () => {
         return true;
     });
 
-    // ── إحصاءات ──────────────────────────────────────────────────────────────
+    // ── إحصاءات — «جديد» = غير محلول فقط (المحلولة لا تدخل الرقم) ─────────────
     const counts = {
         all: escalations.length,
-        new: escalations.filter((e) => e.status === 'new').length,
-        resolved: escalations.filter((e) => e.status === 'resolved').length,
-    };
-
-    const typeCounts = {
-        no_providers: escalations.filter((e) => e.type === 'no_providers').length,
-        all_rejected: escalations.filter((e) => e.type === 'all_rejected').length,
-        search_timeout: escalations.filter((e) => e.type === 'search_timeout').length,
+        new: escalations.filter((e) => isUnresolvedEscalation(e)).length,
+        resolved: escalations.filter((e) => !isUnresolvedEscalation(e)).length,
     };
 
     const typeCountsNew = {
-        no_providers: escalations.filter((e) => e.type === 'no_providers' && e.status === 'new').length,
-        all_rejected: escalations.filter((e) => e.type === 'all_rejected' && e.status === 'new').length,
-        search_timeout: escalations.filter((e) => e.type === 'search_timeout' && e.status === 'new').length,
+        no_providers: escalations.filter((e) => e.type === 'no_providers' && isUnresolvedEscalation(e)).length,
+        all_rejected: escalations.filter((e) => e.type === 'all_rejected' && isUnresolvedEscalation(e)).length,
+        search_timeout: escalations.filter((e) => e.type === 'search_timeout' && isUnresolvedEscalation(e)).length,
     };
 
     // ── مساعد وقت ─────────────────────────────────────────────────────────────
@@ -240,7 +260,7 @@ export const Escalations = () => {
                         <h1 className="text-3xl font-black text-gray-800">تصعيدات النظام</h1>
                         {counts.new > 0 && (
                             <span className="px-2.5 py-1 bg-red-500 text-white text-sm font-black rounded-full animate-pulse">
-                                {counts.new} جديد
+                                {counts.new} غير محلول
                             </span>
                         )}
                     </div>
@@ -249,11 +269,22 @@ export const Escalations = () => {
                     </p>
                 </div>
 
-                {/* بطاقات الإجمالي */}
-                <div className="flex gap-3">
+                {/* بطاقات الإجمالي + حل الكل غير المحلول */}
+                <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
+                    {counts.new > 0 && (
+                        <button
+                            type="button"
+                            onClick={handleResolveAllVisible}
+                            disabled={resolvingAll}
+                            className="px-4 py-2.5 rounded-2xl bg-green-600 text-white text-sm font-bold hover:bg-green-700 disabled:opacity-60 whitespace-nowrap"
+                        >
+                            {resolvingAll ? 'جاري الحل...' : `حل الكل غير المحلول (${counts.new})`}
+                        </button>
+                    )}
+                    <div className="flex gap-3">
                     <div className="bg-red-50 border border-red-200 rounded-2xl px-4 py-3 text-center min-w-[72px]">
                         <div className="text-2xl font-black text-red-600">{counts.new}</div>
-                        <div className="text-xs text-red-500 font-bold mt-0.5">جديد</div>
+                        <div className="text-xs text-red-500 font-bold mt-0.5">غير محلول</div>
                     </div>
                     <div className="bg-green-50 border border-green-200 rounded-2xl px-4 py-3 text-center min-w-[72px]">
                         <div className="text-2xl font-black text-green-600">{counts.resolved}</div>
@@ -262,6 +293,7 @@ export const Escalations = () => {
                     <div className="bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 text-center min-w-[72px]">
                         <div className="text-2xl font-black text-gray-600">{counts.all}</div>
                         <div className="text-xs text-gray-500 font-bold mt-0.5">الكل</div>
+                    </div>
                     </div>
                 </div>
             </div>
@@ -287,13 +319,9 @@ export const Escalations = () => {
                                 </div>
                                 <div className="text-right">
                                     <div className="text-2xl font-black text-gray-800">
-                                        {typeCounts[type]}
+                                        {typeCountsNew[type]}
                                     </div>
-                                    {typeCountsNew[type] > 0 && (
-                                        <div className="text-xs font-bold text-red-500">
-                                            {typeCountsNew[type]} جديد
-                                        </div>
-                                    )}
+                                    <div className="text-xs font-bold text-gray-400">غير محلول</div>
                                 </div>
                             </div>
                             <div className="text-sm font-bold text-gray-700">{cfg.label}</div>
@@ -308,7 +336,7 @@ export const Escalations = () => {
                 <div className="flex gap-1.5 bg-white p-1.5 rounded-2xl border border-gray-100 shadow-sm">
                     {[
                         { id: 'all',      label: `الكل (${counts.all})` },
-                        { id: 'new',      label: `جديد (${counts.new})` },
+                        { id: 'new',      label: `غير محلول (${counts.new})` },
                         { id: 'resolved', label: `تم الحل (${counts.resolved})` },
                     ].map((tab) => (
                         <button
@@ -364,7 +392,7 @@ export const Escalations = () => {
                     {filtered.map((esc) => {
                         const cfg = TYPE_CONFIG[esc.type] || FALLBACK_TYPE;
                         const Icon = cfg.icon;
-                        const isNew = esc.status === 'new';
+                        const isNew = isUnresolvedEscalation(esc);
                         const isResolving = resolvingId === esc.id;
                         const createdDate = toDate(esc.createdAt);
                         const resolvedDate = toDate(esc.resolvedAt);

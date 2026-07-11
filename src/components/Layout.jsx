@@ -10,6 +10,7 @@ import { useState, useEffect, useRef } from 'react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../services/firebase';
 import { signOut } from 'firebase/auth';
+import { isUnresolvedEscalation, isUnreadEscalation, getSeenEscalationIds, ESCALATIONS_SEEN_EVENT } from '../utils/escalationStatus';
 
 export const Layout = () => {
   const navigate = useNavigate();
@@ -19,8 +20,17 @@ export const Layout = () => {
   const [pendingReviewCount, setPendingReviewCount] = useState(0);
   const [openTicketsCount, setOpenTicketsCount] = useState(0);
   const [newEscalationsCount, setNewEscalationsCount] = useState(0);
-  const lastCountRef = useRef(0);
+  const lastPendingReviewCountRef = useRef(0);
+  const escalationsPrimedRef = useRef(false);
+  const latestUnresolvedRef = useRef([]);
   const audioRef = useRef(new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3'));
+
+  const refreshUnreadBadge = () => {
+    const unread = latestUnresolvedRef.current.filter((d) =>
+      isUnreadEscalation(d.data(), d.id)
+    );
+    setNewEscalationsCount(unread.length);
+  };
 
   useEffect(() => {
     if ('Notification' in window && Notification.permission === 'default') {
@@ -30,7 +40,7 @@ export const Layout = () => {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const count = snapshot.size;
       setPendingReviewCount(count);
-      if (count > lastCountRef.current) {
+      if (count > lastPendingReviewCountRef.current) {
         audioRef.current.play().catch(() => {});
         if ('Notification' in window && Notification.permission === 'granted') {
           new Notification('فزّاعين: طلب جديد يحتاج مراجعة', {
@@ -39,29 +49,64 @@ export const Layout = () => {
           });
         }
       }
-      lastCountRef.current = count;
+      lastPendingReviewCountRef.current = count;
     });
     const tq = query(collection(db, 'support_tickets'), where('status', '==', 'open'));
     const unsubTickets = onSnapshot(tq, (snapshot) => {
       setOpenTicketsCount(snapshot.size);
     });
 
+    // الشارة = تصعيدات غير مقروءة فقط؛ الصوت/الإشعار عند وصول تصعيد جديد بعد التحميل
     const eq = query(collection(db, 'admin_escalations'), where('status', '==', 'new'));
     const unsubEscalations = onSnapshot(eq, (snapshot) => {
-      const count = snapshot.size;
-      if (count > newEscalationsCount) {
-        audioRef.current.play().catch(() => {});
-        if ('Notification' in window && Notification.permission === 'granted') {
-          new Notification('فزّاعين: تصعيد جديد', {
-            body: `${count} طلبات لم تُلبَّ — تحتاج مراجعة.`,
-            icon: '/fzaeen-logo.jpeg',
-          });
-        }
+      const unresolvedDocs = snapshot.docs.filter((d) => isUnresolvedEscalation(d.data()));
+      latestUnresolvedRef.current = unresolvedDocs;
+      refreshUnreadBadge();
+
+      if (!escalationsPrimedRef.current) {
+        escalationsPrimedRef.current = true;
+        return;
       }
-      setNewEscalationsCount(count);
+
+      const seenBefore = getSeenEscalationIds();
+      const newlyAdded = snapshot.docChanges().filter((change) => {
+        if (change.type !== 'added') return false;
+        if (!isUnresolvedEscalation(change.doc.data())) return false;
+        // جديد فعلاً وغير مقروء
+        return !seenBefore.has(change.doc.id);
+      });
+      if (newlyAdded.length === 0) return;
+
+      // لا تكرر الصوت إذا الأدمن على شاشة التصعيدات (ستُعلَّم مقروءة فوراً) — الصوت يبقى ليعرف بالتحديث
+      audioRef.current.play().catch(() => {});
+      if ('Notification' in window && Notification.permission === 'granted') {
+        const first = newlyAdded[0].doc.data() || {};
+        const label =
+          first.type === 'no_providers'
+            ? 'لا يوجد مزودون'
+            : first.type === 'all_rejected'
+              ? 'جميع المزودين رفضوا'
+              : 'انتهاء وقت البحث';
+        new Notification('فزّاعين: تصعيد جديد', {
+          body:
+            newlyAdded.length === 1
+              ? `${label} — طلب يحتاج مراجعة.`
+              : `${newlyAdded.length} تصعيدات جديدة تحتاج مراجعة.`,
+          icon: '/fzaeen-logo.jpeg',
+          tag: `escalation-${newlyAdded[0].doc.id}`,
+        });
+      }
     });
 
-    return () => { unsubscribe(); unsubTickets(); unsubEscalations(); };
+    const onSeenUpdated = () => refreshUnreadBadge();
+    window.addEventListener(ESCALATIONS_SEEN_EVENT, onSeenUpdated);
+
+    return () => {
+      unsubscribe();
+      unsubTickets();
+      unsubEscalations();
+      window.removeEventListener(ESCALATIONS_SEEN_EVENT, onSeenUpdated);
+    };
   }, []);
 
   useEffect(() => {

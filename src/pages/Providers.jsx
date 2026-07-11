@@ -91,6 +91,7 @@ export const Providers = () => {
   const [groupFilter, setGroupFilter] = useState('all');
   const [serviceFilter, setServiceFilter] = useState('all');
   const [cityFilter, setCityFilter] = useState('all');
+  const [nationalityFilter, setNationalityFilter] = useState('all');
   const [selectedProvider, setSelectedProvider] = useState(null);
   const [selectedProvidersForGroup, setSelectedProvidersForGroup] = useState([]);
   const [lowBalanceFilter, setLowBalanceFilter] = useState(false);
@@ -203,7 +204,7 @@ export const Providers = () => {
 
   useEffect(() => {
     filterProviders();
-  }, [providers, mainServices, searchTerm, statusFilter, typeFilter, groupFilter, serviceFilter, cityFilter, lowBalanceFilter]);
+  }, [providers, mainServices, searchTerm, statusFilter, typeFilter, groupFilter, serviceFilter, cityFilter, nationalityFilter, lowBalanceFilter]);
 
   const getProviderServiceList = (provider) => {
     const services = provider?.services || {};
@@ -648,6 +649,25 @@ export const Providers = () => {
           normalizeCityText(providerCityLabel) === selectedCityLabelNorm
         );
       });
+    }
+
+    if (nationalityFilter !== 'all') {
+      if (nationalityFilter === 'unset') {
+        filtered = filtered.filter((p) => !p.nationality);
+      } else {
+        const selectedNat =
+          NATIONALITIES.find((n) => n.value === nationalityFilter) || null;
+        const selectedLabel = selectedNat?.label || nationalityFilter;
+        filtered = filtered.filter((p) => {
+          const raw = (p.nationality || '').toString().trim();
+          if (!raw) return false;
+          return (
+            raw === nationalityFilter ||
+            raw === selectedLabel ||
+            raw.toLowerCase() === nationalityFilter.toLowerCase()
+          );
+        });
+      }
     }
 
     if (searchTerm) {
@@ -1137,9 +1157,9 @@ export const Providers = () => {
           </div>
 
           {/* Filters */}
-          <div className="bg-white rounded-2xl shadow-lg p-4 md:p-6 mb-6">
-            <div className="flex flex-col md:flex-row gap-3 md:gap-4">
-              <div className="flex-1 relative">
+          <div className="bg-white rounded-2xl shadow-lg p-4 md:p-6 mb-6 overflow-hidden">
+            <div className="flex flex-col gap-3">
+              <div className="relative w-full min-w-0">
                 <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
                 <input
                   type="text"
@@ -1149,79 +1169,94 @@ export const Providers = () => {
                   className="w-full pr-10 pl-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none text-sm md:text-base"
                 />
               </div>
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="w-full md:w-auto px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none text-sm md:text-base"
-              >
-                <option value="all">جميع الحالات</option>
-                <option value="pending">قيد المراجعة</option>
-                <option value="approved">موافق عليه</option>
-                <option value="rejected">مرفوض</option>
-              </select>
-              <select
-                value={typeFilter}
-                onChange={(e) => setTypeFilter(e.target.value)}
-                className="w-full md:w-auto px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none text-sm md:text-base"
-              >
-                <option value="all">جميع الأنواع</option>
-                <option value="vip">VIP</option>
-                <option value="general">عام</option>
-              </select>
-              <select
-                value={groupFilter}
-                onChange={(e) => setGroupFilter(e.target.value)}
-                className="w-full md:w-auto px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none text-sm md:text-base"
-              >
-                <option value="all">جميع المجموعات</option>
-                <option value="no-group">بدون مجموعة</option>
-                {groups.map((group) => (
-                  <option key={group.id} value={group.id}>
-                    {group.name}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={serviceFilter}
-                onChange={(e) => setServiceFilter(e.target.value)}
-                className="w-full md:w-auto px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none text-sm md:text-base"
-              >
-                <option value="all">جميع الخدمات</option>
-                {getServiceFilterOptions().map((service) => (
-                  <option key={service.id} value={service.id}>
-                    {service.name}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={cityFilter}
-                onChange={(e) => setCityFilter(e.target.value)}
-                className="w-full md:w-auto px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none text-sm md:text-base"
-              >
-                <option value="all">جميع مدن العمل</option>
-                {SAUDI_CITIES.map((city) => (
-                  <option key={city.value} value={city.value}>
-                    {city.label}
-                  </option>
-                ))}
-              </select>
 
-              <div className="flex items-center gap-2 px-4 py-2 bg-red-50 rounded-lg border border-red-100">
-                <input
-                  type="checkbox"
-                  id="lowBalance"
-                  checked={lowBalanceFilter}
-                  onChange={(e) => setLowBalanceFilter(e.target.checked)}
-                  className="w-4 h-4 text-red-600 rounded focus:ring-red-500 cursor-pointer"
-                />
-                <label htmlFor="lowBalance" className="text-sm font-bold text-red-700 cursor-pointer whitespace-nowrap">
-                  رصيد منخفض ({LOW_BALANCE_THRESHOLD} فأقل)
-                </label>
-                {lowBalanceFilter && (
-                  <span className="text-xs font-semibold text-red-600 bg-white px-2 py-0.5 rounded-full border border-red-100">
-                    {filteredProviders.length}
-                  </span>
-                )}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="w-full min-w-0 px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none text-sm md:text-base"
+                >
+                  <option value="all">جميع الحالات</option>
+                  <option value="pending">قيد المراجعة</option>
+                  <option value="approved">موافق عليه</option>
+                  <option value="rejected">مرفوض</option>
+                </select>
+                <select
+                  value={typeFilter}
+                  onChange={(e) => setTypeFilter(e.target.value)}
+                  className="w-full min-w-0 px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none text-sm md:text-base"
+                >
+                  <option value="all">جميع الأنواع</option>
+                  <option value="vip">VIP</option>
+                  <option value="general">عام</option>
+                </select>
+                <select
+                  value={groupFilter}
+                  onChange={(e) => setGroupFilter(e.target.value)}
+                  className="w-full min-w-0 px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none text-sm md:text-base"
+                >
+                  <option value="all">جميع المجموعات</option>
+                  <option value="no-group">بدون مجموعة</option>
+                  {groups.map((group) => (
+                    <option key={group.id} value={group.id}>
+                      {group.name}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={serviceFilter}
+                  onChange={(e) => setServiceFilter(e.target.value)}
+                  className="w-full min-w-0 px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none text-sm md:text-base"
+                >
+                  <option value="all">جميع الخدمات</option>
+                  {getServiceFilterOptions().map((service) => (
+                    <option key={service.id} value={service.id}>
+                      {service.name}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={cityFilter}
+                  onChange={(e) => setCityFilter(e.target.value)}
+                  className="w-full min-w-0 px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none text-sm md:text-base"
+                >
+                  <option value="all">جميع مدن العمل</option>
+                  {SAUDI_CITIES.map((city) => (
+                    <option key={city.value} value={city.value}>
+                      {city.label}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={nationalityFilter}
+                  onChange={(e) => setNationalityFilter(e.target.value)}
+                  className="w-full min-w-0 px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none text-sm md:text-base"
+                >
+                  <option value="all">جميع الجنسيات</option>
+                  <option value="unset">بدون جنسية</option>
+                  {NATIONALITIES.map((n) => (
+                    <option key={n.value} value={n.value}>
+                      {n.label}
+                    </option>
+                  ))}
+                </select>
+                <div className="flex items-center gap-2 px-4 py-3 bg-red-50 rounded-lg border border-red-100 sm:col-span-2 lg:col-span-1 xl:col-span-2 min-w-0">
+                  <input
+                    type="checkbox"
+                    id="lowBalance"
+                    checked={lowBalanceFilter}
+                    onChange={(e) => setLowBalanceFilter(e.target.checked)}
+                    className="w-4 h-4 flex-shrink-0 text-red-600 rounded focus:ring-red-500 cursor-pointer"
+                  />
+                  <label htmlFor="lowBalance" className="text-sm font-bold text-red-700 cursor-pointer truncate">
+                    رصيد منخفض ({LOW_BALANCE_THRESHOLD} فأقل)
+                  </label>
+                  {lowBalanceFilter && (
+                    <span className="text-xs font-semibold text-red-600 bg-white px-2 py-0.5 rounded-full border border-red-100 flex-shrink-0">
+                      {filteredProviders.length}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
           </div>
