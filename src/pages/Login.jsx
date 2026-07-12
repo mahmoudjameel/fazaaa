@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Lock, Mail, Eye, EyeOff } from 'lucide-react';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
+import { signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../services/firebase';
 
@@ -80,45 +80,6 @@ export const Login = ({ onLogin }) => {
       } else {
         setError('حدث خطأ في تسجيل الدخول');
       }
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const createDefaultAdmin = async () => {
-    if (!window.confirm('هل تريد إنشاء حساب المدير الافتراضي (admin@fazaaa.com)؟')) return;
-    setIsLoading(true);
-    try {
-      // 1. Create Auth User
-
-      try {
-        await createUserWithEmailAndPassword(auth, 'admin@fazaaa.com', '123456');
-      } catch (authError) {
-        if (authError.code !== 'auth/email-already-in-use') {
-          throw authError;
-        }
-        // If already exists, we proceed to update permissions
-        console.log('User already exists, updating permissions...');
-      }
-
-      // 2. Create Admin Doc
-      const adminDocRef = doc(db, 'app_admins', auth.currentUser?.uid || (await signInWithEmailAndPassword(auth, 'admin@fazaaa.com', '123456')).user.uid);
-
-      await setDoc(adminDocRef, {
-        name: 'Main Admin',
-        email: 'admin@fazaaa.com',
-        role: 'super_admin',
-        permissions: [],
-        isActive: true,
-        createdAt: serverTimestamp()
-      });
-
-      alert('تم إنشاء حساب المدير الافتراضي بنجاح! يمكنك الآن تسجيل الدخول.');
-      setEmail('admin@fazaaa.com');
-      setPassword('123456');
-    } catch (error) {
-      console.error('Error creating default admin:', error);
-      alert('حدث خطأ: ' + error.message);
     } finally {
       setIsLoading(false);
     }
@@ -216,17 +177,6 @@ export const Login = ({ onLogin }) => {
               )}
             </button>
           </form>
-
-          {/* Dev Helper - Default Admin Setup */}
-          <div className="mt-4 text-center">
-            <button
-              type="button"
-              onClick={createDefaultAdmin}
-              className="text-xs text-blue-600 hover:underline"
-            >
-              (Dev) إعداد حساب المدير الافتراضي
-            </button>
-          </div>
 
           {/* Footer */}
           <p className="text-center text-white/90 text-xs sm:text-sm mt-4 sm:mt-6 font-medium">
