@@ -370,6 +370,52 @@ export const permanentlyDeleteCustomer = async (userId) => {
 };
 
 /**
+ * تحديث كلمة مرور مدير لوحة التحكم (مدير عام فقط)
+ */
+export const updateDashboardAdminPassword = async (adminId, newPassword) => {
+  const user = auth.currentUser;
+  if (!user) {
+    throw new Error('انتهت جلسة الدخول — سجّل الخروج ثم ادخل من جديد');
+  }
+  await user.getIdToken(true);
+
+  const fn = httpsCallable(functions, 'adminUpdateDashboardAdminPassword');
+  try {
+    const result = await fn({ adminId, newPassword });
+    return result.data;
+  } catch (error) {
+    const code = error?.code || '';
+    if (code === 'functions/unauthenticated' || code === 'unauthenticated') {
+      throw new Error('انتهت جلسة الدخول — سجّل الخروج ثم ادخل من جديد');
+    }
+    throw new Error(error?.message || 'فشل تحديث كلمة المرور');
+  }
+};
+
+/**
+ * حذف مدير لوحة التحكم من Auth + Firestore (مدير عام فقط)
+ */
+export const deleteDashboardAdmin = async (adminId) => {
+  const user = auth.currentUser;
+  if (!user) {
+    throw new Error('انتهت جلسة الدخول — سجّل الخروج ثم ادخل من جديد');
+  }
+  await user.getIdToken(true);
+
+  const fn = httpsCallable(functions, 'adminDeleteDashboardAdmin');
+  try {
+    const result = await fn({ adminId, confirm: true });
+    return result.data;
+  } catch (error) {
+    const code = error?.code || '';
+    if (code === 'functions/unauthenticated' || code === 'unauthenticated') {
+      throw new Error('انتهت جلسة الدخول — سجّل الخروج ثم ادخل من جديد');
+    }
+    throw new Error(error?.message || 'فشل حذف المدير');
+  }
+};
+
+/**
  * بناء كائن services بكل الخدمات معتمدة (للتوافق مع تطبيق المزود و Cloud Functions)
  */
 const buildApprovedServicesMap = (currentServices, nowIso = new Date().toISOString()) => {
