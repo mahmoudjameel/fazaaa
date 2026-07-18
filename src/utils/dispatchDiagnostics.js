@@ -1,10 +1,14 @@
 /**
  * منطق تشخيص التوزيع — مطابق لـ functions/index.js (performStagedSearch)
  * للاستخدام في لوحة التحكم فقط (فحص يدوي).
+ *
+ * سياسة الحالية: لا يشترط isOnline ولا حداثة lastHeartbeat —
+ * الأهلية = معتمد + رصيد + غير مشغول + موقع معروف + خدمة + ضمن النطاق.
+ * الترتيب = الأقرب ثم الأقرب.
  */
 
 export const MIN_BALANCE_FOR_REQUEST = 5;
-/** مطابق لـ functions/index.js — بدون نبضة خلال هذه المدة يُستبعد المزود */
+/** سابقاً كان يستبعد المزود بعد 30د — ملغى في التوزيع الحالي (يُعرض كمعلومة فقط) */
 export const MAX_PROVIDER_LOCATION_AGE_MINUTES = 30;
 
 export const DEFAULT_SEARCH_STAGES = [
@@ -193,21 +197,26 @@ export function evaluateProviderEligibility(providerId, providerData, request, d
   }
 
   const avail = providerData.availabilityStatus;
+  const onlineNow = avail === 'available' || (avail !== 'paused' && avail !== 'offline' && providerData.isOnline === true);
   if (avail === 'paused' || avail === 'offline') {
-    fail(
+    warn(
       'availability',
       'حالة التوفر (availabilityStatus)',
-      `${avail}${providerData.offlineReason ? ` — ${providerData.offlineReason}` : ''} — اضغط «متصل» في التطبيق`
+      `${avail}${providerData.offlineReason ? ` — ${providerData.offlineReason}` : ''} — لا يمنع الإشعار في التوزيع الحالي`
     );
-    return { eligible: false, checks, metrics: null };
-  }
-  if (avail === 'available') {
+  } else if (avail === 'available') {
     pass('availability', 'حالة التوفر', 'available');
-  } else if (providerData.isOnline !== true) {
-    fail('is_online', 'متصل (isOnline)', `isOnline=${String(providerData.isOnline)}, availabilityStatus=${avail || '—'}`);
-    return { eligible: false, checks, metrics: null };
-  } else {
+  } else if (providerData.isOnline === true) {
     pass('is_online', 'متصل (isOnline)', `isOnline=true (${avail || 'legacy'})`);
+  } else {
+    warn(
+      'is_online',
+      'متصل (isOnline)',
+      `isOnline=${String(providerData.isOnline)}, availabilityStatus=${avail || '—'} — لا يمنع الإشعار في التوزيع الحالي`
+    );
+  }
+  if (onlineNow) {
+    /* حالة اتصال حالية — معلومة فقط */
   }
 
   const approvalStatus =
@@ -242,19 +251,23 @@ export function evaluateProviderEligibility(providerId, providerData, request, d
 
   const locationFreshMs = timestampToMs(providerData.lastHeartbeat) || timestampToMs(providerData.locationUpdatedAt);
   const locationAgeMs = locationFreshMs > 0 ? nowMs - locationFreshMs : Infinity;
-  const locationAgeMin = locationAgeMs / 60000;
+  const locationAgeMin = Number.isFinite(locationAgeMs) ? locationAgeMs / 60000 : null;
 
-  if (locationFreshMs <= 0 || locationAgeMin > MAX_PROVIDER_LOCATION_AGE_MINUTES) {
-    fail(
+  if (locationFreshMs <= 0) {
+    warn(
       'location_age',
       'آخر تحديث موقع (lastHeartbeat)',
-      locationFreshMs <= 0
-        ? 'لا lastHeartbeat ولا locationUpdatedAt — Cloud Function يستبعد المزود فوراً'
-        : `منذ ${locationAgeMin.toFixed(1)} دقيقة (الحد ${MAX_PROVIDER_LOCATION_AGE_MINUTES} د) — Cloud Function يستبعد المزود`
+      'لا lastHeartbeat ولا locationUpdatedAt — يكفي وجود إحداثيات موقع محفوظة'
     );
-    return { eligible: false, checks, metrics: null };
+  } else if (locationAgeMin > MAX_PROVIDER_LOCATION_AGE_MINUTES) {
+    warn(
+      'location_age',
+      'آخر تحديث موقع (lastHeartbeat)',
+      `منذ ${locationAgeMin.toFixed(1)} دقيقة (قديم) — لا يمنع الإشعار؛ الترتيب بالمسافة من آخر موقع معروف`
+    );
+  } else {
+    pass('location_age', 'آخر تحديث موقع', `منذ ${locationAgeMin.toFixed(1)} دقيقة`);
   }
-  pass('location_age', 'آخر تحديث موقع', `منذ ${locationAgeMin.toFixed(1)} دقيقة`);
 
   const pCoords = getProviderCoords(providerData);
   if (!pCoords) {
@@ -298,9 +311,8 @@ export function evaluateProviderEligibility(providerId, providerData, request, d
   }
   pass('distance_max', 'ضمن نطاق البحث الكلي', `${dist.toFixed(2)} كم (حد ${maxDispatchRadiusKm} كم)`);
 
-  const freshnessPenalty =
-    locationAgeMin <= 2 ? 0.0 : locationAgeMin <= 5 ? 0.5 : locationAgeMin <= 10 ? 1.5 : 3.0;
-  const sortScore = dist + freshnessPenalty;
+  // ترتيب مطابق للكلاود: المسافة فقط (حداثة الموقع tie-break عند التساوي تقريباً)
+  const sortScore = dist;
   const isVIP = providerData.type === 'vip' || providerData.isVIP === true;
 
   return {
@@ -309,10 +321,11 @@ export function evaluateProviderEligibility(providerId, providerData, request, d
     metrics: {
       distanceKm: dist,
       locationAgeMin: locationFreshMs > 0 ? Math.round(locationAgeMin * 10) / 10 : null,
-      freshnessPenalty,
+      freshnessPenalty: 0,
       sortScore,
       isVIP,
       matchingServiceKeys: matchingKeys,
+      isOnlineNow: onlineNow,
     },
   };
 }
@@ -409,7 +422,7 @@ export function inferDispatchFailureSummary(request) {
       code: 'aborted_no_eligible',
       title: 'إيقاف فوري — صفر مزودين مؤهلين',
       detail:
-        'Cloud Function لم تجد أي مزوداً يمرّ فلترة lastHeartbeat (≤15 د) + isOnline + الخدمة + الرصيد + غير مشغول لحظة بدء البحث، فأوقفت الطلب مباشرة (lastSearchStage=0).',
+        'Cloud Function لم تجد أي مزود يمرّ فلترة: اعتماد + رصيد ≥ 5 + غير مشغول + موقع معروف + تطابق الخدمة + ضمن النطاق. (لا يشترط isOnline ولا حداثة النبض).',
     };
   }
   if (notified.length === 0 && stage === 0 && request.status === 'timed_out') {

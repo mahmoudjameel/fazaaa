@@ -311,7 +311,7 @@ export const OrderTestLab = () => {
       if (!preflight.eligible) {
         setSubmitError(
           preflight.error ||
-            'المزود غير مؤهل للبحث — افتح تطبيق المزود، اضغط «متصل»، وتأكد من الموقع والخدمة'
+            'المزود غير مؤهل للبحث — تأكد من: الاعتماد، الرصيد ≥ 5، غير مشغول، موقع معروف في Firestore، وتطابق الخدمة'
         );
         setDiagResult({
           success: true,
