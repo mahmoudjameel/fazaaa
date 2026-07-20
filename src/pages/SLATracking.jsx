@@ -9,6 +9,7 @@ import { collection, query, orderBy, onSnapshot, getDocs } from 'firebase/firest
 import { db } from '../services/firebase';
 import { getAllCities } from '../services/adminService';
 import SAUDI_CITIES_FALLBACK from '../services/cities.json';
+import { formatOrderNumberLabel } from '../utils/orderNumber';
 
 // ── مساعدات ──────────────────────────────────────────────────────────────────
 const calcDistanceKm = (lat1, lon1, lat2, lon2) => {
@@ -373,7 +374,7 @@ export const SLATracking = () => {
                             {order.serviceName || 'طلب خدمة'}
                           </h3>
                           <span className="text-[11px] font-mono text-gray-400 bg-gray-100 px-2 py-0.5 rounded-lg">
-                            #{(order.orderNumber || order.id).toString().slice(-8).toUpperCase()}
+                            {formatOrderNumberLabel(order.orderNumber)}
                           </span>
                           {est && (
                             <span className="text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">

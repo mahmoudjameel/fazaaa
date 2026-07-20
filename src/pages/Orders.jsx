@@ -46,6 +46,7 @@ import { ar } from 'date-fns/locale';
 import { collection, getDocs, doc, getDoc, updateDoc, query, orderBy, where, limit } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import SAUDI_CITIES_FALLBACK from '../services/cities.json';
+import { formatOrderNumberLabel } from '../utils/orderNumber';
 
 const MapPickerWidget = ({ coordinates, onLocationSelect }) => {
   const mapContainerRef = useRef(null);
@@ -1441,7 +1442,7 @@ export const Orders = () => {
                           {order.serviceName || order.serviceType || 'خدمة'}
                         </h3>
                         <span className="text-[11px] text-gray-400 font-medium bg-gray-50 px-2 py-0.5 rounded-full border border-gray-100">
-                          #{order.orderNumber != null ? order.orderNumber : (order.id ? order.id.substring(0, 8) : '--')}
+                          {formatOrderNumberLabel(order.orderNumber)}
                         </span>
                         <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${statusBadge.color}`}>
                           {statusBadge.text}
@@ -1614,7 +1615,7 @@ export const Orders = () => {
                 <div className="flex items-center justify-between">
                   <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-800 flex items-center gap-2">
                     تفاصيل الطلب
-                    <span className="text-sm font-normal text-gray-500">رقم {selectedRequest.orderNumber != null ? selectedRequest.orderNumber : (selectedRequest.id ? `#${selectedRequest.id.substring(0, 8)}` : '—')}</span>
+                    <span className="text-sm font-normal text-gray-500">رقم {formatOrderNumberLabel(selectedRequest.orderNumber)}</span>
                   </h2>
                   <div className="flex items-center gap-3">
                     <button
@@ -1669,7 +1670,7 @@ export const Orders = () => {
                       </a>
                     </div>
                     <p className="text-[11px] text-gray-400 mt-2">
-                      رقم الطلب {selectedRequest.orderNumber ?? '—'} للعرض فقط؛ التشخيص يحتاج المعرّف أعلاه.
+                      رقم الطلب {formatOrderNumberLabel(selectedRequest.orderNumber)} للعرض فقط؛ التشخيص يحتاج المعرّف أعلاه.
                     </p>
                   </div>
                 )}
@@ -3007,7 +3008,7 @@ export const Orders = () => {
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-auto">
               <div className="p-6 border-b border-gray-200 flex justify-between items-center">
-                <h2 className="text-xl font-bold text-gray-800">تعديل الطلب #{editingOrder?.id?.substring(0, 8)}</h2>
+                <h2 className="text-xl font-bold text-gray-800">تعديل الطلب {formatOrderNumberLabel(editingOrder?.orderNumber)}</h2>
                 <button onClick={() => setIsEditModalOpen(false)} className="text-gray-400 hover:text-gray-600">
                   <X size={24} />
                 </button>

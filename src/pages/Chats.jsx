@@ -4,6 +4,7 @@ import { collection, getDocs, doc, getDoc, query, orderBy, onSnapshot } from 'fi
 import { db } from '../services/firebase';
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
+import { formatOrderNumberLabel } from '../utils/orderNumber';
 
 const CHATS_COLLECTION = 'chats';
 
@@ -45,7 +46,7 @@ export const Chats = () => {
       for (const d of snapshot.docs) {
         const data = d.data();
         const orderId = d.id;
-        let orderNumber = orderId;
+        let orderNumber = null;
         let customerName = '—';
         let providerName = '—';
         let providerId = null;
@@ -53,7 +54,7 @@ export const Chats = () => {
           const requestSnap = await getDoc(doc(db, 'requests', orderId));
           if (requestSnap.exists()) {
             const req = requestSnap.data();
-            orderNumber = req.orderNumber != null ? req.orderNumber : orderId.slice(-8);
+            orderNumber = req.orderNumber != null ? req.orderNumber : null;
             providerId = req.providerId || null;
             providerName = req.providerName || '—';
             if (req.customerId) {
@@ -171,7 +172,7 @@ export const Chats = () => {
             >
               <div className="flex-1 min-w-0">
                 <div className="flex flex-wrap items-center gap-2 mb-2">
-                  <span className="font-bold text-gray-800">طلب #{chat.orderNumber}</span>
+                  <span className="font-bold text-gray-800">طلب {formatOrderNumberLabel(chat.orderNumber)}</span>
                   <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${chat.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
                     {chat.status === 'active' ? 'نشط' : 'مغلق'}
                   </span>
@@ -208,7 +209,7 @@ export const Chats = () => {
           <div className="bg-white rounded-xl sm:rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col">
             <div className="p-4 sm:p-5 border-b border-gray-200 flex items-center justify-between shrink-0">
               <div>
-                <h2 className="text-lg sm:text-xl font-bold text-gray-800">محادثة الطلب #{requestInfo?.orderNumber}</h2>
+                <h2 className="text-lg sm:text-xl font-bold text-gray-800">محادثة الطلب {formatOrderNumberLabel(requestInfo?.orderNumber)}</h2>
                 <p className="text-sm text-gray-600 mt-0.5">
                   العميل: {requestInfo?.customerName} — المزود: {requestInfo?.providerName}
                 </p>

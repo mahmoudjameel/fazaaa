@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Save, FileText, Info, Phone, Loader2, ShieldCheck, RefreshCw, Smartphone } from 'lucide-react';
+import { Save, FileText, Info, Phone, Loader2, ShieldCheck, RefreshCw, Smartphone, UserCog } from 'lucide-react';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 
@@ -12,7 +12,18 @@ const TABS = [
   { id: 'privacy', label: 'سياسة الخصوصية', icon: ShieldCheck },
   { id: 'support', label: 'إعدادات الدعم', icon: Phone },
   { id: 'appVersion', label: 'تحديث التطبيق', icon: RefreshCw },
+  { id: 'dualPhones', label: 'أرقام مزدوجة', icon: UserCog },
 ];
+
+const normalizeExceptionPhone = (phone) => {
+  const clean = String(phone || '').replace(/[^0-9]/g, '');
+  if (!clean) return '';
+  if (clean.startsWith('966')) return clean;
+  if (clean.startsWith('05') && clean.length === 10) return `966${clean.slice(1)}`;
+  if (clean.startsWith('5') && clean.length === 9) return `966${clean}`;
+  if (clean.startsWith('0') && clean.length === 10) return `966${clean.slice(1)}`;
+  return clean;
+};
 
 const DEFAULT_APP_VERSION = {
   customer: {
@@ -48,6 +59,8 @@ export default function AppSettings() {
     providerChargeWhatsappDisplay: '+966 53 974 1002',
   });
   const [appVersion, setAppVersion] = useState(DEFAULT_APP_VERSION);
+  const [dualPhones, setDualPhones] = useState([]);
+  const [newDualPhone, setNewDualPhone] = useState('');
 
   useEffect(() => {
     loadData();
@@ -56,12 +69,13 @@ export default function AppSettings() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [termsSnap, aboutSnap, privacySnap, supportSnap, appVersionSnap] = await Promise.all([
+      const [termsSnap, aboutSnap, privacySnap, supportSnap, appVersionSnap, dualSnap] = await Promise.all([
         getDoc(doc(db, 'settings', 'termsAndConditions')),
         getDoc(doc(db, 'settings', 'aboutUs')),
         getDoc(doc(db, 'settings', 'privacyPolicy')),
         getDoc(doc(db, 'settings', 'support')),
         getDoc(doc(db, 'settings', 'appVersion')),
+        getDoc(doc(db, 'settings', 'phoneAccountExceptions')),
       ]);
       if (termsSnap.exists()) setTerms(termsSnap.data());
       if (aboutSnap.exists()) setAbout(aboutSnap.data());
@@ -73,6 +87,12 @@ export default function AppSettings() {
           customer: { ...prev.customer, ...(data.customer || {}) },
           provider: { ...prev.provider, ...(data.provider || {}) },
         }));
+      }
+      if (dualSnap.exists()) {
+        const phones = Array.isArray(dualSnap.data()?.phones) ? dualSnap.data().phones : [];
+        setDualPhones(phones.map(normalizeExceptionPhone).filter(Boolean));
+      } else {
+        setDualPhones([]);
       }
     } catch (error) {
       console.error('Error loading settings:', error);
@@ -99,6 +119,14 @@ export default function AppSettings() {
       } else if (activeTab === 'appVersion') {
         await setDoc(doc(db, 'settings', 'appVersion'), { ...appVersion, lastUpdated: new Date().toISOString() });
         alert('تم حفظ إعدادات تحديث التطبيق بنجاح');
+      } else if (activeTab === 'dualPhones') {
+        const phones = [...new Set(dualPhones.map(normalizeExceptionPhone).filter(Boolean))];
+        await setDoc(doc(db, 'settings', 'phoneAccountExceptions'), {
+          phones,
+          lastUpdated: new Date().toISOString(),
+        });
+        setDualPhones(phones);
+        alert('تم حفظ أرقام الاستثناء (حساب عميل + مزود)');
       }
       loadData();
     } catch (error) {
@@ -135,7 +163,7 @@ export default function AppSettings() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2 bg-white p-1.5 rounded-2xl border border-gray-100 shadow-sm w-fit">
+      <div className="flex flex-wrap gap-2 bg-white p-1.5 rounded-2xl border border-gray-100 shadow-sm">
         {TABS.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
@@ -422,6 +450,66 @@ export default function AppSettings() {
           </div>
         )}
 
+        {activeTab === 'dualPhones' && (
+          <div className="p-6 space-y-5">
+            <div className="rounded-xl bg-amber-50 border border-amber-100 p-4 text-sm text-amber-950 leading-relaxed">
+              بشكل افتراضي: الرقم الواحد إما <strong>عميل</strong> أو <strong>مزود</strong> فقط.
+              الأرقام هنا يُسمح لها بإنشاء/استخدام الحسابين معاً (للاختبار أو حالات خاصة).
+            </div>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <input
+                type="tel"
+                value={newDualPhone}
+                onChange={(e) => setNewDualPhone(e.target.value)}
+                className={inputClass}
+                placeholder="9665XXXXXXXX أو 05XXXXXXXX"
+                dir="ltr"
+                style={{ textAlign: 'left' }}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  const n = normalizeExceptionPhone(newDualPhone);
+                  if (!n || n.length < 12) {
+                    alert('أدخل رقم سعودي صحيح');
+                    return;
+                  }
+                  if (dualPhones.includes(n)) {
+                    alert('الرقم موجود مسبقاً');
+                    return;
+                  }
+                  setDualPhones((prev) => [...prev, n]);
+                  setNewDualPhone('');
+                }}
+                className="shrink-0 px-5 py-3 bg-gray-900 text-white rounded-xl font-bold text-sm hover:bg-gray-800"
+              >
+                إضافة رقم
+              </button>
+            </div>
+            {dualPhones.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-6">لا توجد أرقام استثناء حالياً</p>
+            ) : (
+              <ul className="divide-y divide-gray-100 border border-gray-100 rounded-xl overflow-hidden">
+                {dualPhones.map((phone) => (
+                  <li key={phone} className="flex items-center justify-between px-4 py-3 bg-white hover:bg-gray-50">
+                    <span className="font-mono text-sm text-gray-800" dir="ltr">
+                      {phone}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setDualPhones((prev) => prev.filter((p) => p !== phone))}
+                      className="text-sm font-semibold text-red-600 hover:text-red-700"
+                    >
+                      حذف
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="text-xs text-gray-400">بعد التعديل اضغط «حفظ التغييرات» لتفعيل القائمة على السيرفر.</p>
+          </div>
+        )}
+
         {/* Footer */}
         <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex items-center justify-between">
           {currentLastUpdated ? (
@@ -450,7 +538,7 @@ export default function AppSettings() {
       </div>
 
       {/* Preview - only for terms and about */}
-      {activeTab !== 'support' && activeTab !== 'appVersion' && (
+      {activeTab !== 'support' && activeTab !== 'appVersion' && activeTab !== 'dualPhones' && (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-100">
             <h2 className="font-semibold text-gray-800 text-sm">معاينة المحتوى</h2>

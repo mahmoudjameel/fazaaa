@@ -511,6 +511,8 @@ export const approveProviderWithAllServices = async (providerId) => {
       accountActivatedAt: nowIso,
       approvedAt: nowIso,
       notificationsStartAt: nowIso,
+      // يمنع تطبيق المزود من إضافة رصيد ترحيبي 50 ر.س عند أول دخول بعد الاعتماد
+      hasReceivedApprovalBonus: true,
       updatedAt: nowIso,
     });
 

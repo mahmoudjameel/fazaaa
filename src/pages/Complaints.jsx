@@ -5,6 +5,7 @@ import { collection, getDocs, query, orderBy, doc, getDoc, updateDoc } from 'fir
 import { db } from '../services/firebase';
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
+import { formatOrderNumberLabel } from '../utils/orderNumber';
 
 export const Complaints = () => {
   const [complaintsList, setComplaintsList] = useState([]);
@@ -81,12 +82,9 @@ export const Complaints = () => {
     const requestId = complaint?.requestId || null;
     if (!requestId) return null;
     const rawNumber = firstFilled(complaint?.orderNumber, requestData?.orderNumber);
-    const display = rawNumber != null
-      ? (String(rawNumber).startsWith('#') ? String(rawNumber) : `#${rawNumber}`)
-      : `#${String(requestId).slice(-8)}`;
     return {
       requestId,
-      display,
+      display: formatOrderNumberLabel(rawNumber),
       href: `/admin/orders?orderId=${encodeURIComponent(requestId)}`,
     };
   };

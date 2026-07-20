@@ -583,9 +583,14 @@ export const Providers = () => {
       );
     }
 
-    // فلتر الرصيد المنخفض: 25 ريال فأقل
+    // فلتر الرصيد المنخفض: 25 ريال فأقل — للمزودين المفعّلين فقط (معتمدين)
+    // الحسابات الجديدة/قيد المراجعة غالباً رصيدها 0 ولا تُحسب هنا
     if (lowBalanceFilter) {
-      filtered = filtered.filter((p) => isLowWalletBalance(p));
+      filtered = filtered.filter((p) => {
+        const approvalStatus = p.approvalStatus || p.status;
+        if (approvalStatus !== 'approved') return false;
+        return isLowWalletBalance(p);
+      });
       filtered = [...filtered].sort(
         (a, b) => resolveProviderWalletBalance(a) - resolveProviderWalletBalance(b)
       );
@@ -1249,7 +1254,7 @@ export const Providers = () => {
                     className="w-4 h-4 flex-shrink-0 text-red-600 rounded focus:ring-red-500 cursor-pointer"
                   />
                   <label htmlFor="lowBalance" className="text-sm font-bold text-red-700 cursor-pointer truncate">
-                    رصيد منخفض ({LOW_BALANCE_THRESHOLD} فأقل)
+                    رصيد منخفض — مفعّلين ({LOW_BALANCE_THRESHOLD} فأقل)
                   </label>
                   {lowBalanceFilter && (
                     <span className="text-xs font-semibold text-red-600 bg-white px-2 py-0.5 rounded-full border border-red-100 flex-shrink-0">
@@ -1283,7 +1288,7 @@ export const Providers = () => {
                     <tr>
                       <td colSpan="9" className="px-6 py-12 text-center text-gray-500">
                         {lowBalanceFilter
-                          ? `لا يوجد مزودون برصيد ${LOW_BALANCE_THRESHOLD} ريال أو أقل`
+                          ? `لا يوجد مزودون مفعّلون برصيد ${LOW_BALANCE_THRESHOLD} ريال أو أقل`
                           : 'لا توجد نتائج'}
                       </td>
                     </tr>
@@ -2440,7 +2445,7 @@ export const Providers = () => {
                                         const badge = badges[order.status] || { text: order.status, color: 'bg-gray-100 text-gray-700' };
                                         return (
                                           <tr key={order.id} className="hover:bg-gray-50 transition-colors">
-                                            <td className="px-4 py-3 font-mono text-gray-500">{order.orderNumber != null ? order.orderNumber : (order.id ? `#${order.id.substring(0, 8)}` : '—')}</td>
+                                            <td className="px-4 py-3 font-mono text-gray-500">{order.orderNumber != null ? `#${String(order.orderNumber).padStart(9, '0')}` : '—'}</td>
                                             <td className="px-4 py-3 font-bold text-gray-800">{order.serviceName || order.serviceType || '-'}</td>
                                             <td className="px-4 py-3 text-gray-600">
                                               {order.createdAt ? format(order.createdAt.toDate ? order.createdAt.toDate() : new Date(order.createdAt?.seconds ? order.createdAt.seconds * 1000 : order.createdAt), 'dd/MM/yyyy HH:mm', { locale: ar }) : '-'}
