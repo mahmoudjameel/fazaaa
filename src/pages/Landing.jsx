@@ -8,13 +8,14 @@ import {
   Download, Globe, Smartphone, Phone, ArrowLeft
 } from 'lucide-react';
 import { WhatsAppFloat } from '../components/WhatsAppFloat';
+import { LandingSplash } from '../components/LandingSplash';
 import { db } from '../services/firebase';
 
 const SCROLL_LINKS = [
-  { label: 'الرئيسية',    href: '#hero' },
-  { label: 'خدماتنا',    href: '#services' },
-  { label: 'كيف يعمل',   href: '#how' },
-  { label: 'التطبيقات',  href: '#apps' },
+  { label: 'الرئيسية', href: '#hero' },
+  { label: 'خدماتنا', href: '#services' },
+  { label: 'نبذة عنا', href: '#why' },
+  { label: 'التطبيقات', href: '#apps' },
   { label: 'تواصل معنا', href: '#contact' },
 ];
 
@@ -25,21 +26,28 @@ const PAGE_LINKS = [
 ];
 
 const NAV_LINKS = SCROLL_LINKS;
+
+const DEFAULT_HERO_BG = '/landing-hero.jpg';
+
 const DEFAULT_LANDING_CONTENT = {
   header: {
     siteName: 'فزاعين',
     logoUrl: '/fzaeen-logo.jpeg',
     adminButtonText: 'لوحة التحكم',
+    joinProviderText: 'انضم إلينا كمزود',
+    contactButtonText: 'تواصل معنا',
     scrollLinks: SCROLL_LINKS,
     pageLinks: PAGE_LINKS,
   },
   hero: {
-    badge: 'خدمة مساعدة الطريق داخل المدينة',
-    titleLine1: 'عطلت سيارتك؟',
-    titleLine2: 'احنا جاهزين',
-    description: 'فزاعين يوصّلك بأقرب مزود خدمة في منطقتك - سواء بنشر، بطارية، أو نسيت مفتاحك. كل شيء من التطبيق مباشرة.',
-    primaryButtonText: 'حمّل التطبيق',
+    badge: '',
+    titleLine1: 'سيارتك تستاهل',
+    titleLine2: '',
+    description: 'مع فزاعين كل خدماتك في مكان واحد',
+    primaryButtonText: 'حمل التطبيق الآن!',
     secondaryButtonText: 'كيف يشتغل؟',
+    backgroundImage: DEFAULT_HERO_BG,
+    chips: ['بنشر', 'بطارية', 'فتح سيارة'],
   },
   services: {
     badge: 'الخدمات',
@@ -82,7 +90,8 @@ const DEFAULT_LANDING_CONTENT = {
     providerTitle: 'تطبيق فزاعين - المزودون',
     providerDesc: 'انضم لشبكة فزاعين وابدأ تستقبل طلبات في منطقتك. شغّل وقتك ووسّع دخلك.',
     appleHref: 'https://apps.apple.com',
-    googleHref: 'https://play.google.com',
+    googleHref: 'https://play.google.com/store/apps/details?id=com.londonerazooz.app',
+    providerGoogleHref: 'https://play.google.com/store/apps/details?id=com.fazaa.provider',
   },
   stats: {
     items: [
@@ -116,8 +125,8 @@ const DEFAULT_LANDING_CONTENT = {
     subtitle: 'راسلنا وبنرد عليك بأسرع وقت',
   },
   colors: {
-    primary: '#fbbf24',
-    heroBg: '#111827',
+    primary: '#DC2626',
+    heroBg: '#0a0a0a',
     darkSectionBg: '#111827',
     lightSectionBg: '#f9fafb',
     footerBg: '#111827',
@@ -130,11 +139,58 @@ const DEFAULT_LANDING_CONTENT = {
   },
 };
 
+const GooglePlayIcon = ({ className = 'w-7 h-7' }) => (
+  <svg viewBox="0 0 24 24" className={`${className} shrink-0`} aria-hidden>
+    <path fill="#4285F4" d="M1.71 23.1c-.22-.22-.35-.52-.35-.85V1.75c0-.33.13-.63.35-.85L12.29 12 1.71 23.1z" />
+    <path fill="#34A853" d="M21.24 10.86 17.41 8.65l-3.63 3.63 3.63 3.63 3.83-2.21c1.01-.66 1.01-2.1 0-2.84z" />
+    <path fill="#FBBC04" d="m16.12 15.71-11.36 6.61 8.32-8.32 3.04 1.71z" />
+    <path fill="#EA4335" d="m16.12 8.29-3.04 3.03L4.76 1.68l11.36 6.61z" />
+  </svg>
+);
+
+const StoreBadge = ({ type, href }) => {
+  if (type === 'apple') {
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center gap-2.5 bg-black text-white rounded-xl px-4 py-2.5 border border-white/20 hover:bg-neutral-900 transition-colors shadow-lg"
+        aria-label="App Store"
+      >
+        <svg viewBox="0 0 24 24" className="w-7 h-7 fill-current shrink-0" aria-hidden>
+          <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z" />
+        </svg>
+        <div className="text-left leading-tight" dir="ltr">
+          <div className="text-[10px] text-white/70">Download on the</div>
+          <div className="text-sm font-bold -mt-0.5">App Store</div>
+        </div>
+      </a>
+    );
+  }
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-center gap-2.5 bg-black text-white rounded-xl px-4 py-2.5 border border-white/20 hover:bg-neutral-900 transition-colors shadow-lg"
+      aria-label="Google Play"
+    >
+      <GooglePlayIcon className="w-7 h-7" />
+      <div className="text-left leading-tight" dir="ltr">
+        <div className="text-[10px] text-white/70">GET IT ON</div>
+        <div className="text-sm font-bold -mt-0.5">Google Play</div>
+      </div>
+    </a>
+  );
+};
+
 export const Landing = () => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [customLanding, setCustomLanding] = useState(null);
   const [landingContent, setLandingContent] = useState(DEFAULT_LANDING_CONTENT);
+  const [activeNav, setActiveNav] = useState('#hero');
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 30);
@@ -157,11 +213,17 @@ export const Landing = () => {
         }
         if (contentSnap.exists()) {
           const data = contentSnap.data();
+          const mergedHero = { ...DEFAULT_LANDING_CONTENT.hero, ...(data.hero || {}) };
+          const bg = String(mergedHero.backgroundImage || '');
+          // استبدل روابط Unsplash/القديمة بالخلفية المحلية المنظمة
+          if (!bg || bg.includes('unsplash.com') || bg.includes('photo-161964') || bg.includes('photo-148600')) {
+            mergedHero.backgroundImage = DEFAULT_HERO_BG;
+          }
           setLandingContent((prev) => ({
             ...prev,
             ...data,
             header: { ...prev.header, ...(data.header || {}) },
-            hero: { ...prev.hero, ...(data.hero || {}) },
+            hero: mergedHero,
             services: { ...prev.services, ...(data.services || {}) },
             how: { ...prev.how, ...(data.how || {}) },
             apps: { ...prev.apps, ...(data.apps || {}) },
@@ -186,17 +248,31 @@ export const Landing = () => {
     if (el) el.scrollIntoView({ behavior: 'smooth' });
   };
   const headerLinks = landingContent.header?.scrollLinks || SCROLL_LINKS;
-  const pageLinks = landingContent.header?.pageLinks || PAGE_LINKS;
   const serviceCards = landingContent.services?.cards || DEFAULT_LANDING_CONTENT.services.cards;
   const howSteps = landingContent.how?.steps || DEFAULT_LANDING_CONTENT.how.steps;
   const testimonialItems = landingContent.testimonials?.items || DEFAULT_LANDING_CONTENT.testimonials.items;
   const statsItems = landingContent.stats?.items || DEFAULT_LANDING_CONTENT.stats.items;
   const whyFeatures = landingContent.why?.features || DEFAULT_LANDING_CONTENT.why.features;
   const theme = landingContent.colors || DEFAULT_LANDING_CONTENT.colors;
+  const siteName = landingContent.header?.siteName || 'فزاعين';
+  const logoUrl = landingContent.header?.logoUrl || '/fzaeen-logo.jpeg';
+  const appleHref = landingContent.apps?.appleHref || DEFAULT_LANDING_CONTENT.apps.appleHref;
+  const googleHref = landingContent.apps?.googleHref || DEFAULT_LANDING_CONTENT.apps.googleHref;
+  const providerStoreHref =
+    landingContent.apps?.providerGoogleHref ||
+    landingContent.apps?.googleHref ||
+    DEFAULT_LANDING_CONTENT.apps.providerGoogleHref;
+  const heroChips = Array.isArray(landingContent.hero?.chips) && landingContent.hero.chips.length
+    ? landingContent.hero.chips
+    : DEFAULT_LANDING_CONTENT.hero.chips;
+  const heroBg =
+    landingContent.hero?.backgroundImage || DEFAULT_LANDING_CONTENT.hero.backgroundImage;
+  const downloadLabel = landingContent.hero?.primaryButtonText || 'حمل التطبيق الآن!';
 
   if (customLanding) {
     return (
       <div dir="rtl">
+        <LandingSplash logoUrl={logoUrl} siteName={siteName} />
         <div dangerouslySetInnerHTML={{ __html: customLanding }} />
         <WhatsAppFloat />
       </div>
@@ -204,191 +280,202 @@ export const Landing = () => {
   }
 
   return (
-    <div className="min-h-screen text-gray-900" dir="rtl" style={{ backgroundColor: theme.cardBg }}>
+    <div className="min-h-screen text-gray-900" dir="rtl" style={{ backgroundColor: theme.cardBg, fontFamily: "'Cairo', system-ui, sans-serif" }}>
+      <LandingSplash logoUrl={logoUrl} siteName={siteName} />
 
       {/* ── Navbar ── */}
-      <header className={`fixed top-0 inset-x-0 z-50 transition-all duration-300 ${scrolled ? 'bg-gray-950/98 backdrop-blur-md border-b border-white/5' : 'bg-transparent'}`}>
+      <header
+        className={`fixed top-0 inset-x-0 z-50 transition-all duration-300 ${
+          scrolled ? 'bg-black/85 backdrop-blur-md border-b border-white/10 shadow-lg' : 'bg-gradient-to-b from-black/70 to-transparent'
+        }`}
+      >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16 sm:h-20">
-            <div className="flex items-center gap-2.5">
-              <img src={landingContent.header?.logoUrl || '/fzaeen-logo.jpeg'} alt="فزاعين"
-                className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl object-cover shadow-md" />
-              <span className="text-xl sm:text-2xl font-black text-white tracking-tight">{landingContent.header?.siteName || 'فزاعين'}</span>
-            </div>
-            <nav className="hidden md:flex items-center gap-5 lg:gap-7">
-              {headerLinks.map(l => (
-                <button key={l.href} onClick={() => scrollTo(l.href)}
-                  className="font-semibold text-sm text-white/70 hover:text-amber-400 transition-colors">
-                  {l.label}
-                </button>
-              ))}
-              {/* Divider */}
-              <span className="h-4 w-px bg-white/10" />
-              {pageLinks.map(l => (
-                <Link key={l.to} to={l.to}
-                  className="font-semibold text-sm text-white/50 hover:text-amber-400 transition-colors">
-                  {l.label}
-                </Link>
-              ))}
-              <Link to="/admin"
-                className="text-gray-950 font-black px-5 py-2.5 rounded-xl text-sm transition-all hover:shadow-lg"
-                style={{ backgroundColor: theme.primary }}>
-                {landingContent.header?.adminButtonText || 'لوحة التحكم'}
-              </Link>
+          <div className="flex items-center justify-between h-16 sm:h-[72px] gap-3">
+            <a href="#hero" onClick={(e) => { e.preventDefault(); scrollTo('#hero'); setActiveNav('#hero'); }} className="flex items-center gap-2.5 shrink-0">
+              <img src={logoUrl} alt={siteName} className="w-10 h-10 sm:w-11 sm:h-11 rounded-full object-cover ring-2 ring-white/20" />
+              <span className="text-xl sm:text-2xl font-black text-white tracking-tight">{siteName}</span>
+            </a>
+
+            <nav className="hidden lg:flex items-center gap-1 xl:gap-2">
+              {headerLinks.map((l) => {
+                const isActive = activeNav === l.href;
+                return (
+                  <button
+                    key={l.href}
+                    type="button"
+                    onClick={() => { scrollTo(l.href); setActiveNav(l.href); }}
+                    className={`px-3 py-2 rounded-lg text-sm font-bold transition-colors ${
+                      isActive ? 'text-white' : 'text-white/75 hover:text-white'
+                    }`}
+                    style={isActive ? { color: theme.primary } : undefined}
+                  >
+                    {l.label}
+                    {isActive && (
+                      <span className="block h-0.5 mt-1 rounded-full mx-auto w-6" style={{ backgroundColor: theme.primary }} />
+                    )}
+                  </button>
+                );
+              })}
             </nav>
-            <button className="md:hidden p-2" onClick={() => setMenuOpen(!menuOpen)}>
+
+            <div className="hidden md:flex items-center gap-2 shrink-0">
+              <a
+                href={providerStoreHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-4 py-2 rounded-xl text-sm font-bold bg-white hover:bg-gray-50 transition-colors border-2"
+                style={{ borderColor: theme.primary, color: theme.primary }}
+              >
+                {landingContent.header?.joinProviderText || 'انضم إلينا كمزود'}
+              </a>
+              <button
+                type="button"
+                onClick={() => scrollTo('#contact')}
+                className="px-4 py-2 rounded-xl text-sm font-black text-white transition-all hover:brightness-110 shadow-md"
+                style={{ backgroundColor: theme.primary }}
+              >
+                {landingContent.header?.contactButtonText || 'تواصل معنا'}
+              </button>
+            </div>
+
+            <button type="button" className="lg:hidden p-2" onClick={() => setMenuOpen(!menuOpen)} aria-label="القائمة">
               {menuOpen ? <X className="w-6 h-6 text-white" /> : <Menu className="w-6 h-6 text-white" />}
             </button>
           </div>
         </div>
+
         {menuOpen && (
-          <div className="md:hidden bg-gray-950 border-t border-white/10">
+          <div className="lg:hidden bg-black/95 border-t border-white/10 backdrop-blur-md">
             <div className="px-4 py-4 flex flex-col gap-1">
-              {headerLinks.map(l => (
-                <button key={l.href} onClick={() => scrollTo(l.href)}
-                  className="text-white/70 font-semibold py-3 text-right hover:text-amber-400 transition-colors border-b border-white/5">
+              {headerLinks.map((l) => (
+                <button
+                  key={l.href}
+                  type="button"
+                  onClick={() => { scrollTo(l.href); setActiveNav(l.href); }}
+                  className="text-white/80 font-bold py-3 text-right hover:text-white transition-colors border-b border-white/5"
+                >
                   {l.label}
                 </button>
               ))}
-              <div className="pt-1 pb-1">
-                <div className="text-white/25 text-[10px] font-bold uppercase tracking-widest px-1 py-2">قانوني</div>
-                {pageLinks.map(l => (
-                  <Link key={l.to} to={l.to} onClick={() => setMenuOpen(false)}
-                    className="block text-white/50 font-semibold py-2.5 text-right hover:text-amber-400 transition-colors border-b border-white/5">
-                    {l.label}
-                  </Link>
-                ))}
-              </div>
-              <Link to="/admin" onClick={() => setMenuOpen(false)}
-                className="text-gray-950 font-black px-4 py-3 rounded-xl text-center text-sm mt-3"
-                style={{ backgroundColor: theme.primary }}>
-                {landingContent.header?.adminButtonText || 'لوحة التحكم'}
-              </Link>
+              <a
+                href={providerStoreHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-bold py-3 text-right border-b border-white/5"
+                style={{ color: theme.primary }}
+              >
+                {landingContent.header?.joinProviderText || 'انضم إلينا كمزود'}
+              </a>
+              <a
+                href={googleHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-3 text-center text-white font-black py-3.5 rounded-xl"
+                style={{ backgroundColor: theme.primary }}
+              >
+                {downloadLabel}
+              </a>
             </div>
           </div>
         )}
       </header>
 
-      {/* ── Hero ── */}
-      <section id="hero" className="relative min-h-screen flex items-center overflow-hidden" style={{ backgroundColor: theme.heroBg }}>
-        {/* Ambient glow */}
-        <div className="absolute inset-0 pointer-events-none overflow-hidden">
-          <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-amber-500/8 rounded-full blur-3xl -translate-y-1/4 translate-x-1/4" />
-          <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-amber-600/5 rounded-full blur-3xl translate-y-1/4" />
-          {/* Subtle grid */}
-          <div className="absolute inset-0"
-            style={{ backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.03) 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
-        </div>
+      {/* ── Hero: صورة كاملة + تحميل فوري ── */}
+      <section id="hero" className="relative min-h-[100svh] flex flex-col justify-center overflow-hidden">
+        <div
+          className="absolute inset-0 bg-cover bg-center scale-105"
+          style={{
+            backgroundImage: `url('${heroBg}')`,
+            animation: 'slowZoom 18s ease-in-out infinite alternate',
+          }}
+          aria-hidden
+        />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/75 via-black/55 to-black/80" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_0%,rgba(0,0,0,0.45)_100%)]" />
 
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-32 w-full">
-          <div className="grid lg:grid-cols-2 gap-12 lg:gap-20 items-center">
+        <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 w-full pt-28 pb-16 sm:pt-32 sm:pb-20 text-center">
+          <p
+            className="text-3xl sm:text-4xl md:text-5xl font-black mb-3 tracking-tight drop-shadow-lg"
+            style={{ color: theme.primary, animation: 'fadeUp 0.7s ease-out' }}
+          >
+            {siteName}
+          </p>
 
-            {/* Text */}
-            <div className="space-y-7 text-center lg:text-right order-2 lg:order-1">
-              <div className="inline-flex items-center gap-2.5 px-4 py-2 rounded-full text-sm font-semibold" style={{ backgroundColor: `${theme.primary}1A`, border: `1px solid ${theme.primary}55`, color: theme.primary }}>
-                <div className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: theme.primary }} />
-                {landingContent.hero?.badge || DEFAULT_LANDING_CONTENT.hero.badge}
-              </div>
-              <h1 className="text-4xl sm:text-5xl lg:text-6xl xl:text-7xl font-black leading-tight text-white">
-                {landingContent.hero?.titleLine1 || DEFAULT_LANDING_CONTENT.hero.titleLine1}
-                <span className="block mt-1" style={{ color: theme.primary }}>{landingContent.hero?.titleLine2 || DEFAULT_LANDING_CONTENT.hero.titleLine2}</span>
-              </h1>
-              <p className="text-white/55 text-base sm:text-lg lg:text-xl leading-relaxed max-w-xl mx-auto lg:mx-0">
-                {landingContent.hero?.description || DEFAULT_LANDING_CONTENT.hero.description}
-              </p>
-              <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-end">
-                <a href="#apps" onClick={(e) => { e.preventDefault(); scrollTo('#apps'); }}
-                  className="group text-gray-950 font-black px-8 py-4 rounded-2xl text-base hover:shadow-xl transition-all duration-300 flex items-center justify-center gap-2.5"
-                  style={{ backgroundColor: theme.primary }}>
-                  <Download className="w-5 h-5 group-hover:scale-110 transition-transform" />
-                  {landingContent.hero?.primaryButtonText || DEFAULT_LANDING_CONTENT.hero.primaryButtonText}
-                </a>
-                <button onClick={() => scrollTo('#how')}
-                  className="bg-white/6 border border-white/12 text-white font-bold px-8 py-4 rounded-2xl text-base hover:bg-white/10 hover:border-white/20 transition-all duration-300 flex items-center justify-center gap-2">
-                  {landingContent.hero?.secondaryButtonText || DEFAULT_LANDING_CONTENT.hero.secondaryButtonText}
-                  <ChevronDown className="w-5 h-5" />
-                </button>
-              </div>
-              <div className="flex items-center justify-center lg:justify-end gap-0 pt-1 divide-x divide-x-reverse divide-white/10 bg-white/4 border border-white/8 rounded-2xl overflow-hidden">
-                {[
-                  { num: '+٣٠٠',  label: 'طلب منجز',   sub: 'ومتزايد' },
-                  { num: '+٤٠',   label: 'مزود معتمد',  sub: 'في المنطقة' },
-                  { num: '٤.٧★',  label: 'تقييم المتجر', sub: 'من ٥' },
-                ].map(s => (
-                  <div key={s.label} className="flex-1 text-center px-4 py-3">
-                    <div className="text-xl sm:text-2xl font-black text-amber-400 leading-none">{s.num}</div>
-                    <div className="text-white/50 text-[10px] sm:text-xs font-semibold mt-1">{s.label}</div>
-                    <div className="text-white/20 text-[9px] mt-0.5">{s.sub}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
+          <h1
+            className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-black text-white leading-[1.15] drop-shadow-md"
+            style={{ animation: 'fadeUp 0.85s ease-out' }}
+          >
+            {landingContent.hero?.titleLine1 || DEFAULT_LANDING_CONTENT.hero.titleLine1}
+            {landingContent.hero?.titleLine2 ? (
+              <span className="block mt-1" style={{ color: theme.primary }}>
+                {landingContent.hero.titleLine2}
+              </span>
+            ) : null}
+          </h1>
 
-            {/* App mockup */}
-            <div className="relative flex justify-center items-center order-1 lg:order-2">
-              <div className="relative w-60 sm:w-72 lg:w-80">
-                {/* Glow behind card */}
-                <div className="absolute inset-0 bg-amber-400/10 rounded-[2.5rem] blur-2xl scale-105" />
-                <div className="relative bg-gray-900 border border-white/10 rounded-[2.5rem] p-5 shadow-2xl">
-                  {/* Status bar */}
-                  <div className="flex items-center justify-between mb-4 px-1">
-                    <div className="flex gap-1">
-                      <div className="w-1.5 h-1.5 bg-white/20 rounded-full" />
-                      <div className="w-1.5 h-1.5 bg-white/20 rounded-full" />
-                      <div className="w-1.5 h-1.5 bg-amber-400 rounded-full" />
-                    </div>
-                    <div className="text-white/30 text-[10px]">9:41</div>
-                  </div>
-                  {/* App header */}
-                  <div className="flex items-center gap-3 mb-4">
-                    <img src="/fzaeen-logo.jpeg" alt="فزاعين" className="w-10 h-10 rounded-xl object-cover" />
-                    <div>
-                      <div className="text-white font-black text-sm">فزاعين</div>
-                      <div className="text-white/40 text-xs">مساعدة على الطريق</div>
-                    </div>
-                  </div>
-                  {/* Service picker */}
-                  <div className="bg-gray-800/70 rounded-2xl p-3.5 mb-3">
-                    <div className="text-amber-400 font-bold text-xs mb-3">وش عندك؟</div>
-                    {[
-                      { label: 'بنشر إطار', icon: Wrench, active: true },
-                      { label: 'بطارية فارغة', icon: Battery, active: false },
-                      { label: 'نسيت المفتاح', icon: Key, active: false },
-                    ].map(s => (
-                      <div key={s.label}
-                        className={`flex items-center gap-2.5 py-2.5 px-3 rounded-xl mb-1.5 last:mb-0 ${s.active ? 'bg-amber-400/15 border border-amber-400/30' : 'border border-transparent'}`}>
-                        <s.icon className={`w-4 h-4 flex-shrink-0 ${s.active ? 'text-amber-400' : 'text-white/25'}`} />
-                        <span className={`text-xs font-semibold ${s.active ? 'text-amber-300' : 'text-white/35'}`}>{s.label}</span>
-                      </div>
-                    ))}
-                  </div>
-                  {/* CTA */}
-                  <div className="bg-amber-400 rounded-xl py-3 text-center mb-3">
-                    <span className="text-gray-950 font-black text-sm">أرسل الطلب</span>
-                  </div>
-                  {/* Status */}
-                  <div className="flex items-center justify-center gap-2 bg-emerald-500/10 rounded-xl py-2.5 border border-emerald-500/20">
-                    <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
-                    <span className="text-emerald-400 text-xs font-semibold">نحدد موقعك...</span>
-                  </div>
-                </div>
-                {/* Floating badges */}
-                <div className="absolute -top-4 -left-4 bg-gray-900 border border-white/10 rounded-2xl shadow-xl px-3.5 py-2.5 flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-amber-400" />
-                  <span className="text-xs font-bold text-white">وصول خلال ١٥ دقيقة</span>
-                </div>
-                <div className="absolute -bottom-4 -right-3 bg-gray-900 border border-white/10 rounded-2xl shadow-xl px-3.5 py-2.5 flex items-center gap-1.5">
-                  <Star className="w-4 h-4 text-amber-400 fill-amber-400" />
-                  <span className="text-xs font-bold text-white">٤.٩ من ٥</span>
-                </div>
-              </div>
+          <p
+            className="mt-4 sm:mt-5 text-base sm:text-xl text-white/90 font-semibold max-w-xl mx-auto drop-shadow"
+            style={{ animation: 'fadeUp 1s ease-out' }}
+          >
+            {landingContent.hero?.description || DEFAULT_LANDING_CONTENT.hero.description}
+          </p>
+
+          <div
+            className="mt-6 sm:mt-8 flex flex-wrap items-center justify-center gap-2.5 sm:gap-3"
+            style={{ animation: 'fadeUp 1.1s ease-out' }}
+          >
+            {heroChips.map((chip) => (
+              <span
+                key={chip}
+                className="px-4 sm:px-5 py-2 sm:py-2.5 rounded-full text-sm sm:text-base font-bold text-neutral-900 bg-white/85 backdrop-blur-sm shadow-md"
+              >
+                {chip}
+              </span>
+            ))}
+          </div>
+
+          <div
+            id="download"
+            className="mt-8 sm:mt-10 flex flex-col items-center gap-4"
+            style={{ animation: 'fadeUp 1.2s ease-out' }}
+          >
+            <a
+              href={googleHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="group inline-flex items-center justify-center gap-2.5 min-w-[260px] sm:min-w-[320px] px-8 py-4 sm:py-5 rounded-2xl text-lg sm:text-xl font-black text-white shadow-[0_12px_40px_rgba(220,38,38,0.45)] hover:brightness-110 hover:scale-[1.02] active:scale-[0.99] transition-all duration-300"
+              style={{ backgroundColor: theme.primary }}
+            >
+              <Download className="w-6 h-6 group-hover:translate-y-0.5 transition-transform" />
+              {downloadLabel}
+            </a>
+
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <StoreBadge type="google" href={googleHref} />
+              <StoreBadge type="apple" href={appleHref} />
             </div>
           </div>
         </div>
 
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 animate-bounce">
-          <ChevronDown className="w-6 h-6 text-white/25" />
-        </div>
+        <button
+          type="button"
+          onClick={() => scrollTo('#services')}
+          className="absolute bottom-5 left-1/2 -translate-x-1/2 text-white/40 hover:text-white/70 transition-colors animate-bounce"
+          aria-label="المزيد"
+        >
+          <ChevronDown className="w-7 h-7" />
+        </button>
+
+        <style>{`
+          @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(18px); }
+            to { opacity: 1; transform: translateY(0); }
+          }
+          @keyframes slowZoom {
+            from { transform: scale(1); }
+            to { transform: scale(1.06); }
+          }
+        `}</style>
       </section>
 
       {/* ── Features strip ── */}
@@ -628,31 +715,26 @@ export const Landing = () => {
                   ))}
                 </ul>
                 <div className="flex flex-col sm:flex-row gap-3">
-                  {[
-                    {
-                      href: app.appleHref,
-                      label: 'App Store',
-                      sub: 'Download on the',
-                      svg: <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z" />,
-                    },
-                    {
-                      href: app.googleHref,
-                      label: 'Google Play',
-                      sub: 'Get it on',
-                      svg: <path d="M3.18 23.76a2.5 2.5 0 0 1-1.18-2.22V2.46A2.5 2.5 0 0 1 3.18.24l11.37 11.76-11.37 11.76zm13.09-8.04L4.02 23.4l10.5-6.06 1.75-1.62zm2.96-4.16c.64.37 1.03.99 1.03 1.67s-.39 1.3-1.03 1.67l-2.61 1.51-2.02-2.09 2.02-2.09 2.61 1.33zm-15.2-9.15 12.25 7.68-1.75 1.62-10.5-6.06z" />,
-                    },
-                  ].map(btn => (
-                    <a key={btn.label} href={btn.href} target="_blank" rel="noopener noreferrer"
-                      className="flex items-center justify-center gap-3 bg-white text-gray-900 font-bold px-4 py-3 rounded-xl hover:bg-gray-100 transition-all hover:shadow-lg group flex-1">
-                      <svg viewBox="0 0 24 24" className="w-5 h-5 flex-shrink-0 group-hover:scale-110 transition-transform" fill="currentColor">
-                        {btn.svg}
-                      </svg>
-                      <div className="text-right">
-                        <div className="text-[9px] text-gray-500 leading-none">{btn.sub}</div>
-                        <div className="text-sm font-black leading-tight">{btn.label}</div>
-                      </div>
-                    </a>
-                  ))}
+                  <a href={app.appleHref} target="_blank" rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-3 bg-white text-gray-900 font-bold px-4 py-3 rounded-xl hover:bg-gray-100 transition-all hover:shadow-lg group flex-1">
+                    <svg viewBox="0 0 24 24" className="w-5 h-5 flex-shrink-0 group-hover:scale-110 transition-transform" fill="currentColor" aria-hidden>
+                      <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z" />
+                    </svg>
+                    <div className="text-right">
+                      <div className="text-[9px] text-gray-500 leading-none">Download on the</div>
+                      <div className="text-sm font-black leading-tight">App Store</div>
+                    </div>
+                  </a>
+                  <a href={app.googleHref} target="_blank" rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-3 bg-white text-gray-900 font-bold px-4 py-3 rounded-xl hover:bg-gray-100 transition-all hover:shadow-lg group flex-1">
+                    <span className="group-hover:scale-110 transition-transform inline-flex">
+                      <GooglePlayIcon className="w-5 h-5" />
+                    </span>
+                    <div className="text-right">
+                      <div className="text-[9px] text-gray-500 leading-none">Get it on</div>
+                      <div className="text-sm font-black leading-tight">Google Play</div>
+                    </div>
+                  </a>
                 </div>
               </div>
             ))}
@@ -691,7 +773,7 @@ export const Landing = () => {
       </section>
 
       {/* ── Why Fzaeen ── */}
-      <section className="py-20 sm:py-28 relative overflow-hidden" style={{ backgroundColor: theme.darkSectionBg }}>
+      <section id="why" className="py-20 sm:py-28 relative overflow-hidden" style={{ backgroundColor: theme.darkSectionBg }}>
         {/* Ambient */}
         <div className="absolute inset-0 pointer-events-none">
           <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[700px] h-[300px] bg-amber-500/5 rounded-full blur-3xl" />
@@ -851,31 +933,24 @@ export const Landing = () => {
               </p>
               {/* App badges */}
               <div className="flex flex-row gap-2.5 mt-1">
-                {[
-                  {
-                    label: 'App Store',
-                    sub: 'Download on the',
-                    href: 'https://apps.apple.com',
-                    svg: <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z" />,
-                  },
-                  {
-                    label: 'Google Play',
-                    sub: 'Get it on',
-                    href: 'https://play.google.com',
-                    svg: <path d="M3.18 23.76a2.5 2.5 0 0 1-1.18-2.22V2.46A2.5 2.5 0 0 1 3.18.24l11.37 11.76-11.37 11.76zm13.09-8.04L4.02 23.4l10.5-6.06 1.75-1.62zm2.96-4.16c.64.37 1.03.99 1.03 1.67s-.39 1.3-1.03 1.67l-2.61 1.51-2.02-2.09 2.02-2.09 2.61 1.33zm-15.2-9.15 12.25 7.68-1.75 1.62-10.5-6.06z" />,
-                  },
-                ].map(btn => (
-                  <a key={btn.label} href={btn.href} target="_blank" rel="noopener noreferrer"
-                    className="flex items-center gap-2 bg-white/6 border border-white/10 hover:bg-white/10 hover:border-white/20 transition-all rounded-xl px-3 py-2.5 flex-1">
-                    <svg viewBox="0 0 24 24" className="w-4 h-4 text-white/70 flex-shrink-0" fill="currentColor">
-                      {btn.svg}
-                    </svg>
-                    <div>
-                      <div className="text-[8px] text-white/30 leading-none">{btn.sub}</div>
-                      <div className="text-[11px] text-white font-bold leading-tight mt-0.5">{btn.label}</div>
-                    </div>
-                  </a>
-                ))}
+                <a href={appleHref} target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-2 bg-white/6 border border-white/10 hover:bg-white/10 hover:border-white/20 transition-all rounded-xl px-3 py-2.5 flex-1">
+                  <svg viewBox="0 0 24 24" className="w-4 h-4 text-white/70 flex-shrink-0" fill="currentColor" aria-hidden>
+                    <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z" />
+                  </svg>
+                  <div>
+                    <div className="text-[8px] text-white/30 leading-none">Download on the</div>
+                    <div className="text-[11px] text-white font-bold leading-tight mt-0.5">App Store</div>
+                  </div>
+                </a>
+                <a href={googleHref} target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-2 bg-white/6 border border-white/10 hover:bg-white/10 hover:border-white/20 transition-all rounded-xl px-3 py-2.5 flex-1">
+                  <GooglePlayIcon className="w-4 h-4" />
+                  <div>
+                    <div className="text-[8px] text-white/30 leading-none">Get it on</div>
+                    <div className="text-[11px] text-white font-bold leading-tight mt-0.5">Google Play</div>
+                  </div>
+                </a>
               </div>
             </div>
 

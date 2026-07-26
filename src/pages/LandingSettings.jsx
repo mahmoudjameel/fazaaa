@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Save, Loader2, LayoutTemplate, Link2, Mail, Wrench } from 'lucide-react';
+import { Save, Loader2, LayoutTemplate, Link2, Mail, Wrench, ShieldCheck, FileText, ExternalLink } from 'lucide-react';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 
@@ -14,7 +14,7 @@ const DEFAULT_CONTENT = {
     scrollLinks: [
       { label: 'الرئيسية', href: '#hero' },
       { label: 'خدماتنا', href: '#services' },
-      { label: 'كيف يعمل', href: '#how' },
+      { label: 'نبذة عنا', href: '#why' },
       { label: 'التطبيقات', href: '#apps' },
       { label: 'تواصل معنا', href: '#contact' },
     ],
@@ -46,12 +46,14 @@ const DEFAULT_CONTENT = {
     ],
   },
   hero: {
-    badge: 'خدمة مساعدة الطريق داخل المدينة',
-    titleLine1: 'عطلت سيارتك؟',
-    titleLine2: 'احنا جاهزين',
-    description: 'فزاعين يوصّلك بأقرب مزود خدمة في منطقتك - سواء بنشر، بطارية، أو نسيت مفتاحك. كل شيء من التطبيق مباشرة.',
-    primaryButtonText: 'حمّل التطبيق',
+    badge: '',
+    titleLine1: 'سيارتك تستاهل',
+    titleLine2: '',
+    description: 'مع فزاعين كل خدماتك في مكان واحد',
+    primaryButtonText: 'حمل التطبيق الآن!',
     secondaryButtonText: 'كيف يشتغل؟',
+    backgroundImage: '/landing-hero.jpg',
+    chips: ['بنشر', 'بطارية', 'فتح سيارة'],
   },
   how: {
     badge: 'كيف يشتغل',
@@ -106,8 +108,8 @@ const DEFAULT_CONTENT = {
     subtitle: 'راسلنا وبنرد عليك بأسرع وقت',
   },
   colors: {
-    primary: '#fbbf24',
-    heroBg: '#111827',
+    primary: '#DC2626',
+    heroBg: '#0a0a0a',
     darkSectionBg: '#111827',
     lightSectionBg: '#f9fafb',
     footerBg: '#111827',
@@ -123,12 +125,20 @@ const DEFAULT_CONTENT = {
 export default function LandingSettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savingLegal, setSavingLegal] = useState(false);
+  const [legalTab, setLegalTab] = useState('privacy');
   const [content, setContent] = useState({ ...DEFAULT_CONTENT, lastUpdated: null });
+  const [privacy, setPrivacy] = useState({ title: 'سياسة الخصوصية', content: '', lastUpdated: null });
+  const [terms, setTerms] = useState({ title: 'الشروط والأحكام', content: '', lastUpdated: null });
 
   const loadData = async () => {
     setLoading(true);
     try {
-      const snap = await getDoc(doc(db, 'settings', 'landingContent'));
+      const [snap, privacySnap, termsSnap] = await Promise.all([
+        getDoc(doc(db, 'settings', 'landingContent')),
+        getDoc(doc(db, 'settings', 'privacyPolicy')),
+        getDoc(doc(db, 'settings', 'termsAndConditions')),
+      ]);
       if (snap.exists()) {
         const d = snap.data();
         setContent({
@@ -148,6 +158,8 @@ export default function LandingSettings() {
           lastUpdated: d.lastUpdated || null,
         });
       }
+      if (privacySnap.exists()) setPrivacy((prev) => ({ ...prev, ...privacySnap.data() }));
+      if (termsSnap.exists()) setTerms((prev) => ({ ...prev, ...termsSnap.data() }));
     } catch (error) {
       console.error('Error loading landing settings:', error);
       alert('فشل تحميل إعدادات الصفحة');
@@ -174,6 +186,31 @@ export default function LandingSettings() {
       alert('فشل حفظ المحتوى');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSaveLegal = async () => {
+    setSavingLegal(true);
+    try {
+      if (legalTab === 'privacy') {
+        await setDoc(doc(db, 'settings', 'privacyPolicy'), {
+          ...privacy,
+          lastUpdated: new Date().toISOString(),
+        });
+        alert('تم حفظ سياسة الخصوصية — تظهر في الموقع والتطبيق');
+      } else {
+        await setDoc(doc(db, 'settings', 'termsAndConditions'), {
+          ...terms,
+          lastUpdated: new Date().toISOString(),
+        });
+        alert('تم حفظ الشروط والأحكام — تظهر في الموقع والتطبيق');
+      }
+      await loadData();
+    } catch (error) {
+      console.error('Error saving legal content:', error);
+      alert('فشل حفظ المحتوى القانوني');
+    } finally {
+      setSavingLegal(false);
     }
   };
 
@@ -239,8 +276,131 @@ export default function LandingSettings() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">إعدادات اللاندنق بيج</h1>
         <p className="text-gray-500 mt-1 text-sm">
-          عدّل الهيدر، قسم الخدمات، والفوتر من هنا. كل التغييرات تنحفظ في Firebase وتظهر مباشرة بالموقع.
+          عدّل الهيدر، الخدمات، الفوتر، وسياسة الخصوصية والشروط من هنا. التغييرات تظهر مباشرة في الموقع.
         </p>
+      </div>
+
+      {/* Legal pages for landing website */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="p-6 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+              <ShieldCheck className="w-5 h-5 text-amber-500" />
+              سياسة الخصوصية والشروط والأحكام
+            </h2>
+            <p className="text-sm text-gray-500 mt-1">
+              المحتوى يظهر في صفحات الموقع <span className="font-mono text-xs">/privacy</span> و{' '}
+              <span className="font-mono text-xs">/terms</span> — وأيضاً في التطبيقات.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <a
+              href={legalTab === 'privacy' ? '/privacy' : '/terms'}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-sm text-amber-700 bg-amber-50 border border-amber-200 px-3 py-2 rounded-xl hover:bg-amber-100 transition-colors"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              معاينة الصفحة
+            </a>
+          </div>
+        </div>
+
+        <div className="px-6 pt-4 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setLegalTab('privacy')}
+            className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
+              legalTab === 'privacy' ? 'bg-amber-400 text-gray-950' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            <ShieldCheck className="w-4 h-4" />
+            سياسة الخصوصية
+          </button>
+          <button
+            type="button"
+            onClick={() => setLegalTab('terms')}
+            className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
+              legalTab === 'terms' ? 'bg-amber-400 text-gray-950' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            <FileText className="w-4 h-4" />
+            الشروط والأحكام
+          </button>
+        </div>
+
+        <div className="p-6 space-y-5">
+          {legalTab === 'privacy' ? (
+            <>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">عنوان الصفحة</label>
+                <input
+                  type="text"
+                  value={privacy.title || ''}
+                  onChange={(e) => setPrivacy((p) => ({ ...p, title: e.target.value }))}
+                  className={inputClass}
+                  placeholder="سياسة الخصوصية"
+                  dir="rtl"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">محتوى سياسة الخصوصية</label>
+                <textarea
+                  value={privacy.content || ''}
+                  onChange={(e) => setPrivacy((p) => ({ ...p, content: e.target.value }))}
+                  className={`${inputClass} resize-y min-h-[280px]`}
+                  placeholder="اكتب سياسة الخصوصية هنا..."
+                  rows={14}
+                  dir="rtl"
+                  style={{ lineHeight: '1.8' }}
+                />
+              </div>
+            </>
+          ) : (
+            <>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">عنوان الصفحة</label>
+                <input
+                  type="text"
+                  value={terms.title || ''}
+                  onChange={(e) => setTerms((p) => ({ ...p, title: e.target.value }))}
+                  className={inputClass}
+                  placeholder="الشروط والأحكام"
+                  dir="rtl"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">محتوى الشروط والأحكام</label>
+                <textarea
+                  value={terms.content || ''}
+                  onChange={(e) => setTerms((p) => ({ ...p, content: e.target.value }))}
+                  className={`${inputClass} resize-y min-h-[280px]`}
+                  placeholder="اكتب الشروط والأحكام هنا..."
+                  rows={14}
+                  dir="rtl"
+                  style={{ lineHeight: '1.8' }}
+                />
+              </div>
+            </>
+          )}
+
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-2">
+            <p className="text-xs text-gray-400">
+              {(legalTab === 'privacy' ? privacy.lastUpdated : terms.lastUpdated)
+                ? `آخر حفظ: ${new Date(legalTab === 'privacy' ? privacy.lastUpdated : terms.lastUpdated).toLocaleString('ar-SA')}`
+                : 'لم يُحفظ محتوى مخصص بعد — الموقع يعرض النص الافتراضي'}
+            </p>
+            <button
+              type="button"
+              onClick={handleSaveLegal}
+              disabled={savingLegal}
+              className="inline-flex items-center justify-center gap-2 bg-gray-900 text-white px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-gray-800 disabled:opacity-60"
+            >
+              {savingLegal ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              حفظ {legalTab === 'privacy' ? 'سياسة الخصوصية' : 'الشروط والأحكام'}
+            </button>
+          </div>
+        </div>
       </div>
 
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-6">
@@ -299,15 +459,15 @@ export default function LandingSettings() {
       </div>
 
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-5">
-        <div className="font-bold text-gray-800">Hero</div>
+        <div className="font-bold text-gray-800">Hero (أول شاشة + زر التحميل)</div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <input className={inputClass} value={content.hero.badge || ''} onChange={(e) => setHero({ badge: e.target.value })} placeholder="Badge" />
-          <input className={inputClass} value={content.hero.titleLine1 || ''} onChange={(e) => setHero({ titleLine1: e.target.value })} placeholder="العنوان سطر 1" />
-          <input className={inputClass} value={content.hero.titleLine2 || ''} onChange={(e) => setHero({ titleLine2: e.target.value })} placeholder="العنوان سطر 2" />
-          <input className={inputClass} value={content.hero.primaryButtonText || ''} onChange={(e) => setHero({ primaryButtonText: e.target.value })} placeholder="نص الزر الأساسي" />
-          <input className={inputClass} value={content.hero.secondaryButtonText || ''} onChange={(e) => setHero({ secondaryButtonText: e.target.value })} placeholder="نص الزر الثانوي" />
+          <input className={inputClass} value={content.hero.titleLine1 || ''} onChange={(e) => setHero({ titleLine1: e.target.value })} placeholder="العنوان الرئيسي" />
+          <input className={inputClass} value={content.hero.titleLine2 || ''} onChange={(e) => setHero({ titleLine2: e.target.value })} placeholder="سطر عنوان إضافي (اختياري)" />
+          <input className={inputClass} value={content.hero.primaryButtonText || ''} onChange={(e) => setHero({ primaryButtonText: e.target.value })} placeholder="نص زر التحميل" />
+          <input className={inputClass} value={(content.hero.chips || []).join('، ')} onChange={(e) => setHero({ chips: e.target.value.split(/[،,]/).map((s) => s.trim()).filter(Boolean) })} placeholder="شارات الخدمات (مفصولة بفاصلة): بنشر، بطارية، فتح سيارة" />
         </div>
-        <textarea className={inputClass + ' resize-none'} rows={3} value={content.hero.description || ''} onChange={(e) => setHero({ description: e.target.value })} placeholder="وصف Hero" />
+        <textarea className={inputClass + ' resize-none'} rows={2} value={content.hero.description || ''} onChange={(e) => setHero({ description: e.target.value })} placeholder="الوصف تحت العنوان" />
+        <input className={inputClass} value={content.hero.backgroundImage || ''} onChange={(e) => setHero({ backgroundImage: e.target.value })} placeholder="رابط صورة خلفية الهيرو (full-bleed)" />
       </div>
 
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-5">

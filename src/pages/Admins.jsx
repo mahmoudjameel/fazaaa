@@ -14,6 +14,7 @@ const PERMISSIONS_LIST = [
   { id: 'sla_tracking',            label: 'متابعة SLA' },
   { id: 'escalations',             label: 'تصعيدات النظام' },
   { id: 'users',                   label: 'العملاء' },
+  { id: 'blocked_phones',          label: 'حظر الأرقام' },
   { id: 'notifications',           label: 'الإشعارات' },
   { id: 'support_tickets',         label: 'تذاكر الدعم' },
   { id: 'cities',                  label: 'إدارة المدن' },

@@ -2101,3 +2101,187 @@ export const rejectProviderProfileChange = async (requestId) => {
     throw error;
   }
 };
+
+// ─── حظر الأرقام (عميل / مزود) — يمنع OTP لأي تسجيل أو دخول ─────────────────
+
+export const normalizeBanPhone966 = (phone) => {
+  const clean = String(phone || '').replace(/[^0-9]/g, '');
+  if (!clean) return '';
+  if (clean.startsWith('966')) return clean;
+  if (clean.startsWith('05') && clean.length === 10) return `966${clean.slice(1)}`;
+  if (clean.startsWith('5') && clean.length === 9) return `966${clean}`;
+  if (clean.startsWith('0') && clean.length === 10) return `966${clean.slice(1)}`;
+  return clean;
+};
+
+const formatBanPhoneDisplay = (phone966) => {
+  const clean = String(phone966 || '').replace(/[^0-9]/g, '');
+  if (clean.startsWith('966') && clean.length >= 12) return `0${clean.slice(3)}`;
+  return clean || phone966;
+};
+
+/**
+ * جلب كل الأرقام المحظورة
+ */
+export const getBlockedPhones = async () => {
+  try {
+    const snap = await getDocs(collection(db, 'blocked_phones'));
+    const list = [];
+    snap.forEach((d) => {
+      list.push({ id: d.id, ...d.data() });
+    });
+    list.sort((a, b) => {
+      const ta = a.createdAt?.toMillis?.() || (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+      const tb = b.createdAt?.toMillis?.() || (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+      return tb - ta;
+    });
+    return { success: true, blocks: list };
+  } catch (error) {
+    console.error('getBlockedPhones error:', error);
+    return { success: false, error: error.message, blocks: [] };
+  }
+};
+
+/**
+ * التحقق إن الرقم محظور
+ */
+export const isPhoneBlocked = async (phone) => {
+  const key = normalizeBanPhone966(phone);
+  if (!key) return false;
+  const snap = await getDoc(doc(db, 'blocked_phones', key));
+  return snap.exists();
+};
+
+/**
+ * حظر رقم — يمنع التسجيل/الدخول من تطبيق العميل والمزود
+ * @param {{ phone, reason?, accountKind?, relatedUserId?, relatedUserName?, bannedBy?, bannedByName? }} payload
+ */
+export const banPhoneNumber = async (payload = {}) => {
+  const phone = normalizeBanPhone966(payload.phone);
+  if (!phone || phone.length < 12) {
+    throw new Error('رقم الجوال غير صالح');
+  }
+
+  const existing = await getDoc(doc(db, 'blocked_phones', phone));
+  if (existing.exists()) {
+    throw new Error('هذا الرقم محظور مسبقاً');
+  }
+
+  const nowIso = new Date().toISOString();
+  const banDoc = {
+    phone,
+    phoneDisplay: formatBanPhoneDisplay(phone),
+    reason: String(payload.reason || '').trim() || null,
+    accountKind: payload.accountKind === 'provider' || payload.accountKind === 'customer'
+      ? payload.accountKind
+      : 'all',
+    relatedUserId: payload.relatedUserId || null,
+    relatedUserName: payload.relatedUserName || null,
+    bannedBy: payload.bannedBy || null,
+    bannedByName: payload.bannedByName || null,
+    createdAt: serverTimestamp(),
+    createdAtIso: nowIso,
+    updatedAt: serverTimestamp(),
+  };
+
+  await setDoc(doc(db, 'blocked_phones', phone), banDoc);
+
+  // تعليم الحساب المرتبط (إن وُجد) دون حذفه
+  const markBanned = async (collectionName, userId) => {
+    if (!userId) return;
+    try {
+      await updateDoc(doc(db, collectionName, userId), {
+        isBanned: true,
+        bannedAt: nowIso,
+        bannedReason: banDoc.reason,
+        ...(collectionName === 'providers'
+          ? { isOnline: false, isActive: false }
+          : {}),
+        updatedAt: nowIso,
+      });
+    } catch (e) {
+      console.warn(`banPhoneNumber: mark ${collectionName}`, e?.message);
+    }
+  };
+
+  if (payload.relatedUserId && payload.accountKind === 'provider') {
+    await markBanned('providers', payload.relatedUserId);
+  } else if (payload.relatedUserId && payload.accountKind === 'customer') {
+    await markBanned('customers', payload.relatedUserId);
+  } else {
+    // ابحث عن أي حساب بنفس الرقم وعلّمه
+    const variants = [phone];
+    if (phone.startsWith('966')) {
+      variants.push(`0${phone.slice(3)}`, phone.slice(3));
+    }
+    for (const col of ['providers', 'customers']) {
+      for (const v of variants) {
+        try {
+          const q = query(collection(db, col), where('phone', '==', v), limit(3));
+          const snap = await getDocs(q);
+          for (const d of snap.docs) {
+            await markBanned(col, d.id);
+          }
+        } catch (_) { /* ignore */ }
+      }
+    }
+  }
+
+  return { success: true, phone, id: phone };
+};
+
+/**
+ * إلغاء حظر رقم
+ */
+export const unbanPhoneNumber = async (phoneOrId) => {
+  const phone = normalizeBanPhone966(phoneOrId);
+  if (!phone) throw new Error('رقم غير صالح');
+
+  const banRef = doc(db, 'blocked_phones', phone);
+  const banSnap = await getDoc(banRef);
+  if (!banSnap.exists()) {
+    throw new Error('الرقم غير موجود في قائمة الحظر');
+  }
+  const banData = banSnap.data() || {};
+  await deleteDoc(banRef);
+
+  const nowIso = new Date().toISOString();
+  const clearBan = async (collectionName, userId) => {
+    if (!userId) return;
+    try {
+      await updateDoc(doc(db, collectionName, userId), {
+        isBanned: false,
+        bannedAt: deleteField(),
+        bannedReason: deleteField(),
+        ...(collectionName === 'providers' ? { isActive: true } : {}),
+        updatedAt: nowIso,
+      });
+    } catch (e) {
+      console.warn(`unbanPhoneNumber: clear ${collectionName}`, e?.message);
+    }
+  };
+
+  if (banData.relatedUserId && banData.accountKind === 'provider') {
+    await clearBan('providers', banData.relatedUserId);
+  } else if (banData.relatedUserId && banData.accountKind === 'customer') {
+    await clearBan('customers', banData.relatedUserId);
+  } else {
+    const variants = [phone];
+    if (phone.startsWith('966')) {
+      variants.push(`0${phone.slice(3)}`, phone.slice(3));
+    }
+    for (const col of ['providers', 'customers']) {
+      for (const v of variants) {
+        try {
+          const q = query(collection(db, col), where('phone', '==', v), limit(3));
+          const snap = await getDocs(q);
+          for (const d of snap.docs) {
+            await clearBan(col, d.id);
+          }
+        } catch (_) { /* ignore */ }
+      }
+    }
+  }
+
+  return { success: true, phone };
+};

@@ -12,6 +12,9 @@ import {
   BLOCK_REASON_LABELS,
   permanentlyDeleteCustomer,
   buildCustomerOrderStats,
+  banPhoneNumber,
+  unbanPhoneNumber,
+  isPhoneBlocked,
 } from '../services/adminService';
 import SAUDI_CITIES_FALLBACK from '../services/cities.json';
 
@@ -28,6 +31,8 @@ export const Users = () => {
   const [cities, setCities] = useState(SAUDI_CITIES_FALLBACK);
   const [selectedUser, setSelectedUser] = useState(null);
   const [userOrders, setUserOrders] = useState([]);
+  const [userPhoneBanned, setUserPhoneBanned] = useState(false);
+  const [banningUserPhone, setBanningUserPhone] = useState(false);
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
   const [userFormData, setUserFormData] = useState({
@@ -117,6 +122,24 @@ export const Users = () => {
 
     fetchUserOrders();
     fetchCustomerBlocks();
+  }, [selectedUser]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const checkBan = async () => {
+      if (!selectedUser?.phone) {
+        setUserPhoneBanned(false);
+        return;
+      }
+      try {
+        const banned = await isPhoneBlocked(selectedUser.phone);
+        if (!cancelled) setUserPhoneBanned(banned || !!selectedUser.isBanned);
+      } catch (_) {
+        if (!cancelled) setUserPhoneBanned(!!selectedUser.isBanned);
+      }
+    };
+    checkBan();
+    return () => { cancelled = true; };
   }, [selectedUser]);
 
   const fetchCustomerBlocks = async () => {
@@ -309,6 +332,51 @@ export const Users = () => {
       alert(error?.message || 'فشل الحذف');
     } finally {
       setDeletingUser(false);
+    }
+  };
+
+  const handleBanUserPhone = async () => {
+    if (!selectedUser?.phone) {
+      alert('لا يوجد رقم جوال لهذا الحساب');
+      return;
+    }
+    const reason = window.prompt('سبب الحظر (اختياري):', '') ?? null;
+    if (reason === null) return;
+    if (!window.confirm(`حظر الرقم ${selectedUser.phone}؟ لن يستطيع التسجيل أو الدخول كعميل أو مزود.`)) return;
+    setBanningUserPhone(true);
+    try {
+      await banPhoneNumber({
+        phone: selectedUser.phone,
+        reason,
+        accountKind: 'customer',
+        relatedUserId: selectedUser.id || selectedUser.uid,
+        relatedUserName: selectedUser.name || selectedUser.fullName || null,
+        bannedBy: localStorage.getItem('admin_email') || null,
+        bannedByName: localStorage.getItem('admin_name') || null,
+      });
+      setUserPhoneBanned(true);
+      setSelectedUser((prev) => (prev ? { ...prev, isBanned: true } : prev));
+      alert('تم حظر الرقم بنجاح');
+    } catch (error) {
+      alert(error?.message || 'فشل الحظر');
+    } finally {
+      setBanningUserPhone(false);
+    }
+  };
+
+  const handleUnbanUserPhone = async () => {
+    if (!selectedUser?.phone) return;
+    if (!window.confirm(`إلغاء الحظر عن ${selectedUser.phone}؟`)) return;
+    setBanningUserPhone(true);
+    try {
+      await unbanPhoneNumber(selectedUser.phone);
+      setUserPhoneBanned(false);
+      setSelectedUser((prev) => (prev ? { ...prev, isBanned: false } : prev));
+      alert('تم إلغاء الحظر');
+    } catch (error) {
+      alert(error?.message || 'فشل إلغاء الحظر');
+    } finally {
+      setBanningUserPhone(false);
     }
   };
 
@@ -964,6 +1032,33 @@ export const Users = () => {
                         );
                       })}
                     </div>
+                  )}
+                </div>
+
+                <div className="pt-4 border-t border-gray-200 space-y-3">
+                  <p className="text-xs text-gray-500">
+                    حظر الرقم يمنع التسجيل والدخول من تطبيق العميل أو المزود بنفس الجوال.
+                  </p>
+                  {userPhoneBanned ? (
+                    <button
+                      type="button"
+                      disabled={banningUserPhone}
+                      onClick={handleUnbanUserPhone}
+                      className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg hover:bg-emerald-100 font-semibold text-sm disabled:opacity-50"
+                    >
+                      {banningUserPhone ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldOff className="w-4 h-4" />}
+                      إلغاء حظر الرقم
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={banningUserPhone || !selectedUser.phone}
+                      onClick={handleBanUserPhone}
+                      className="inline-flex items-center gap-2 px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 font-semibold text-sm disabled:opacity-50"
+                    >
+                      {banningUserPhone ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldBan className="w-4 h-4" />}
+                      حظر الرقم
+                    </button>
                   )}
                 </div>
 

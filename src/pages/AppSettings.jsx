@@ -159,7 +159,9 @@ export default function AppSettings() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">إعدادات المحتوى</h1>
-        <p className="text-gray-500 mt-1 text-sm">إدارة الشروط والأحكام ومعلومات "من نحن" في التطبيق</p>
+        <p className="text-gray-500 mt-1 text-sm">
+          إدارة الشروط وسياسة الخصوصية للموقع (اللاندينغ) والتطبيقات — نفس المحتوى يظهر في الاثنين
+        </p>
       </div>
 
       {/* Tabs */}

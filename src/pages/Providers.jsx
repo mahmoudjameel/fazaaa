@@ -30,6 +30,9 @@ import {
   getProviderBlocks,
   unblockProviderForCustomer,
   BLOCK_REASON_LABELS,
+  banPhoneNumber,
+  unbanPhoneNumber,
+  isPhoneBlocked,
 } from '../services/adminService';
 import ProviderProfileRequests from './ProviderProfileRequests';
 import {
@@ -137,6 +140,8 @@ export const Providers = () => {
   const [addDocFile, setAddDocFile] = useState(null);
   const [showDeleteProviderModal, setShowDeleteProviderModal] = useState(false);
   const [deletingProvider, setDeletingProvider] = useState(false);
+  const [providerPhoneBanned, setProviderPhoneBanned] = useState(false);
+  const [banningProviderPhone, setBanningProviderPhone] = useState(false);
   const [providerBlocks, setProviderBlocks] = useState([]);
   const [loadingProviderBlocks, setLoadingProviderBlocks] = useState(false);
   const [unblockingBlockKey, setUnblockingBlockKey] = useState(null);
@@ -292,6 +297,72 @@ export const Providers = () => {
       alert('خطأ', msg);
     } finally {
       setDeletingProvider(false);
+    }
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    const checkBan = async () => {
+      if (!selectedProvider?.phone) {
+        setProviderPhoneBanned(false);
+        return;
+      }
+      try {
+        const banned = await isPhoneBlocked(selectedProvider.phone);
+        if (!cancelled) setProviderPhoneBanned(banned || !!selectedProvider.isBanned);
+      } catch (_) {
+        if (!cancelled) setProviderPhoneBanned(!!selectedProvider.isBanned);
+      }
+    };
+    checkBan();
+    return () => { cancelled = true; };
+  }, [selectedProvider]);
+
+  const handleBanProviderPhone = async () => {
+    if (!selectedProvider?.phone) {
+      alert('لا يوجد رقم جوال لهذا الحساب');
+      return;
+    }
+    const reason = window.prompt('سبب الحظر (اختياري):', '') ?? null;
+    if (reason === null) return;
+    if (!window.confirm(`حظر الرقم ${selectedProvider.phone}؟ لن يستطيع التسجيل أو الدخول كعميل أو مزود.`)) return;
+    setBanningProviderPhone(true);
+    try {
+      const name = selectedProvider.fullName
+        || [selectedProvider.firstName, selectedProvider.lastName].filter(Boolean).join(' ')
+        || null;
+      await banPhoneNumber({
+        phone: selectedProvider.phone,
+        reason,
+        accountKind: 'provider',
+        relatedUserId: selectedProvider.id,
+        relatedUserName: name,
+        bannedBy: localStorage.getItem('admin_email') || null,
+        bannedByName: localStorage.getItem('admin_name') || null,
+      });
+      setProviderPhoneBanned(true);
+      setSelectedProvider((prev) => (prev ? { ...prev, isBanned: true, isOnline: false, isActive: false } : prev));
+      alert('تم حظر الرقم بنجاح');
+    } catch (error) {
+      alert(error?.message || 'فشل الحظر');
+    } finally {
+      setBanningProviderPhone(false);
+    }
+  };
+
+  const handleUnbanProviderPhone = async () => {
+    if (!selectedProvider?.phone) return;
+    if (!window.confirm(`إلغاء الحظر عن ${selectedProvider.phone}؟`)) return;
+    setBanningProviderPhone(true);
+    try {
+      await unbanPhoneNumber(selectedProvider.phone);
+      setProviderPhoneBanned(false);
+      setSelectedProvider((prev) => (prev ? { ...prev, isBanned: false, isActive: true } : prev));
+      alert('تم إلغاء الحظر');
+    } catch (error) {
+      alert(error?.message || 'فشل إلغاء الحظر');
+    } finally {
+      setBanningProviderPhone(false);
     }
   };
 
@@ -2193,6 +2264,33 @@ export const Providers = () => {
                               );
                             })}
                           </div>
+                        )}
+                      </div>
+
+                      <div className="pt-4 border-t border-gray-200 space-y-3">
+                        <p className="text-xs text-gray-500">
+                          حظر الرقم يمنع التسجيل والدخول من تطبيق المزود أو العميل بنفس الجوال.
+                        </p>
+                        {providerPhoneBanned ? (
+                          <button
+                            type="button"
+                            disabled={banningProviderPhone}
+                            onClick={handleUnbanProviderPhone}
+                            className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg hover:bg-emerald-100 font-semibold text-sm disabled:opacity-50"
+                          >
+                            {banningProviderPhone ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldOff className="w-4 h-4" />}
+                            إلغاء حظر الرقم
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={banningProviderPhone || !selectedProvider.phone}
+                            onClick={handleBanProviderPhone}
+                            className="inline-flex items-center gap-2 px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 font-semibold text-sm disabled:opacity-50"
+                          >
+                            {banningProviderPhone ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldBan className="w-4 h-4" />}
+                            حظر الرقم
+                          </button>
                         )}
                       </div>
 

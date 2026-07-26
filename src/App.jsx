@@ -35,6 +35,7 @@ import ProviderDrawerSections from './pages/ProviderDrawerSections';
 import CustomerDrawerSections from './pages/CustomerDrawerSections';
 import LandingSettings from './pages/LandingSettings';
 import { DeleteAccount } from './pages/DeleteAccount';
+import BlockedPhones from './pages/BlockedPhones';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -100,6 +101,7 @@ function App() {
           <Route path="order-test-lab" element={<OrderTestLab />} />
           <Route path="city-managers" element={<CityManagers />} />
           <Route path="users" element={<Users />} />
+          <Route path="blocked-phones" element={<BlockedPhones />} />
           <Route path="notifications" element={<Notifications />} />
           <Route path="sla-tracking" element={<SLATracking />} />
           <Route path="escalations" element={<Escalations />} />
