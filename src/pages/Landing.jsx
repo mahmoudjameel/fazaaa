@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import {
   Zap, MapPin, Clock, Star, ChevronDown,
   CheckCircle, Mail, Menu, X,
   Battery, Wrench, Key, AlertTriangle, Users, Award,
-  Download, Globe, Smartphone, Phone, ArrowLeft
+  Download, Globe, Smartphone, Phone, ArrowLeft, FileText, MessageCircle, Send, Loader2
 } from 'lucide-react';
 import { WhatsAppFloat } from '../components/WhatsAppFloat';
 import { LandingSplash } from '../components/LandingSplash';
@@ -22,6 +22,7 @@ const SCROLL_LINKS = [
 const PAGE_LINKS = [
   { label: 'سياسة الخصوصية', to: '/privacy' },
   { label: 'الشروط والأحكام', to: '/terms' },
+  { label: 'الدعم', to: '/support' },
   { label: 'طلب حذف الحساب', to: '/delete-account' },
 ];
 
@@ -92,6 +93,7 @@ const DEFAULT_LANDING_CONTENT = {
     appleHref: 'https://apps.apple.com',
     googleHref: 'https://play.google.com/store/apps/details?id=com.londonerazooz.app',
     providerGoogleHref: 'https://play.google.com/store/apps/details?id=com.fazaa.provider',
+    providerAppleHref: 'https://apps.apple.com',
   },
   stats: {
     items: [
@@ -122,7 +124,8 @@ const DEFAULT_LANDING_CONTENT = {
   },
   contact: {
     title: 'عندك سؤال؟',
-    subtitle: 'راسلنا وبنرد عليك بأسرع وقت',
+    subtitle: 'تواصل معنا',
+    formHint: 'زوّدنا ببياناتك بالنموذج أدناه، وفريقنا يتواصل معك خلال ٢٤ ساعة.',
   },
   colors: {
     primary: '#DC2626',
@@ -134,7 +137,7 @@ const DEFAULT_LANDING_CONTENT = {
   },
   footer: {
     brandDescription: 'منصة تقنية لمساعدة الطريق - نوصّلك بأقرب مزود خدمة معتمد في لحظات.',
-    email: 'support@fzaeen.com',
+    email: 'fzaeen@fzaeen.com',
     copyrightText: 'فزاعين - جميع الحقوق محفوظة',
   },
 };
@@ -147,6 +150,20 @@ const GooglePlayIcon = ({ className = 'w-7 h-7' }) => (
     <path fill="#EA4335" d="m16.12 8.29-3.04 3.03L4.76 1.68l11.36 6.61z" />
   </svg>
 );
+
+/** يختار رابط المتجر حسب نظام الجهاز (آيفون / أندرويد) */
+const getStoreHrefForDevice = (appleHref, googleHref) => {
+  if (typeof navigator === 'undefined') return googleHref;
+  const ua = navigator.userAgent || navigator.vendor || '';
+  // iPadOS قد يظهر كـ Mac
+  const isIOS =
+    /iPad|iPhone|iPod/i.test(ua) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  if (isIOS) return appleHref;
+  if (/android/i.test(ua)) return googleHref;
+  // سطح المكتب: Google Play افتراضياً (شارات المتجرين تحت الزر)
+  return googleHref;
+};
 
 const StoreBadge = ({ type, href }) => {
   if (type === 'apple') {
@@ -191,6 +208,18 @@ export const Landing = () => {
   const [customLanding, setCustomLanding] = useState(null);
   const [landingContent, setLandingContent] = useState(DEFAULT_LANDING_CONTENT);
   const [activeNav, setActiveNav] = useState('#hero');
+  const [supportInfo, setSupportInfo] = useState({
+    whatsappNumber: '966551780608',
+    whatsappDisplay: '+966 55 178 0608',
+  });
+  const [contactForm, setContactForm] = useState({
+    name: '',
+    email: '',
+    subject: '',
+    message: '',
+  });
+  const [contactSubmitting, setContactSubmitting] = useState(false);
+  const [contactStatus, setContactStatus] = useState(null);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 30);
@@ -201,9 +230,10 @@ export const Landing = () => {
   useEffect(() => {
     const loadLandingContent = async () => {
       try {
-        const [htmlSnap, contentSnap] = await Promise.all([
+        const [htmlSnap, contentSnap, supportSnap] = await Promise.all([
           getDoc(doc(db, 'settings', 'landingPage')),
           getDoc(doc(db, 'settings', 'landingContent')),
+          getDoc(doc(db, 'settings', 'support')),
         ]);
         if (htmlSnap.exists()) {
           const data = htmlSnap.data();
@@ -219,6 +249,10 @@ export const Landing = () => {
           if (!bg || bg.includes('unsplash.com') || bg.includes('photo-161964') || bg.includes('photo-148600')) {
             mergedHero.backgroundImage = DEFAULT_HERO_BG;
           }
+          const mergedFooter = { ...DEFAULT_LANDING_CONTENT.footer, ...(data.footer || {}) };
+          if (!mergedFooter.email || mergedFooter.email === 'support@fzaeen.com') {
+            mergedFooter.email = DEFAULT_LANDING_CONTENT.footer.email;
+          }
           setLandingContent((prev) => ({
             ...prev,
             ...data,
@@ -232,8 +266,15 @@ export const Landing = () => {
             testimonials: { ...prev.testimonials, ...(data.testimonials || {}) },
             contact: { ...prev.contact, ...(data.contact || {}) },
             colors: { ...prev.colors, ...(data.colors || {}) },
-            footer: { ...prev.footer, ...(data.footer || {}) },
+            footer: mergedFooter,
           }));
+        }
+        if (supportSnap.exists()) {
+          const s = supportSnap.data() || {};
+          setSupportInfo({
+            whatsappNumber: s.whatsappNumber || '966551780608',
+            whatsappDisplay: s.whatsappDisplay || '+966 55 178 0608',
+          });
         }
       } catch (error) {
         console.error('Error loading landing custom content:', error);
@@ -247,6 +288,47 @@ export const Landing = () => {
     const el = document.querySelector(href);
     if (el) el.scrollIntoView({ behavior: 'smooth' });
   };
+
+  const handleContactSubmit = async (e) => {
+    e.preventDefault();
+    const name = contactForm.name.trim();
+    const email = contactForm.email.trim();
+    const subject = contactForm.subject.trim();
+    const message = contactForm.message.trim();
+    if (!name || !email || !subject || !message) {
+      setContactStatus({ type: 'error', text: 'يرجى تعبئة جميع الحقول' });
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setContactStatus({ type: 'error', text: 'يرجى إدخال بريد إلكتروني صحيح' });
+      return;
+    }
+    setContactSubmitting(true);
+    setContactStatus(null);
+    try {
+      await addDoc(collection(db, 'support_tickets'), {
+        userId: '',
+        userName: name,
+        userPhone: '',
+        userEmail: email,
+        subject,
+        message,
+        category: 'website',
+        status: 'open',
+        adminReply: '',
+        source: 'website',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      setContactForm({ name: '', email: '', subject: '', message: '' });
+      setContactStatus({ type: 'success', text: 'تم إرسال رسالتك بنجاح، سنتواصل معك قريباً' });
+    } catch (error) {
+      console.error('Error submitting contact form:', error);
+      setContactStatus({ type: 'error', text: 'تعذر الإرسال، حاول مرة أخرى أو تواصل عبر واتساب' });
+    } finally {
+      setContactSubmitting(false);
+    }
+  };
   const headerLinks = landingContent.header?.scrollLinks || SCROLL_LINKS;
   const serviceCards = landingContent.services?.cards || DEFAULT_LANDING_CONTENT.services.cards;
   const howSteps = landingContent.how?.steps || DEFAULT_LANDING_CONTENT.how.steps;
@@ -258,16 +340,23 @@ export const Landing = () => {
   const logoUrl = landingContent.header?.logoUrl || '/fzaeen-logo.jpeg';
   const appleHref = landingContent.apps?.appleHref || DEFAULT_LANDING_CONTENT.apps.appleHref;
   const googleHref = landingContent.apps?.googleHref || DEFAULT_LANDING_CONTENT.apps.googleHref;
-  const providerStoreHref =
+  const providerAppleHref =
+    landingContent.apps?.providerAppleHref ||
+    landingContent.apps?.appleHref ||
+    DEFAULT_LANDING_CONTENT.apps.providerAppleHref;
+  const providerGoogleHref =
     landingContent.apps?.providerGoogleHref ||
-    landingContent.apps?.googleHref ||
     DEFAULT_LANDING_CONTENT.apps.providerGoogleHref;
+  const providerStoreHref = getStoreHrefForDevice(providerAppleHref, providerGoogleHref);
   const heroChips = Array.isArray(landingContent.hero?.chips) && landingContent.hero.chips.length
     ? landingContent.hero.chips
     : DEFAULT_LANDING_CONTENT.hero.chips;
   const heroBg =
     landingContent.hero?.backgroundImage || DEFAULT_LANDING_CONTENT.hero.backgroundImage;
   const downloadLabel = landingContent.hero?.primaryButtonText || 'حمل التطبيق الآن!';
+  const downloadHref = getStoreHrefForDevice(appleHref, googleHref);
+  const contactEmail = landingContent.footer?.email || DEFAULT_LANDING_CONTENT.footer.email;
+  const waLink = `https://wa.me/${supportInfo.whatsappNumber}?text=${encodeURIComponent('مرحباً، أحتاج مساعدة من فزاعين')}`;
 
   if (customLanding) {
     return (
@@ -367,7 +456,7 @@ export const Landing = () => {
                 {landingContent.header?.joinProviderText || 'انضم إلينا كمزود'}
               </a>
               <a
-                href={googleHref}
+                href={downloadHref}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="mt-3 text-center text-white font-black py-3.5 rounded-xl"
@@ -440,7 +529,7 @@ export const Landing = () => {
             style={{ animation: 'fadeUp 1.2s ease-out' }}
           >
             <a
-              href={googleHref}
+              href={downloadHref}
               target="_blank"
               rel="noopener noreferrer"
               className="group inline-flex items-center justify-center gap-2.5 min-w-[260px] sm:min-w-[320px] px-8 py-4 sm:py-5 rounded-2xl text-lg sm:text-xl font-black text-white shadow-[0_12px_40px_rgba(220,38,38,0.45)] hover:brightness-110 hover:scale-[1.02] active:scale-[0.99] transition-all duration-300"
@@ -887,31 +976,153 @@ export const Landing = () => {
       </section>
 
       {/* ── Contact ── */}
-      <section id="contact" className="py-16 sm:py-24" style={{ backgroundColor: theme.cardBg }}>
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-3xl sm:text-4xl font-black text-gray-900 mb-3">{landingContent.contact?.title || DEFAULT_LANDING_CONTENT.contact.title}</h2>
-          <p className="text-gray-400 text-base mb-10">{landingContent.contact?.subtitle || DEFAULT_LANDING_CONTENT.contact.subtitle}</p>
-          <div className="grid sm:grid-cols-2 gap-4">
-            <a href="mailto:support@fzaeen.com"
-              className="bg-gray-50 border border-gray-200 rounded-2xl p-6 flex items-center gap-4 hover:border-amber-300 hover:bg-amber-50/30 transition-all duration-300 group text-right">
-              <div className="w-11 h-11 bg-gray-100 rounded-xl flex items-center justify-center group-hover:bg-amber-100 transition-colors flex-shrink-0">
-                <Mail className="w-5 h-5 text-gray-500 group-hover:text-amber-600 transition-colors" />
+      <section id="contact" className="py-16 sm:py-24" style={{ backgroundColor: theme.lightSectionBg || '#f9fafb' }}>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid lg:grid-cols-2 gap-10 lg:gap-14 items-start">
+            {/* Info column */}
+            <div className="text-right order-2 lg:order-1">
+              <p className="text-gray-500 text-base sm:text-lg mb-2">
+                {landingContent.contact?.title || DEFAULT_LANDING_CONTENT.contact.title}
+              </p>
+              <h2 className="text-3xl sm:text-5xl font-black text-gray-900 mb-8 sm:mb-10">
+                {landingContent.contact?.subtitle || DEFAULT_LANDING_CONTENT.contact.subtitle}
+              </h2>
+
+              <div className="space-y-6 mb-8">
+                <div>
+                  <div className="text-gray-400 text-sm font-medium mb-1">رقم الجوال</div>
+                  <a
+                    href={`tel:+${supportInfo.whatsappNumber}`}
+                    className="text-xl sm:text-2xl font-black text-gray-900 hover:opacity-80 transition-opacity dir-ltr inline-block"
+                    style={{ color: theme.primary }}
+                  >
+                    {supportInfo.whatsappDisplay}
+                  </a>
+                </div>
+                <div>
+                  <div className="text-gray-400 text-sm font-medium mb-1">البريد الالكتروني</div>
+                  <a
+                    href={`mailto:${contactEmail}`}
+                    className="text-lg sm:text-xl font-bold break-all hover:underline"
+                    style={{ color: theme.primary }}
+                  >
+                    {contactEmail}
+                  </a>
+                </div>
               </div>
-              <div>
-                <div className="font-black text-gray-900 text-sm">البريد الإلكتروني</div>
-                <div className="text-amber-500 text-sm font-medium mt-0.5">support@fzaeen.com</div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <a
+                  href={waLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-11 h-11 rounded-full flex items-center justify-center text-white shadow-md hover:scale-105 transition-transform"
+                  style={{ backgroundColor: '#25D366' }}
+                  aria-label="واتساب"
+                >
+                  <MessageCircle className="w-5 h-5" />
+                </a>
+                <a
+                  href={`mailto:${contactEmail}`}
+                  className="w-11 h-11 rounded-full flex items-center justify-center text-white shadow-md hover:scale-105 transition-transform"
+                  style={{ backgroundColor: theme.primary }}
+                  aria-label="بريد"
+                >
+                  <Mail className="w-5 h-5" />
+                </a>
+                <Link
+                  to="/support"
+                  className="inline-flex items-center gap-2 text-sm font-bold text-gray-600 hover:text-gray-900 underline-offset-4 hover:underline mr-1"
+                >
+                  مركز الدعم والأسئلة الشائعة
+                </Link>
               </div>
-            </a>
-            <Link to="/privacy"
-              className="bg-gray-50 border border-gray-200 rounded-2xl p-6 flex items-center gap-4 hover:border-amber-300 hover:bg-amber-50/30 transition-all duration-300 group text-right">
-              <div className="w-11 h-11 bg-gray-100 rounded-xl flex items-center justify-center group-hover:bg-amber-100 transition-colors flex-shrink-0">
-                <Award className="w-5 h-5 text-gray-500 group-hover:text-amber-600 transition-colors" />
-              </div>
-              <div>
-                <div className="font-black text-gray-900 text-sm">سياسة الخصوصية</div>
-                <div className="text-gray-400 text-sm mt-0.5">الشروط وسياسة الاستخدام</div>
-              </div>
-            </Link>
+            </div>
+
+            {/* Form column — مثل المنافس + تذاكر الدعم في التطبيق */}
+            <div
+              className="rounded-3xl p-6 sm:p-8 lg:p-10 text-white shadow-xl order-1 lg:order-2"
+              style={{ backgroundColor: theme.primary }}
+            >
+              <p className="text-white/90 text-sm sm:text-base leading-relaxed mb-6 font-medium">
+                {landingContent.contact?.formHint || DEFAULT_LANDING_CONTENT.contact.formHint}
+              </p>
+
+              <form onSubmit={handleContactSubmit} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-bold text-white/90 mb-1.5">الاسم بالكامل</label>
+                  <input
+                    type="text"
+                    value={contactForm.name}
+                    onChange={(e) => setContactForm((p) => ({ ...p, name: e.target.value }))}
+                    placeholder="الاسم بالكامل"
+                    className="w-full rounded-xl px-4 py-3 text-gray-900 bg-white border-0 outline-none focus:ring-2 focus:ring-white/50 placeholder:text-gray-400"
+                    dir="rtl"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-white/90 mb-1.5">البريد الالكتروني</label>
+                  <input
+                    type="email"
+                    value={contactForm.email}
+                    onChange={(e) => setContactForm((p) => ({ ...p, email: e.target.value }))}
+                    placeholder="example@email.com"
+                    className="w-full rounded-xl px-4 py-3 text-gray-900 bg-white border-0 outline-none focus:ring-2 focus:ring-white/50 placeholder:text-gray-400"
+                    dir="ltr"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-white/90 mb-1.5">الموضوع</label>
+                  <input
+                    type="text"
+                    value={contactForm.subject}
+                    onChange={(e) => setContactForm((p) => ({ ...p, subject: e.target.value }))}
+                    placeholder="الموضوع"
+                    className="w-full rounded-xl px-4 py-3 text-gray-900 bg-white border-0 outline-none focus:ring-2 focus:ring-white/50 placeholder:text-gray-400"
+                    dir="rtl"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-white/90 mb-1.5">الرسالة</label>
+                  <textarea
+                    value={contactForm.message}
+                    onChange={(e) => setContactForm((p) => ({ ...p, message: e.target.value }))}
+                    placeholder="يرجى كتابة رسالتك هنا"
+                    rows={4}
+                    className="w-full rounded-xl px-4 py-3 text-gray-900 bg-white border-0 outline-none focus:ring-2 focus:ring-white/50 placeholder:text-gray-400 resize-y min-h-[110px]"
+                    dir="rtl"
+                  />
+                </div>
+
+                {contactStatus ? (
+                  <div
+                    className={`rounded-xl px-4 py-3 text-sm font-semibold ${
+                      contactStatus.type === 'success'
+                        ? 'bg-white/20 text-white'
+                        : 'bg-black/20 text-white'
+                    }`}
+                  >
+                    {contactStatus.text}
+                  </div>
+                ) : null}
+
+                <button
+                  type="submit"
+                  disabled={contactSubmitting}
+                  className="inline-flex items-center justify-center gap-2 bg-white font-black px-8 py-3.5 rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-70 min-w-[140px]"
+                  style={{ color: theme.primary }}
+                >
+                  {contactSubmitting ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : (
+                    <>
+                      <Send className="w-4 h-4" />
+                      ارسال
+                    </>
+                  )}
+                </button>
+              </form>
+            </div>
           </div>
         </div>
       </section>
@@ -981,6 +1192,8 @@ export const Landing = () => {
                 {[
                   { label: 'سياسة الخصوصية', to: '/privacy' },
                   { label: 'الشروط والأحكام', to: '/terms' },
+                  { label: 'الدعم', to: '/support' },
+                  { label: 'طلب حذف الحساب', to: '/delete-account' },
                 ].map(item => (
                   <li key={item.to}>
                     <Link to={item.to}
@@ -1047,9 +1260,9 @@ export const Landing = () => {
                 الشروط
               </Link>
               <span className="text-white/10">·</span>
-              <a href={`mailto:${landingContent.footer?.email || DEFAULT_LANDING_CONTENT.footer.email}`} className="text-white/25 text-xs hover:text-white/50 transition-colors">
+              <Link to="/support" className="text-white/25 text-xs hover:text-white/50 transition-colors">
                 الدعم
-              </a>
+              </Link>
             </div>
           </div>
         </div>

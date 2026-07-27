@@ -21,6 +21,7 @@ const DEFAULT_CONTENT = {
     pageLinks: [
       { label: 'سياسة الخصوصية', to: '/privacy' },
       { label: 'الشروط والأحكام', to: '/terms' },
+      { label: 'الدعم', to: '/support' },
     ],
   },
   services: {
@@ -75,6 +76,8 @@ const DEFAULT_CONTENT = {
     providerDesc: 'انضم لشبكة فزاعين وابدأ تستقبل طلبات في منطقتك. شغّل وقتك ووسّع دخلك.',
     appleHref: 'https://apps.apple.com',
     googleHref: 'https://play.google.com',
+    providerGoogleHref: 'https://play.google.com/store/apps/details?id=com.fazaa.provider',
+    providerAppleHref: 'https://apps.apple.com',
   },
   stats: {
     items: [
@@ -117,7 +120,7 @@ const DEFAULT_CONTENT = {
   },
   footer: {
     brandDescription: 'منصة تقنية لمساعدة الطريق - نوصّلك بأقرب مزود خدمة معتمد في لحظات.',
-    email: 'support@fzaeen.com',
+    email: 'fzaeen@fzaeen.com',
     copyrightText: 'فزاعين - جميع الحقوق محفوظة',
   },
 };
@@ -498,8 +501,10 @@ export default function LandingSettings() {
         <input className={inputClass} value={content.apps.providerTitle || ''} onChange={(e) => setApps({ providerTitle: e.target.value })} placeholder="عنوان تطبيق المزودين" />
         <textarea className={inputClass + ' resize-none'} rows={2} value={content.apps.providerDesc || ''} onChange={(e) => setApps({ providerDesc: e.target.value })} placeholder="وصف تطبيق المزودين" />
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <input className={inputClass} value={content.apps.appleHref || ''} onChange={(e) => setApps({ appleHref: e.target.value })} placeholder="رابط App Store" />
-          <input className={inputClass} value={content.apps.googleHref || ''} onChange={(e) => setApps({ googleHref: e.target.value })} placeholder="رابط Google Play" />
+          <input className={inputClass} value={content.apps.appleHref || ''} onChange={(e) => setApps({ appleHref: e.target.value })} placeholder="App Store — العملاء" />
+          <input className={inputClass} value={content.apps.googleHref || ''} onChange={(e) => setApps({ googleHref: e.target.value })} placeholder="Google Play — العملاء" />
+          <input className={inputClass} value={content.apps.providerAppleHref || ''} onChange={(e) => setApps({ providerAppleHref: e.target.value })} placeholder="App Store — المزودين" />
+          <input className={inputClass} value={content.apps.providerGoogleHref || ''} onChange={(e) => setApps({ providerGoogleHref: e.target.value })} placeholder="Google Play — المزودين" />
         </div>
       </div>
 

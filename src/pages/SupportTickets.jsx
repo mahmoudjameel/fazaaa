@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   Search, Ticket, Clock, CheckCircle, AlertCircle, MessageSquare,
-  User, Calendar, Filter, Send, XCircle, ArrowRight, RefreshCw
+  User, Calendar, Filter, Send, XCircle, ArrowRight, RefreshCw, Mail, Globe
 } from 'lucide-react';
 import { collection, getDocs, query, orderBy, doc, updateDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { db } from '../services/firebase';
@@ -22,6 +22,7 @@ const CATEGORY_LABELS = {
   provider: 'شكوى على مزود',
   app: 'مشكلة تقنية',
   suggestion: 'اقتراح',
+  website: 'من الموقع',
 };
 
 const getStatusStyle = (status) => {
@@ -39,6 +40,8 @@ const getStatusLabel = (status) => {
   return s?.label || 'مفتوحة';
 };
 
+const isWebsiteTicket = (t) => t?.source === 'website' || t?.category === 'website';
+
 export const SupportTickets = () => {
   const [tickets, setTickets] = useState([]);
   const [filteredTickets, setFilteredTickets] = useState([]);
@@ -46,6 +49,7 @@ export const SupportTickets = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
+  const [sourceFilter, setSourceFilter] = useState('all'); // all | website | app
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [replyText, setReplyText] = useState('');
   const [sending, setSending] = useState(false);
@@ -58,7 +62,10 @@ export const SupportTickets = () => {
       snapshot.forEach((d) => data.push({ id: d.id, ...d.data() }));
       setTickets(data);
       setLoading(false);
-    }, () => setLoading(false));
+    }, (err) => {
+      console.error('support_tickets listener:', err);
+      setLoading(false);
+    });
     return () => unsub();
   }, []);
 
@@ -70,17 +77,23 @@ export const SupportTickets = () => {
     if (categoryFilter !== 'all') {
       filtered = filtered.filter(t => t.category === categoryFilter);
     }
+    if (sourceFilter === 'website') {
+      filtered = filtered.filter(isWebsiteTicket);
+    } else if (sourceFilter === 'app') {
+      filtered = filtered.filter(t => !isWebsiteTicket(t));
+    }
     if (searchTerm.trim()) {
       const s = searchTerm.toLowerCase();
       filtered = filtered.filter(t =>
         (t.subject || '').toLowerCase().includes(s) ||
         (t.userName || '').toLowerCase().includes(s) ||
         (t.userPhone || '').includes(s) ||
+        (t.userEmail || '').toLowerCase().includes(s) ||
         (t.message || '').toLowerCase().includes(s)
       );
     }
     setFilteredTickets(filtered);
-  }, [tickets, statusFilter, categoryFilter, searchTerm]);
+  }, [tickets, statusFilter, categoryFilter, sourceFilter, searchTerm]);
 
   useEffect(() => {
     if (selectedTicket) {
@@ -136,7 +149,7 @@ export const SupportTickets = () => {
     total: tickets.length,
     open: tickets.filter(t => t.status === 'open').length,
     in_progress: tickets.filter(t => t.status === 'in_progress').length,
-    resolved: tickets.filter(t => t.status === 'resolved').length,
+    website: tickets.filter(isWebsiteTicket).length,
   };
 
   if (loading) {
@@ -162,7 +175,7 @@ export const SupportTickets = () => {
 
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm cursor-pointer hover:shadow-md transition-all" onClick={() => setStatusFilter('all')}>
+        <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm cursor-pointer hover:shadow-md transition-all" onClick={() => { setStatusFilter('all'); setSourceFilter('all'); }}>
           <div className="flex items-center justify-between mb-2">
             <Ticket className="w-5 h-5 text-gray-400" />
             <span className="text-2xl font-black text-gray-800">{stats.total}</span>
@@ -183,12 +196,12 @@ export const SupportTickets = () => {
           </div>
           <p className="text-sm text-blue-600 font-medium text-right">قيد المعالجة</p>
         </div>
-        <div className="bg-white rounded-xl p-4 border border-green-100 shadow-sm cursor-pointer hover:shadow-md transition-all" onClick={() => setStatusFilter('resolved')}>
+        <div className="bg-white rounded-xl p-4 border border-emerald-100 shadow-sm cursor-pointer hover:shadow-md transition-all" onClick={() => { setSourceFilter('website'); setStatusFilter('all'); }}>
           <div className="flex items-center justify-between mb-2">
-            <CheckCircle className="w-5 h-5 text-green-500" />
-            <span className="text-2xl font-black text-green-600">{stats.resolved}</span>
+            <Globe className="w-5 h-5 text-emerald-500" />
+            <span className="text-2xl font-black text-emerald-600">{stats.website}</span>
           </div>
-          <p className="text-sm text-green-600 font-medium text-right">تم الحل</p>
+          <p className="text-sm text-emerald-600 font-medium text-right">من الموقع</p>
         </div>
       </div>
 
@@ -199,12 +212,21 @@ export const SupportTickets = () => {
             <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               type="text"
-              placeholder="بحث بالعنوان، الاسم، الهاتف..."
+              placeholder="بحث بالعنوان، الاسم، الإيميل، الهاتف..."
               className="w-full pr-10 pl-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-primary-orange/20 focus:border-primary-orange outline-none text-right"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
+          <select
+            className="px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-primary-orange/20 focus:border-primary-orange outline-none text-right bg-white"
+            value={sourceFilter}
+            onChange={(e) => setSourceFilter(e.target.value)}
+          >
+            <option value="all">كل المصادر</option>
+            <option value="website">نموذج الموقع</option>
+            <option value="app">تطبيق الموبايل</option>
+          </select>
           <select
             className="px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-primary-orange/20 focus:border-primary-orange outline-none text-right bg-white"
             value={statusFilter}
@@ -242,9 +264,16 @@ export const SupportTickets = () => {
                   className={`bg-white rounded-xl p-4 border cursor-pointer transition-all hover:shadow-md ${selectedTicket?.id === ticket.id ? 'border-primary-orange shadow-md ring-1 ring-primary-orange/20' : 'border-gray-100'}`}
                 >
                   <div className="flex items-start justify-between gap-3 mb-2">
-                    <span className={`text-xs font-bold px-2.5 py-1 rounded-lg border ${getStatusStyle(ticket.status)}`}>
-                      {getStatusLabel(ticket.status)}
-                    </span>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span className={`text-xs font-bold px-2.5 py-1 rounded-lg border ${getStatusStyle(ticket.status)}`}>
+                        {getStatusLabel(ticket.status)}
+                      </span>
+                      {isWebsiteTicket(ticket) && (
+                        <span className="text-[10px] font-bold px-2 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-100">
+                          الموقع
+                        </span>
+                      )}
+                    </div>
                     <h3 className="flex-1 text-sm font-bold text-gray-800 text-right line-clamp-1">{ticket.subject}</h3>
                   </div>
                   <p className="text-xs text-gray-500 text-right line-clamp-2 mb-3">{ticket.message}</p>
@@ -255,6 +284,12 @@ export const SupportTickets = () => {
                       <User className="w-3 h-3" />
                     </div>
                   </div>
+                  {ticket.userEmail ? (
+                    <div className="flex items-center justify-end gap-1.5 text-xs text-emerald-600 mt-1.5">
+                      <span className="truncate max-w-[220px]" dir="ltr">{ticket.userEmail}</span>
+                      <Mail className="w-3 h-3 shrink-0" />
+                    </div>
+                  ) : null}
                   <div className="flex items-center justify-between text-xs text-gray-400 mt-1">
                     {ticket.adminReply ? (
                       <span className="text-green-500 font-medium flex items-center gap-1">
@@ -291,8 +326,24 @@ export const SupportTickets = () => {
                 <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500">
                   <span className="flex items-center gap-1"><User className="w-3.5 h-3.5" /> {selectedTicket.userName || 'عميل'}</span>
                   {selectedTicket.userPhone && <span className="direction-ltr">{selectedTicket.userPhone}</span>}
+                  {selectedTicket.userEmail && (
+                    <a
+                      href={`mailto:${selectedTicket.userEmail}`}
+                      className="flex items-center gap-1 text-emerald-600 hover:underline font-semibold"
+                      dir="ltr"
+                    >
+                      <Mail className="w-3.5 h-3.5" />
+                      {selectedTicket.userEmail}
+                    </a>
+                  )}
                   <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5" /> {formatDate(selectedTicket.createdAt)}</span>
                   <span className="bg-gray-100 px-2 py-0.5 rounded-md font-medium">{CATEGORY_LABELS[selectedTicket.category] || selectedTicket.category}</span>
+                  {isWebsiteTicket(selectedTicket) && (
+                    <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-0.5 rounded-md font-bold">
+                      <Globe className="w-3 h-3" />
+                      نموذج الموقع
+                    </span>
+                  )}
                 </div>
               </div>
 

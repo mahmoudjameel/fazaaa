@@ -6,6 +6,7 @@ import { Layout } from './components/Layout';
 import { Landing } from './pages/Landing';
 import { PrivacyPolicy } from './pages/PrivacyPolicy';
 import { Terms } from './pages/Terms';
+import { Support } from './pages/Support';
 import { Dashboard } from './pages/Dashboard';
 import { Services } from './pages/Services';
 import { EmergencyServices } from './pages/EmergencyServices';
@@ -79,6 +80,7 @@ function App() {
         <Route path="/" element={<Landing />} />
         <Route path="/privacy" element={<PrivacyPolicy />} />
         <Route path="/terms" element={<Terms />} />
+        <Route path="/support" element={<Support />} />
         <Route path="/delete-account" element={<DeleteAccount />} />
 
         {/* Admin login */}
