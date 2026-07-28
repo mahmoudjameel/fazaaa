@@ -90,7 +90,7 @@ const DEFAULT_LANDING_CONTENT = {
     customerDesc: 'احتجت مساعدة على الطريق؟ اطلب من التطبيق وراقب المزود على الخريطة وهو يقترب.',
     providerTitle: 'تطبيق فزاعين - مزود الخدمة',
     providerDesc: 'انضم لشبكة فزاعين وابدأ تستقبل طلبات في منطقتك. شغّل وقتك ووسّع دخلك.',
-    appleHref: 'https://apps.apple.com',
+    appleHref: 'https://apps.apple.com/sa/app/fzaeen-%D9%81%D8%B2%D8%A7%D8%B9%D9%8A%D9%86/id6748981486',
     googleHref: 'https://play.google.com/store/apps/details?id=com.londonerazooz.app',
     providerGoogleHref: 'https://play.google.com/store/apps/details?id=com.fazaa.provider',
     providerAppleHref: 'https://apps.apple.com/sa/app/%D9%81%D8%B2%D8%A7%D8%B9%D9%8A%D9%86-%D8%A7%D9%84%D9%85%D8%B2%D9%88%D8%AF-fzaeen-provider/id6761298718',
@@ -351,7 +351,13 @@ export const Landing = () => {
   const theme = landingContent.colors || DEFAULT_LANDING_CONTENT.colors;
   const siteName = landingContent.header?.siteName || 'فزاعين';
   const logoUrl = landingContent.header?.logoUrl || '/fzaeen-logo.jpeg';
-  const appleHref = landingContent.apps?.appleHref || DEFAULT_LANDING_CONTENT.apps.appleHref;
+  const appleHrefRaw = landingContent.apps?.appleHref || DEFAULT_LANDING_CONTENT.apps.appleHref;
+  const appleHref =
+    !appleHrefRaw ||
+    appleHrefRaw === 'https://apps.apple.com' ||
+    appleHrefRaw === 'https://apps.apple.com/'
+      ? DEFAULT_LANDING_CONTENT.apps.appleHref
+      : appleHrefRaw;
   const googleHref = landingContent.apps?.googleHref || DEFAULT_LANDING_CONTENT.apps.googleHref;
   const providerAppleHrefRaw =
     landingContent.apps?.providerAppleHref || DEFAULT_LANDING_CONTENT.apps.providerAppleHref;

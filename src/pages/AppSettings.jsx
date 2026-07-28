@@ -31,7 +31,7 @@ const DEFAULT_APP_VERSION = {
     latestVersion: '8.5.0',
     forceUpdate: false,
     androidUrl: 'https://play.google.com/store/apps/details?id=com.londonerazooz.app',
-    iosUrl: '',
+    iosUrl: 'https://apps.apple.com/sa/app/fzaeen-%D9%81%D8%B2%D8%A7%D8%B9%D9%8A%D9%86/id6748981486',
     message: 'يتوفر إصدار جديد من التطبيق. يرجى التحديث للمتابعة.',
   },
   provider: {

@@ -74,7 +74,7 @@ const DEFAULT_CONTENT = {
     customerDesc: 'احتجت مساعدة على الطريق؟ اطلب من التطبيق وراقب المزود على الخريطة وهو يقترب.',
     providerTitle: 'تطبيق فزاعين - مزود الخدمة',
     providerDesc: 'انضم لشبكة فزاعين وابدأ تستقبل طلبات في منطقتك. شغّل وقتك ووسّع دخلك.',
-    appleHref: 'https://apps.apple.com',
+    appleHref: 'https://apps.apple.com/sa/app/fzaeen-%D9%81%D8%B2%D8%A7%D8%B9%D9%8A%D9%86/id6748981486',
     googleHref: 'https://play.google.com',
     providerGoogleHref: 'https://play.google.com/store/apps/details?id=com.fazaa.provider',
     providerAppleHref: 'https://apps.apple.com/sa/app/%D9%81%D8%B2%D8%A7%D8%B9%D9%8A%D9%86-%D8%A7%D9%84%D9%85%D8%B2%D9%88%D8%AF-fzaeen-provider/id6761298718',
@@ -148,6 +148,13 @@ export default function LandingSettings() {
             ...(d.apps || {}),
             providerTitle: String(d.apps?.providerTitle || DEFAULT_CONTENT.apps.providerTitle || '')
               .replace(/المزودون/g, 'مزود الخدمة'),
+            appleHref: (() => {
+              const href = d.apps?.appleHref || DEFAULT_CONTENT.apps.appleHref;
+              if (!href || href === 'https://apps.apple.com' || href === 'https://apps.apple.com/') {
+                return DEFAULT_CONTENT.apps.appleHref;
+              }
+              return href;
+            })(),
             providerAppleHref: (() => {
               const href = d.apps?.providerAppleHref || DEFAULT_CONTENT.apps.providerAppleHref;
               if (!href || href === 'https://apps.apple.com' || href === 'https://apps.apple.com/') {
