@@ -72,7 +72,7 @@ const DEFAULT_CONTENT = {
     subtitle: 'عميل يحتاج مساعدة؟ أو مزود يريد يشتغل؟',
     customerTitle: 'تطبيق فزاعين - العملاء',
     customerDesc: 'احتجت مساعدة على الطريق؟ اطلب من التطبيق وراقب المزود على الخريطة وهو يقترب.',
-    providerTitle: 'تطبيق فزاعين - المزودون',
+    providerTitle: 'تطبيق فزاعين - مزود الخدمة',
     providerDesc: 'انضم لشبكة فزاعين وابدأ تستقبل طلبات في منطقتك. شغّل وقتك ووسّع دخلك.',
     appleHref: 'https://apps.apple.com',
     googleHref: 'https://play.google.com',
@@ -94,7 +94,7 @@ const DEFAULT_CONTENT = {
     features: [
       { title: 'شبكة واسعة', desc: 'شبكة مزودين موثقين في أنحاء المملكة، كل واحد موثق بهويته وأدواته.' },
       { title: 'شفافية تامة', desc: 'تعرف السعر قبل ما تؤكد الطلب - لا مفاجآت ولا رسوم مخفية.' },
-      { title: 'تتبع مباشر', desc: 'الخريطة تتحدث لحظة بلحظة، تشوف المزود وهو يتقرب منك.' },
+      { title: 'تتبع مباشر', desc: 'الخريطة تتحدث لحظة بلحظة، تشوف المزود وهو يقترب منك.' },
       { title: 'دعم دائم', desc: 'فريق دعم جاهز يرد عليك في أي وقت إذا صار أي شيء.' },
     ],
   },
@@ -111,7 +111,7 @@ const DEFAULT_CONTENT = {
     cardBg: '#ffffff',
   },
   footer: {
-    brandDescription: 'منصة تقنية لمساعدة الطريق - نوصّلك بأقرب مزود خدمة معتمد في لحظات.',
+    brandDescription: 'منصة تقنية للمساعدة على الطريق - نوصّلك بأقرب مزود خدمة معتمد في لحظات.',
     email: 'fzaeen@fzaeen.com',
     copyrightText: 'فزاعين - جميع الحقوق محفوظة',
   },
@@ -143,7 +143,12 @@ export default function LandingSettings() {
           services: { ...DEFAULT_CONTENT.services, ...(d.services || {}) },
           hero: { ...DEFAULT_CONTENT.hero, ...(d.hero || {}) },
           how: { ...DEFAULT_CONTENT.how, ...(d.how || {}) },
-          apps: { ...DEFAULT_CONTENT.apps, ...(d.apps || {}) },
+          apps: {
+            ...DEFAULT_CONTENT.apps,
+            ...(d.apps || {}),
+            providerTitle: String(d.apps?.providerTitle || DEFAULT_CONTENT.apps.providerTitle || '')
+              .replace(/المزودون/g, 'مزود الخدمة'),
+          },
           stats: { ...DEFAULT_CONTENT.stats, ...(d.stats || {}) },
           why: {
             ...DEFAULT_CONTENT.why,
@@ -157,12 +162,18 @@ export default function LandingSettings() {
               title: f?.title || DEFAULT_CONTENT.why.features[idx]?.title || '',
               desc: String(f?.desc || DEFAULT_CONTENT.why.features[idx]?.desc || '')
                 .replace(/أنحاء المدينة/g, 'أنحاء المملكة')
-                .replace(/أكثر من\s*[\d٠-٩,]+\s*مزود/g, 'شبكة مزودين'),
+                .replace(/أكثر من\s*[\d٠-٩,]+\s*مزود/g, 'شبكة مزودين')
+                .replace(/يتقرب/g, 'يقترب'),
             })),
           },
           contact: { ...DEFAULT_CONTENT.contact, ...(d.contact || {}) },
           colors: { ...DEFAULT_CONTENT.colors, ...(d.colors || {}) },
-          footer: { ...DEFAULT_CONTENT.footer, ...(d.footer || {}) },
+          footer: {
+            ...DEFAULT_CONTENT.footer,
+            ...(d.footer || {}),
+            brandDescription: String(d.footer?.brandDescription || DEFAULT_CONTENT.footer.brandDescription || '')
+              .replace(/لمساعدة الطريق/g, 'للمساعدة على الطريق'),
+          },
           lastUpdated: d.lastUpdated || null,
         });
       }

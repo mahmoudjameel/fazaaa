@@ -88,7 +88,7 @@ const DEFAULT_LANDING_CONTENT = {
     subtitle: 'عميل يحتاج مساعدة؟ أو مزود يريد يشتغل؟',
     customerTitle: 'تطبيق فزاعين - العملاء',
     customerDesc: 'احتجت مساعدة على الطريق؟ اطلب من التطبيق وراقب المزود على الخريطة وهو يقترب.',
-    providerTitle: 'تطبيق فزاعين - المزودون',
+    providerTitle: 'تطبيق فزاعين - مزود الخدمة',
     providerDesc: 'انضم لشبكة فزاعين وابدأ تستقبل طلبات في منطقتك. شغّل وقتك ووسّع دخلك.',
     appleHref: 'https://apps.apple.com',
     googleHref: 'https://play.google.com/store/apps/details?id=com.londonerazooz.app',
@@ -110,7 +110,7 @@ const DEFAULT_LANDING_CONTENT = {
     features: [
       { title: 'شبكة واسعة', desc: 'شبكة مزودين موثقين في أنحاء المملكة، كل واحد موثق بهويته وأدواته.' },
       { title: 'شفافية تامة', desc: 'تعرف السعر قبل ما تؤكد الطلب - لا مفاجآت ولا رسوم مخفية.' },
-      { title: 'تتبع مباشر', desc: 'الخريطة تتحدث لحظة بلحظة، تشوف المزود وهو يتقرب منك.' },
+      { title: 'تتبع مباشر', desc: 'الخريطة تتحدث لحظة بلحظة، تشوف المزود وهو يقترب منك.' },
       { title: 'دعم دائم', desc: 'فريق دعم جاهز يرد عليك في أي وقت إذا صار أي شيء.' },
     ],
   },
@@ -128,7 +128,7 @@ const DEFAULT_LANDING_CONTENT = {
     cardBg: '#ffffff',
   },
   footer: {
-    brandDescription: 'منصة تقنية لمساعدة الطريق - نوصّلك بأقرب مزود خدمة معتمد في لحظات.',
+    brandDescription: 'منصة تقنية للمساعدة على الطريق - نوصّلك بأقرب مزود خدمة معتمد في لحظات.',
     email: 'fzaeen@fzaeen.com',
     copyrightText: 'فزاعين - جميع الحقوق محفوظة',
   },
@@ -245,6 +245,15 @@ export const Landing = () => {
           if (!mergedFooter.email || mergedFooter.email === 'support@fzaeen.com') {
             mergedFooter.email = DEFAULT_LANDING_CONTENT.footer.email;
           }
+          mergedFooter.brandDescription = String(
+            mergedFooter.brandDescription || DEFAULT_LANDING_CONTENT.footer.brandDescription
+          ).replace(/لمساعدة الطريق/g, 'للمساعدة على الطريق');
+
+          const mergedApps = { ...DEFAULT_LANDING_CONTENT.apps, ...(data.apps || {}) };
+          mergedApps.providerTitle = String(
+            mergedApps.providerTitle || DEFAULT_LANDING_CONTENT.apps.providerTitle
+          ).replace(/المزودون/g, 'مزود الخدمة');
+
           setLandingContent((prev) => ({
             ...prev,
             ...data,
@@ -252,7 +261,7 @@ export const Landing = () => {
             hero: mergedHero,
             services: { ...prev.services, ...(data.services || {}) },
             how: { ...prev.how, ...(data.how || {}) },
-            apps: { ...prev.apps, ...(data.apps || {}) },
+            apps: mergedApps,
             stats: { ...prev.stats, ...(data.stats || {}) },
             why: {
               ...prev.why,
@@ -266,7 +275,8 @@ export const Landing = () => {
                 title: f?.title || prev.why.features[idx]?.title || '',
                 desc: String(f?.desc || prev.why.features[idx]?.desc || '')
                   .replace(/أنحاء المدينة/g, 'أنحاء المملكة')
-                  .replace(/أكثر من\s*[\d٠-٩,]+\s*مزود/g, 'شبكة مزودين'),
+                  .replace(/أكثر من\s*[\d٠-٩,]+\s*مزود/g, 'شبكة مزودين')
+                  .replace(/يتقرب/g, 'يقترب'),
               })),
             },
             contact: { ...prev.contact, ...(data.contact || {}) },
@@ -575,9 +585,9 @@ export const Landing = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-10">
             {[
-              { icon: Zap,    title: 'استجابة سريعة',  desc: 'متوسط الوصول أقل من ٢٠ دقيقة' },
+              { icon: Zap,    title: 'استجابة سريعة',  desc: 'متوسط الوصول في دقائق بسيطة' },
               { icon: MapPin, title: 'تتبع مباشر',     desc: 'شوف المزود وين على الخريطة' },
-              { icon: Award,  title: 'مزودون موثوقون', desc: 'كل مزود موثق ومقيّم من عملاء سابقين' },
+              { icon: Award,  title: 'مزود الخدمة موثوق', desc: 'كل مزود موثق ومقيّم من عملاء سابقين' },
               { icon: Clock,  title: 'متاح دائمًا',    desc: 'الخدمة شغّالة ٢٤ ساعة، ٧ أيام' },
             ].map(f => (
               <div key={f.title} className="flex flex-col items-center lg:items-end text-center lg:text-right gap-3 group">
