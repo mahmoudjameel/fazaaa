@@ -354,12 +354,9 @@ export const Landing = () => {
   const appleHref = landingContent.apps?.appleHref || DEFAULT_LANDING_CONTENT.apps.appleHref;
   const googleHref = landingContent.apps?.googleHref || DEFAULT_LANDING_CONTENT.apps.googleHref;
   const providerAppleHref =
-    landingContent.apps?.providerAppleHref ||
-    landingContent.apps?.appleHref ||
-    DEFAULT_LANDING_CONTENT.apps.providerAppleHref;
+    landingContent.apps?.providerAppleHref || DEFAULT_LANDING_CONTENT.apps.providerAppleHref;
   const providerGoogleHref =
-    landingContent.apps?.providerGoogleHref ||
-    DEFAULT_LANDING_CONTENT.apps.providerGoogleHref;
+    landingContent.apps?.providerGoogleHref || DEFAULT_LANDING_CONTENT.apps.providerGoogleHref;
   const providerStoreHref = getStoreHrefForDevice(providerAppleHref, providerGoogleHref);
   const heroChips = Array.isArray(landingContent.hero?.chips) && landingContent.hero.chips.length
     ? landingContent.hero.chips
@@ -789,11 +786,11 @@ export const Landing = () => {
                 title: landingContent.apps?.customerTitle || DEFAULT_LANDING_CONTENT.apps.customerTitle,
                 desc: landingContent.apps?.customerDesc || DEFAULT_LANDING_CONTENT.apps.customerDesc,
                 features: ['طلب سريع بنقرتين', 'تتبع مباشر للمزود', 'تقييم الخدمة بعد الانتهاء'],
-                appleHref: landingContent.apps?.appleHref || DEFAULT_LANDING_CONTENT.apps.appleHref,
-                googleHref: landingContent.apps?.googleHref || DEFAULT_LANDING_CONTENT.apps.googleHref,
+                appleHref,
+                googleHref,
               },
               {
-                tag: 'للمزودين',
+                tag: 'لمزود الخدمة',
                 tagStyle: 'bg-white/8 text-white/60 border border-white/10',
                 cardStyle: 'border-white/6',
                 icon: Wrench,
@@ -802,10 +799,13 @@ export const Landing = () => {
                 title: landingContent.apps?.providerTitle || DEFAULT_LANDING_CONTENT.apps.providerTitle,
                 desc: landingContent.apps?.providerDesc || DEFAULT_LANDING_CONTENT.apps.providerDesc,
                 features: ['استقبال الطلبات فوري', 'إدارة حالة الطلبات', 'تتبع الأرباح'],
-                appleHref: landingContent.apps?.appleHref || DEFAULT_LANDING_CONTENT.apps.appleHref,
-                googleHref: landingContent.apps?.googleHref || DEFAULT_LANDING_CONTENT.apps.googleHref,
+                appleHref: providerAppleHref,
+                googleHref: providerGoogleHref,
               },
-            ].map(app => (
+            ].map(app => {
+              const preferredHref = getStoreHrefForDevice(app.appleHref, app.googleHref);
+              const preferredIsApple = preferredHref === app.appleHref;
+              return (
               <div key={app.tag} className={`bg-gray-900 border ${app.cardStyle} rounded-2xl p-6 sm:p-8`}>
                 <div className="flex items-center gap-3 mb-5">
                   <div className={`w-10 h-10 ${app.iconBg} rounded-xl flex items-center justify-center`}>
@@ -823,9 +823,30 @@ export const Landing = () => {
                     </li>
                   ))}
                 </ul>
+                {/* على الموبايل: زر المتجر المناسب للجهاز. على سطح المكتب: الشارتان */}
                 <div className="flex flex-col sm:flex-row gap-3">
+                  <a href={preferredHref} target="_blank" rel="noopener noreferrer"
+                    className="sm:hidden flex items-center justify-center gap-3 bg-white text-gray-900 font-bold px-4 py-3 rounded-xl hover:bg-gray-100 transition-all hover:shadow-lg group flex-1">
+                    {preferredIsApple ? (
+                      <svg viewBox="0 0 24 24" className="w-5 h-5 flex-shrink-0 group-hover:scale-110 transition-transform" fill="currentColor" aria-hidden>
+                        <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z" />
+                      </svg>
+                    ) : (
+                      <span className="group-hover:scale-110 transition-transform inline-flex">
+                        <GooglePlayIcon className="w-5 h-5" />
+                      </span>
+                    )}
+                    <div className="text-right">
+                      <div className="text-[9px] text-gray-500 leading-none">
+                        {preferredIsApple ? 'Download on the' : 'Get it on'}
+                      </div>
+                      <div className="text-sm font-black leading-tight">
+                        {preferredIsApple ? 'App Store' : 'Google Play'}
+                      </div>
+                    </div>
+                  </a>
                   <a href={app.appleHref} target="_blank" rel="noopener noreferrer"
-                    className="flex items-center justify-center gap-3 bg-white text-gray-900 font-bold px-4 py-3 rounded-xl hover:bg-gray-100 transition-all hover:shadow-lg group flex-1">
+                    className="hidden sm:flex items-center justify-center gap-3 bg-white text-gray-900 font-bold px-4 py-3 rounded-xl hover:bg-gray-100 transition-all hover:shadow-lg group flex-1">
                     <svg viewBox="0 0 24 24" className="w-5 h-5 flex-shrink-0 group-hover:scale-110 transition-transform" fill="currentColor" aria-hidden>
                       <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z" />
                     </svg>
@@ -835,7 +856,7 @@ export const Landing = () => {
                     </div>
                   </a>
                   <a href={app.googleHref} target="_blank" rel="noopener noreferrer"
-                    className="flex items-center justify-center gap-3 bg-white text-gray-900 font-bold px-4 py-3 rounded-xl hover:bg-gray-100 transition-all hover:shadow-lg group flex-1">
+                    className="hidden sm:flex items-center justify-center gap-3 bg-white text-gray-900 font-bold px-4 py-3 rounded-xl hover:bg-gray-100 transition-all hover:shadow-lg group flex-1">
                     <span className="group-hover:scale-110 transition-transform inline-flex">
                       <GooglePlayIcon className="w-5 h-5" />
                     </span>
@@ -846,7 +867,7 @@ export const Landing = () => {
                   </a>
                 </div>
               </div>
-            ))}
+            )})}
           </div>
 
           <p className="text-center text-white/25 text-sm mt-8 flex items-center justify-center gap-2">
