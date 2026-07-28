@@ -93,7 +93,7 @@ const DEFAULT_LANDING_CONTENT = {
     appleHref: 'https://apps.apple.com',
     googleHref: 'https://play.google.com/store/apps/details?id=com.londonerazooz.app',
     providerGoogleHref: 'https://play.google.com/store/apps/details?id=com.fazaa.provider',
-    providerAppleHref: 'https://apps.apple.com',
+    providerAppleHref: 'https://apps.apple.com/sa/app/%D9%81%D8%B2%D8%A7%D8%B9%D9%8A%D9%86-%D8%A7%D9%84%D9%85%D8%B2%D9%88%D8%AF-fzaeen-provider/id6761298718',
   },
   stats: {
     items: [
@@ -353,8 +353,14 @@ export const Landing = () => {
   const logoUrl = landingContent.header?.logoUrl || '/fzaeen-logo.jpeg';
   const appleHref = landingContent.apps?.appleHref || DEFAULT_LANDING_CONTENT.apps.appleHref;
   const googleHref = landingContent.apps?.googleHref || DEFAULT_LANDING_CONTENT.apps.googleHref;
-  const providerAppleHref =
+  const providerAppleHrefRaw =
     landingContent.apps?.providerAppleHref || DEFAULT_LANDING_CONTENT.apps.providerAppleHref;
+  const providerAppleHref =
+    !providerAppleHrefRaw ||
+    providerAppleHrefRaw === 'https://apps.apple.com' ||
+    providerAppleHrefRaw === 'https://apps.apple.com/'
+      ? DEFAULT_LANDING_CONTENT.apps.providerAppleHref
+      : providerAppleHrefRaw;
   const providerGoogleHref =
     landingContent.apps?.providerGoogleHref || DEFAULT_LANDING_CONTENT.apps.providerGoogleHref;
   const providerStoreHref = getStoreHrefForDevice(providerAppleHref, providerGoogleHref);

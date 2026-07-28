@@ -77,7 +77,7 @@ const DEFAULT_CONTENT = {
     appleHref: 'https://apps.apple.com',
     googleHref: 'https://play.google.com',
     providerGoogleHref: 'https://play.google.com/store/apps/details?id=com.fazaa.provider',
-    providerAppleHref: 'https://apps.apple.com',
+    providerAppleHref: 'https://apps.apple.com/sa/app/%D9%81%D8%B2%D8%A7%D8%B9%D9%8A%D9%86-%D8%A7%D9%84%D9%85%D8%B2%D9%88%D8%AF-fzaeen-provider/id6761298718',
   },
   stats: {
     items: [
@@ -148,6 +148,13 @@ export default function LandingSettings() {
             ...(d.apps || {}),
             providerTitle: String(d.apps?.providerTitle || DEFAULT_CONTENT.apps.providerTitle || '')
               .replace(/المزودون/g, 'مزود الخدمة'),
+            providerAppleHref: (() => {
+              const href = d.apps?.providerAppleHref || DEFAULT_CONTENT.apps.providerAppleHref;
+              if (!href || href === 'https://apps.apple.com' || href === 'https://apps.apple.com/') {
+                return DEFAULT_CONTENT.apps.providerAppleHref;
+              }
+              return href;
+            })(),
           },
           stats: { ...DEFAULT_CONTENT.stats, ...(d.stats || {}) },
           why: {

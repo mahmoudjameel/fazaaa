@@ -38,11 +38,7 @@ const DEFAULT_APP_VERSION = {
     minVersion: '3.6.2',
     latestVersion: '3.6.2',
     forceUpdate: false,
-    androidUrl: 'https://play.google.com/store/apps/details?id=com.fazaa.provider',
-    iosUrl: '',
-    message: 'يتوفر إصدار جديد من التطبيق. يرجى التحديث للمتابعة.',
-  },
-};
+    iosUrl: 'https://apps.apple.com/sa/app/%D9%81%D8%B2%D8%A7%D8%B9%D9%8A%D9%86-%D8%A7%D9%84%D9%85%D8%B2%D9%88%D8%AF-fzaeen-provider/id6761298718',
 
 export default function AppSettings() {
   const [loading, setLoading] = useState(true);
