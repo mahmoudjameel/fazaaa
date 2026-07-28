@@ -875,11 +875,6 @@ export const Landing = () => {
               </div>
             )})}
           </div>
-
-          <p className="text-center text-white/25 text-sm mt-8 flex items-center justify-center gap-2">
-            <Globe className="w-4 h-4" />
-            مجاني على iOS و Android
-          </p>
         </div>
       </section>
 
