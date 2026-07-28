@@ -32,12 +32,12 @@ const DEFAULT_CONTENT = {
       {
         title: 'بنشر الإطارات',
         desc: 'سواء كان الإطار فاضي أو طاح كلياً، المزود يجي عندك بالعدة اللازمة.',
-        features: ['تغيير الإطار الكامل', 'تركيب الاستبني', 'ضخ هواء', 'فحص باقي الإطارات'],
+        features: ['نفخ كفر', 'تغيير الاحتياطي', 'رقعة كفر خارجية', 'تغيير الكفر عند البنشر'],
       },
       {
         title: 'خدمات البطارية',
         desc: 'ما تشغّلت سيارتك؟ نوصّل مزود يشحن البطارية أو يبدّلها في موقعك.',
-        features: ['شحن البطارية', 'تشغيل من بطارية ثانية', 'تبديل البطارية', 'فحص الكهرباء'],
+        features: ['اشتراك بطارية', 'تبديل بطارية'],
       },
       {
         title: 'فتح السيارة',
@@ -90,20 +90,12 @@ const DEFAULT_CONTENT = {
   why: {
     badge: 'ليش فزاعين؟',
     title: 'ما نحن اللي ننفذ - نحن من يوصّلك بمن ينفذ',
-    subtitle: 'فزاعين وسيط تقني ذكي. شبكة مزودين موثقين في مناطق مختلفة، يصلونك في أقصر وقت.',
+    subtitle: 'فزاعين وسيط تقني ذكي. شبكة مزودين موثقين في أنحاء المملكة، يصلونك في أقصر وقت.',
     features: [
-      { num: '٢٠٠+', title: 'شبكة واسعة', desc: 'أكثر من ٢٠٠ مزود في أنحاء المدينة، كل واحد موثق بهويته وأدواته.' },
-      { num: '٠', title: 'شفافية تامة', desc: 'تعرف السعر قبل ما تؤكد الطلب - لا مفاجآت ولا رسوم مخفية.' },
-      { num: '°٣٦٠', title: 'تتبع مباشر', desc: 'الخريطة تتحدث لحظة بلحظة، تشوف المزود وهو يتقرب منك.' },
-      { num: '٢٤/٧', title: 'دعم دائم', desc: 'فريق دعم جاهز يرد عليك في أي وقت إذا صار أي شيء.' },
-    ],
-  },
-  testimonials: {
-    title: 'ماذا يقول عملاؤنا',
-    items: [
-      { name: 'أحمد م.', service: 'بنشر إطار', comment: 'وصل المزود خلال ١٢ دقيقة. غيّر الإطار وراح. سريع وما فيه تعقيد.' },
-      { name: 'سارة ع.', service: 'بطارية فارغة', comment: 'كانت السيارة ما تشتغل في منطقة مظلمة. فزاعين أنقذني بالحرف الواحد.' },
-      { name: 'محمد الشمري', service: 'فتح سيارة', comment: 'نسيت المفتاح جوّا. فتحوا بدون أي خدش والحمد لله. شكرًا جزيلًا.' },
+      { title: 'شبكة واسعة', desc: 'شبكة مزودين موثقين في أنحاء المملكة، كل واحد موثق بهويته وأدواته.' },
+      { title: 'شفافية تامة', desc: 'تعرف السعر قبل ما تؤكد الطلب - لا مفاجآت ولا رسوم مخفية.' },
+      { title: 'تتبع مباشر', desc: 'الخريطة تتحدث لحظة بلحظة، تشوف المزود وهو يتقرب منك.' },
+      { title: 'دعم دائم', desc: 'فريق دعم جاهز يرد عليك في أي وقت إذا صار أي شيء.' },
     ],
   },
   contact: {
@@ -153,8 +145,21 @@ export default function LandingSettings() {
           how: { ...DEFAULT_CONTENT.how, ...(d.how || {}) },
           apps: { ...DEFAULT_CONTENT.apps, ...(d.apps || {}) },
           stats: { ...DEFAULT_CONTENT.stats, ...(d.stats || {}) },
-          why: { ...DEFAULT_CONTENT.why, ...(d.why || {}) },
-          testimonials: { ...DEFAULT_CONTENT.testimonials, ...(d.testimonials || {}) },
+          why: {
+            ...DEFAULT_CONTENT.why,
+            ...(d.why || {}),
+            subtitle: String(d.why?.subtitle || DEFAULT_CONTENT.why.subtitle || '')
+              .replace(/أنحاء المدينة/g, 'أنحاء المملكة'),
+            features: (Array.isArray(d.why?.features) && d.why.features.length
+              ? d.why.features
+              : DEFAULT_CONTENT.why.features
+            ).map((f, idx) => ({
+              title: f?.title || DEFAULT_CONTENT.why.features[idx]?.title || '',
+              desc: String(f?.desc || DEFAULT_CONTENT.why.features[idx]?.desc || '')
+                .replace(/أنحاء المدينة/g, 'أنحاء المملكة')
+                .replace(/أكثر من\s*[\d٠-٩,]+\s*مزود/g, 'شبكة مزودين'),
+            })),
+          },
           contact: { ...DEFAULT_CONTENT.contact, ...(d.contact || {}) },
           colors: { ...DEFAULT_CONTENT.colors, ...(d.colors || {}) },
           footer: { ...DEFAULT_CONTENT.footer, ...(d.footer || {}) },
@@ -232,9 +237,7 @@ export default function LandingSettings() {
   const setHero = (patch) => setContent((p) => ({ ...p, hero: { ...p.hero, ...patch } }));
   const setHow = (patch) => setContent((p) => ({ ...p, how: { ...p.how, ...patch } }));
   const setApps = (patch) => setContent((p) => ({ ...p, apps: { ...p.apps, ...patch } }));
-  const setStats = (patch) => setContent((p) => ({ ...p, stats: { ...p.stats, ...patch } }));
   const setWhy = (patch) => setContent((p) => ({ ...p, why: { ...p.why, ...patch } }));
-  const setTestimonials = (patch) => setContent((p) => ({ ...p, testimonials: { ...p.testimonials, ...patch } }));
   const setContact = (patch) => setContent((p) => ({ ...p, contact: { ...p.contact, ...patch } }));
   const setColors = (patch) => setContent((p) => ({ ...p, colors: { ...p.colors, ...patch } }));
 
@@ -250,12 +253,6 @@ export default function LandingSettings() {
     setServices({ cards });
   };
 
-  const updateStatItem = (idx, key, value) => {
-    const items = [...(content.stats.items || [])];
-    items[idx] = { ...items[idx], [key]: value };
-    setStats({ items });
-  };
-
   const updateWhyFeature = (idx, key, value) => {
     const features = [...(content.why.features || [])];
     features[idx] = { ...features[idx], [key]: value };
@@ -266,12 +263,6 @@ export default function LandingSettings() {
     const steps = [...(content.how.steps || [])];
     steps[idx] = { ...steps[idx], [key]: value };
     setHow({ steps });
-  };
-
-  const updateTestimonial = (idx, key, value) => {
-    const items = [...(content.testimonials.items || [])];
-    items[idx] = { ...items[idx], [key]: value };
-    setTestimonials({ items });
   };
 
   return (
@@ -521,19 +512,6 @@ export default function LandingSettings() {
       </div>
 
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-5">
-        <div className="flex items-center gap-2 text-gray-800 font-bold">إحصائيات الصفحة</div>
-        <p className="text-xs text-gray-500">تعديل (+٥٠٠٠ مستخدم، +٢٠٠ مزود...) من هنا مباشرة.</p>
-        <div className="space-y-3">
-          {(content.stats.items || []).map((item, idx) => (
-            <div key={idx} className="grid grid-cols-1 md:grid-cols-2 gap-3 border border-gray-200 rounded-xl p-3">
-              <input className={inputClass} value={item.num || ''} onChange={(e) => updateStatItem(idx, 'num', e.target.value)} placeholder="القيمة (مثال: +٥٠٠٠)" />
-              <input className={inputClass} value={item.label || ''} onChange={(e) => updateStatItem(idx, 'label', e.target.value)} placeholder="الوصف (مثال: مستخدم)" />
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-5">
         <div className="flex items-center gap-2 text-gray-800 font-bold">قسم "ليش فزاعين؟"</div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <input className={inputClass} value={content.why.badge || ''} onChange={(e) => setWhy({ badge: e.target.value })} placeholder="Badge" />
@@ -544,28 +522,8 @@ export default function LandingSettings() {
           {(content.why.features || []).map((f, idx) => (
             <div key={idx} className="border border-gray-200 rounded-xl p-3 space-y-3">
               <div className="font-semibold text-sm text-gray-700">ميزة {idx + 1}</div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <input className={inputClass} value={f.num || ''} onChange={(e) => updateWhyFeature(idx, 'num', e.target.value)} placeholder="الرقم" />
-                <input className={inputClass} value={f.title || ''} onChange={(e) => updateWhyFeature(idx, 'title', e.target.value)} placeholder="العنوان" />
-              </div>
+              <input className={inputClass} value={f.title || ''} onChange={(e) => updateWhyFeature(idx, 'title', e.target.value)} placeholder="العنوان" />
               <textarea className={inputClass + ' resize-none'} rows={3} value={f.desc || ''} onChange={(e) => updateWhyFeature(idx, 'desc', e.target.value)} placeholder="الوصف" />
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-5">
-        <div className="font-bold text-gray-800">Testimonials</div>
-        <input className={inputClass} value={content.testimonials.title || ''} onChange={(e) => setTestimonials({ title: e.target.value })} placeholder="عنوان قسم آراء العملاء" />
-        <div className="space-y-3">
-          {(content.testimonials.items || []).map((item, idx) => (
-            <div key={idx} className="border border-gray-200 rounded-xl p-3 space-y-3">
-              <div className="font-semibold text-sm text-gray-700">رأي {idx + 1}</div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <input className={inputClass} value={item.name || ''} onChange={(e) => updateTestimonial(idx, 'name', e.target.value)} placeholder="اسم العميل" />
-                <input className={inputClass} value={item.service || ''} onChange={(e) => updateTestimonial(idx, 'service', e.target.value)} placeholder="نوع الخدمة" />
-              </div>
-              <textarea className={inputClass + ' resize-none'} rows={3} value={item.comment || ''} onChange={(e) => updateTestimonial(idx, 'comment', e.target.value)} placeholder="تعليق العميل" />
             </div>
           ))}
         </div>

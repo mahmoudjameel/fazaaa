@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { doc, getDoc, addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import {
-  Zap, MapPin, Clock, Star, ChevronDown,
+  Zap, MapPin, Clock, ChevronDown,
   CheckCircle, Mail, Menu, X,
   Battery, Wrench, Key, AlertTriangle, Users, Award,
   Download, Globe, Smartphone, Phone, ArrowLeft, FileText, MessageCircle, Send, Loader2
@@ -106,20 +106,12 @@ const DEFAULT_LANDING_CONTENT = {
   why: {
     badge: 'ليش فزاعين؟',
     title: 'ما نحن اللي ننفذ - نحن من يوصّلك بمن ينفذ',
-    subtitle: 'فزاعين وسيط تقني ذكي. شبكة مزودين موثقين في مناطق مختلفة، يصلونك في أقصر وقت.',
+    subtitle: 'فزاعين وسيط تقني ذكي. شبكة مزودين موثقين في أنحاء المملكة، يصلونك في أقصر وقت.',
     features: [
-      { num: '٢٠٠+', title: 'شبكة واسعة', desc: 'أكثر من ٢٠٠ مزود في أنحاء المدينة، كل واحد موثق بهويته وأدواته.' },
-      { num: '٠', title: 'شفافية تامة', desc: 'تعرف السعر قبل ما تؤكد الطلب - لا مفاجآت ولا رسوم مخفية.' },
-      { num: '°٣٦٠', title: 'تتبع مباشر', desc: 'الخريطة تتحدث لحظة بلحظة، تشوف المزود وهو يتقرب منك.' },
-      { num: '٢٤/٧', title: 'دعم دائم', desc: 'فريق دعم جاهز يرد عليك في أي وقت إذا صار أي شيء.' },
-    ],
-  },
-  testimonials: {
-    title: 'ماذا يقول عملاؤنا',
-    items: [
-      { name: 'أحمد م.', service: 'بنشر إطار', comment: 'وصل المزود خلال ١٢ دقيقة. غيّر الإطار وراح. سريع وما فيه تعقيد.' },
-      { name: 'سارة ع.', service: 'بطارية فارغة', comment: 'كانت السيارة ما تشتغل في منطقة مظلمة. فزاعين أنقذني بالحرف الواحد.' },
-      { name: 'محمد الشمري', service: 'فتح سيارة', comment: 'نسيت المفتاح جوّا. فتحوا بدون أي خدش والحمد لله. شكرًا جزيلًا.' },
+      { title: 'شبكة واسعة', desc: 'شبكة مزودين موثقين في أنحاء المملكة، كل واحد موثق بهويته وأدواته.' },
+      { title: 'شفافية تامة', desc: 'تعرف السعر قبل ما تؤكد الطلب - لا مفاجآت ولا رسوم مخفية.' },
+      { title: 'تتبع مباشر', desc: 'الخريطة تتحدث لحظة بلحظة، تشوف المزود وهو يتقرب منك.' },
+      { title: 'دعم دائم', desc: 'فريق دعم جاهز يرد عليك في أي وقت إذا صار أي شيء.' },
     ],
   },
   contact: {
@@ -262,8 +254,21 @@ export const Landing = () => {
             how: { ...prev.how, ...(data.how || {}) },
             apps: { ...prev.apps, ...(data.apps || {}) },
             stats: { ...prev.stats, ...(data.stats || {}) },
-            why: { ...prev.why, ...(data.why || {}) },
-            testimonials: { ...prev.testimonials, ...(data.testimonials || {}) },
+            why: {
+              ...prev.why,
+              ...(data.why || {}),
+              subtitle: String(data.why?.subtitle || prev.why.subtitle || '')
+                .replace(/أنحاء المدينة/g, 'أنحاء المملكة'),
+              features: (Array.isArray(data.why?.features) && data.why.features.length
+                ? data.why.features
+                : prev.why.features
+              ).map((f, idx) => ({
+                title: f?.title || prev.why.features[idx]?.title || '',
+                desc: String(f?.desc || prev.why.features[idx]?.desc || '')
+                  .replace(/أنحاء المدينة/g, 'أنحاء المملكة')
+                  .replace(/أكثر من\s*[\d٠-٩,]+\s*مزود/g, 'شبكة مزودين'),
+              })),
+            },
             contact: { ...prev.contact, ...(data.contact || {}) },
             colors: { ...prev.colors, ...(data.colors || {}) },
             footer: mergedFooter,
@@ -332,8 +337,6 @@ export const Landing = () => {
   const headerLinks = landingContent.header?.scrollLinks || SCROLL_LINKS;
   const serviceCards = landingContent.services?.cards || DEFAULT_LANDING_CONTENT.services.cards;
   const howSteps = landingContent.how?.steps || DEFAULT_LANDING_CONTENT.how.steps;
-  const testimonialItems = landingContent.testimonials?.items || DEFAULT_LANDING_CONTENT.testimonials.items;
-  const statsItems = landingContent.stats?.items || DEFAULT_LANDING_CONTENT.stats.items;
   const whyFeatures = landingContent.why?.features || DEFAULT_LANDING_CONTENT.why.features;
   const theme = landingContent.colors || DEFAULT_LANDING_CONTENT.colors;
   const siteName = landingContent.header?.siteName || 'فزاعين';
@@ -615,11 +618,12 @@ export const Landing = () => {
                 iconColor: 'text-amber-600',
                 borderColor: 'border-amber-100',
                 accentColor: 'text-amber-600',
+                hideFeatures: true,
                 badge: 'الأكثر طلبًا',
                 badgeBg: 'bg-amber-50 text-amber-600',
                 title: 'بنشر الإطارات',
                 desc: 'سواء كان الإطار فاضي أو طاح كلياً، المزود يجي عندك بالعدة اللازمة.',
-                features: ['تغيير الإطار الكامل', 'تركيب الاستبني', 'ضخ هواء', 'فحص باقي الإطارات'],
+                features: ['نفخ كفر', 'تغيير الاحتياطي', 'رقعة كفر خارجية', 'تغيير الكفر عند البنشر'],
               },
               {
                 icon: Battery,
@@ -627,10 +631,11 @@ export const Landing = () => {
                 iconColor: 'text-blue-600',
                 borderColor: 'border-blue-100',
                 accentColor: 'text-blue-600',
+                hideFeatures: true,
                 badge: null,
                 title: 'خدمات البطارية',
                 desc: 'ما تشغّلت سيارتك؟ نوصّل مزود يشحن البطارية أو يبدّلها في موقعك.',
-                features: ['شحن البطارية', 'تشغيل من بطارية ثانية', 'تبديل البطارية', 'فحص الكهرباء'],
+                features: ['اشتراك بطارية', 'تبديل بطارية'],
               },
               {
                 icon: Key,
@@ -638,6 +643,7 @@ export const Landing = () => {
                 iconColor: 'text-emerald-700',
                 borderColor: 'border-emerald-100',
                 accentColor: 'text-emerald-700',
+                hideFeatures: true,
                 badge: null,
                 title: 'فتح السيارة',
                 desc: 'نسيت المفتاح جوّا؟ متخصصون عندهم أدوات يفتحون سيارتك بأمان.',
@@ -655,7 +661,7 @@ export const Landing = () => {
               };
               return (
               <div key={s.title}
-                className={`bg-white rounded-2xl border ${s.borderColor} p-6 sm:p-7 hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5 relative`}>
+                className={`bg-white rounded-2xl border ${s.borderColor} p-6 sm:p-7 hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5 relative flex flex-col min-h-[280px]`}>
                 {s.badge && (
                   <span className={`absolute top-5 left-5 text-xs font-bold px-2.5 py-1 rounded-full ${s.badgeBg}`}>
                     {s.badge}
@@ -665,15 +671,19 @@ export const Landing = () => {
                   <s.icon className={`w-6 h-6 ${s.iconColor}`} />
                 </div>
                 <h3 className="text-lg sm:text-xl font-black text-gray-900 mb-2">{s.title}</h3>
-                <p className="text-gray-500 text-sm leading-relaxed mb-5">{s.desc}</p>
-                <ul className="space-y-2">
-                  {s.features.map(f => (
-                    <li key={f} className="flex items-center gap-2.5 text-sm">
-                      <CheckCircle className={`w-4 h-4 ${s.accentColor} flex-shrink-0`} />
-                      <span className="text-gray-600">{f}</span>
-                    </li>
-                  ))}
-                </ul>
+                <p className="text-gray-500 text-sm leading-8 flex-1">
+                  {s.desc}
+                </p>
+                {!s.hideFeatures && (
+                  <ul className="space-y-2 mt-5">
+                    {s.features.map(f => (
+                      <li key={f} className="flex items-center gap-2.5 text-sm">
+                        <CheckCircle className={`w-4 h-4 ${s.accentColor} flex-shrink-0`} />
+                        <span className="text-gray-600">{f}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
             )})}
           </div>
@@ -836,31 +846,6 @@ export const Landing = () => {
         </div>
       </section>
 
-      {/* ── Stats ── */}
-      <section className="py-14 sm:py-20 border-y border-gray-100" style={{ backgroundColor: theme.cardBg }}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-8 text-center">
-            {[
-              { icon: Users },
-              { icon: Wrench },
-              { icon: CheckCircle },
-              { icon: Clock },
-            ].map((iconItem, idx) => {
-              const s = statsItems[idx] || DEFAULT_LANDING_CONTENT.stats.items[idx];
-              const IconComp = iconItem.icon;
-              return (
-              <div key={s.label} className="flex flex-col items-center gap-3">
-                <div className="w-11 h-11 bg-amber-50 rounded-xl flex items-center justify-center">
-                  <IconComp className="w-5 h-5 text-amber-600" />
-                </div>
-                <div className="text-3xl sm:text-4xl font-black text-gray-900">{s.num}</div>
-                <div className="text-gray-400 text-sm font-medium">{s.label}</div>
-              </div>
-            )})}
-          </div>
-        </div>
-      </section>
-
       {/* ── Why Fzaeen ── */}
       <section id="why" className="py-20 sm:py-28 relative overflow-hidden" style={{ backgroundColor: theme.darkSectionBg }}>
         {/* Ambient */}
@@ -884,8 +869,8 @@ export const Landing = () => {
             </p>
           </div>
 
-          {/* Feature cards – 2×2 grid */}
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5 mb-16 sm:mb-20">
+          {/* Feature cards */}
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
             {[
               { icon: Users },
               { icon: CheckCircle },
@@ -897,78 +882,13 @@ export const Landing = () => {
               return (
               <div key={f.title}
                 className="group bg-white/4 border border-white/8 rounded-2xl p-6 hover:bg-white/7 hover:border-amber-400/20 transition-all duration-300">
-                <div className="flex items-start justify-between mb-5">
+                <div className="mb-5">
                   <div className="w-10 h-10 bg-amber-400/10 border border-amber-400/15 rounded-xl flex items-center justify-center group-hover:bg-amber-400/20 transition-colors">
                     <f.icon className="w-5 h-5 text-amber-400" />
                   </div>
-                  <span className="text-2xl sm:text-3xl font-black text-white/10 group-hover:text-amber-400/20 transition-colors">
-                    {f.num}
-                  </span>
                 </div>
                 <h3 className="text-white font-black text-base mb-2">{f.title}</h3>
                 <p className="text-white/40 text-sm leading-relaxed">{f.desc}</p>
-              </div>
-            )})}
-          </div>
-
-          {/* Divider */}
-          <div className="flex items-center gap-4 mb-12 sm:mb-14">
-            <div className="flex-1 h-px bg-white/6" />
-            <div className="flex items-center gap-2 text-white/25 text-xs font-semibold">
-              <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
-              {landingContent.testimonials?.title || DEFAULT_LANDING_CONTENT.testimonials.title}
-              <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
-            </div>
-            <div className="flex-1 h-px bg-white/6" />
-          </div>
-
-          {/* Testimonials – 3 col */}
-          <div className="grid sm:grid-cols-3 gap-4 sm:gap-5">
-            {[
-              { icon: Wrench },
-              { icon: Battery, featured: true },
-              { icon: Key },
-            ].map((iconItem, idx) => {
-              const base = testimonialItems[idx] || DEFAULT_LANDING_CONTENT.testimonials.items[idx];
-              const initials = (base.name || '').split(' ').slice(0, 2).map((w) => w[0]).join(' ') || 'ع';
-              const r = { ...base, initials, icon: iconItem.icon, featured: iconItem.featured };
-              return (
-              <div key={r.name}
-                className={`relative rounded-2xl p-6 border flex flex-col gap-4 ${
-                  r.featured
-                    ? 'bg-amber-400/8 border-amber-400/25'
-                    : 'bg-white/4 border-white/8'
-                }`}>
-                {r.featured && (
-                  <div className="absolute top-4 left-4">
-                    <span className="text-[10px] text-amber-400 font-bold bg-amber-400/10 px-2 py-0.5 rounded-full border border-amber-400/20">
-                      مميز
-                    </span>
-                  </div>
-                )}
-                {/* Stars */}
-                <div className="flex gap-0.5">
-                  {[1,2,3,4,5].map(i => (
-                    <Star key={i} className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
-                  ))}
-                </div>
-                {/* Comment */}
-                <p className="text-white/65 text-sm leading-relaxed flex-1">
-                  "{r.comment}"
-                </p>
-                {/* Reviewer */}
-                <div className="flex items-center gap-3 pt-3 border-t border-white/6">
-                  <div className="w-9 h-9 rounded-xl bg-amber-400/15 border border-amber-400/20 flex items-center justify-center flex-shrink-0">
-                    <span className="text-amber-400 text-xs font-black">{r.initials}</span>
-                  </div>
-                  <div>
-                    <div className="text-white font-black text-sm">{r.name}</div>
-                    <div className="flex items-center gap-1 text-white/35 text-xs mt-0.5">
-                      <r.icon className="w-3 h-3" />
-                      {r.service}
-                    </div>
-                  </div>
-                </div>
               </div>
             )})}
           </div>
@@ -989,16 +909,6 @@ export const Landing = () => {
               </h2>
 
               <div className="space-y-6 mb-8">
-                <div>
-                  <div className="text-gray-400 text-sm font-medium mb-1">رقم الجوال</div>
-                  <a
-                    href={`tel:+${supportInfo.whatsappNumber}`}
-                    className="text-xl sm:text-2xl font-black text-gray-900 hover:opacity-80 transition-opacity dir-ltr inline-block"
-                    style={{ color: theme.primary }}
-                  >
-                    {supportInfo.whatsappDisplay}
-                  </a>
-                </div>
                 <div>
                   <div className="text-gray-400 text-sm font-medium mb-1">البريد الالكتروني</div>
                   <a
