@@ -11,6 +11,8 @@ permissions:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    env:
+      FTP_SERVER: ${{ secrets.GODADDY_FTP_SERVER }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -28,13 +30,24 @@ jobs:
       - name: Build
         run: npm run build
 
-      # يرفع محتويات dist إلى public_html على GoDaddy عبر FTP
-      # الأسرار المطلوبة في GitHub → Settings → Secrets and variables → Actions:
-      #   GODADDY_FTP_SERVER   مثال: ftp.fzaeen.com
+      # Upload the build output so it can be downloaded and uploaded manually to cPanel if needed
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30
+
+      # Uploads dist contents to public_html on GoDaddy over FTP.
+      # Required secrets (Settings > Secrets and variables > Actions):
+      #   GODADDY_FTP_SERVER      e.g. ftp.fzaeen.com
       #   GODADDY_FTP_USERNAME
       #   GODADDY_FTP_PASSWORD
-      #   GODADDY_FTP_SERVER_DIR  مثال: /public_html/  أو /home/USER/public_html/
+      #   GODADDY_FTP_SERVER_DIR  e.g. /public_html/
+      # This step is skipped automatically when the secrets are missing, instead of failing the run.
       - name: Deploy to GoDaddy (FTP)
+        if: ${{ env.FTP_SERVER != '' }}
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server: ${{ secrets.GODADDY_FTP_SERVER }}
@@ -48,3 +61,8 @@ jobs:
             **/.git*/**
             **/node_modules/**
             **/.DS_Store
+
+      - name: FTP deploy skipped
+        if: ${{ env.FTP_SERVER == '' }}
+        run: |
+          echo "::warning::FTP deploy skipped because GODADDY_FTP secrets are not configured. Download the dist artifact from this run and upload it manually to public_html, or add the four secrets to enable automatic deployment."
