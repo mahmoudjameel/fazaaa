@@ -11,6 +11,8 @@ import {
   ChevronLeft,
 } from 'lucide-react';
 import { WhatsAppFloat } from '../components/WhatsAppFloat';
+import { SeoHead } from '../components/SeoHead';
+import { PAGE_SEO } from '../seo/config';
 import { db } from '../services/firebase';
 
 const DEFAULT_SUPPORT = {
@@ -72,6 +74,7 @@ export const Support = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 relative" dir="rtl" style={{ fontFamily: "'Cairo', system-ui, sans-serif" }}>
+      <SeoHead {...PAGE_SEO.support} />
       <WhatsAppFloat />
 
       <div className="bg-gradient-to-br from-emerald-700 via-teal-600 to-cyan-500 text-white pt-16 pb-20 sm:pt-20 sm:pb-28 relative overflow-hidden">

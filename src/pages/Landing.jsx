@@ -9,6 +9,9 @@ import {
 } from 'lucide-react';
 import { WhatsAppFloat } from '../components/WhatsAppFloat';
 import { LandingSplash } from '../components/LandingSplash';
+import { LandingSeoSection } from '../components/LandingSeoSection';
+import { SeoHead } from '../components/SeoHead';
+import { buildHomeJsonLd, PAGE_SEO } from '../seo/config';
 import { db } from '../services/firebase';
 
 const SCROLL_LINKS = [
@@ -52,22 +55,22 @@ const DEFAULT_LANDING_CONTENT = {
   },
   services: {
     badge: 'الخدمات',
-    title: 'ثلاث خدمات تغطي أكثر الأعطال شيوعًا',
-    subtitle: 'كلها متاحة في تطبيق واحد - اختر ما تحتاجه وأرسل الطلب',
+    title: 'ثلاث خدمات طوارئ للسيارات في السعودية',
+    subtitle: 'بنشر متنقل، بطارية، وفتح سيارة — كلها من تطبيق واحد في أنحاء المملكة',
     cards: [
       {
-        title: 'بنشر الإطارات',
-        desc: 'سواء كان الإطار فاضي أو طاح كلياً، المزود يجي عندك بالعدة اللازمة.',
-        features: ['تغيير الإطار الكامل', 'تركيب الاستبني', 'ضخ هواء', 'فحص باقي الإطارات'],
+        title: 'بنشر الإطارات المتنقل',
+        desc: 'بنشر متنقل في موقعك: نفخ كفر، تغيير الاحتياطي، رقعة كفر خارجية، وتغيير الكفر عند البنشر.',
+        features: ['نفخ كفر', 'تغيير الاحتياطي', 'رقعة كفر خارجية', 'تغيير الكفر عند البنشر'],
       },
       {
-        title: 'خدمات البطارية',
-        desc: 'ما تشغّلت سيارتك؟ نوصّل مزود يشحن البطارية أو يبدّلها في موقعك.',
-        features: ['شحن البطارية', 'تشغيل من بطارية ثانية', 'تبديل البطارية', 'فحص الكهرباء'],
+        title: 'خدمات البطارية المتنقلة',
+        desc: 'اشتراك بطارية أو تبديل بطارية في موقعك داخل السعودية عبر مزود معتمد من فزاعين.',
+        features: ['اشتراك بطارية', 'تبديل بطارية'],
       },
       {
-        title: 'فتح السيارة',
-        desc: 'نسيت المفتاح جوّا؟ متخصصون عندهم أدوات يفتحون سيارتك بأمان.',
+        title: 'فتح السيارة المقفلة',
+        desc: 'نسيت المفتاح جوّا؟ متخصصون يفتحون سيارتك بأمان قدر الإمكان في أنحاء المملكة.',
         features: ['فتح إلكتروني', 'فتح تقليدي', 'استخراج المفاتيح', 'ضمان بدون ضرر'],
       },
     ],
@@ -383,6 +386,7 @@ export const Landing = () => {
   if (customLanding) {
     return (
       <div dir="rtl">
+        <SeoHead {...PAGE_SEO.home} jsonLd={buildHomeJsonLd()} />
         <LandingSplash logoUrl={logoUrl} siteName={siteName} />
         <div dangerouslySetInnerHTML={{ __html: customLanding }} />
         <WhatsAppFloat />
@@ -392,6 +396,7 @@ export const Landing = () => {
 
   return (
     <div className="min-h-screen text-gray-900" dir="rtl" style={{ backgroundColor: theme.cardBg, fontFamily: "'Cairo', system-ui, sans-serif" }}>
+      <SeoHead {...PAGE_SEO.home} jsonLd={buildHomeJsonLd()} />
       <LandingSplash logoUrl={logoUrl} siteName={siteName} />
 
       {/* ── Navbar ── */}
@@ -403,7 +408,7 @@ export const Landing = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16 sm:h-[72px] gap-3">
             <a href="#hero" onClick={(e) => { e.preventDefault(); scrollTo('#hero'); setActiveNav('#hero'); }} className="flex items-center gap-2.5 shrink-0">
-              <img src={logoUrl} alt={siteName} className="w-10 h-10 sm:w-11 sm:h-11 rounded-full object-cover ring-2 ring-white/20" />
+              <img src={logoUrl} alt={`${siteName} — مساعدة الطريق في السعودية`} className="w-10 h-10 sm:w-11 sm:h-11 rounded-full object-cover ring-2 ring-white/20" />
               <span className="text-xl sm:text-2xl font-black text-white tracking-tight">{siteName}</span>
             </a>
 
@@ -932,6 +937,9 @@ export const Landing = () => {
           </div>
         </div>
       </section>
+
+      {/* ── SEO: تغطية السعودية + FAQ ── */}
+      <LandingSeoSection primaryColor={theme.primary} />
 
       {/* ── Contact ── */}
       <section id="contact" className="py-16 sm:py-24" style={{ backgroundColor: theme.lightSectionBg || '#f9fafb' }}>

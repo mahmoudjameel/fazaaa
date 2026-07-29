@@ -1,5 +1,7 @@
 import { FileText, ChevronRight } from 'lucide-react';
 import { LegalDocumentPage } from '../components/LegalDocumentPage';
+import { SeoHead } from '../components/SeoHead';
+import { PAGE_SEO } from '../seo/config';
 
 const Section = ({ title, children }) => (
   <div className="mb-8 sm:mb-10">
@@ -193,15 +195,18 @@ const FallbackTerms = () => (
 );
 
 export const Terms = () => (
-  <LegalDocumentPage
-    docId="termsAndConditions"
-    defaultTitle="الشروط والأحكام"
-    subtitle="يرجى قراءة هذه الشروط بعناية قبل استخدام تطبيق فزّاعين. استخدامك للتطبيق يعني قبولك التام لهذه الشروط."
-    Icon={FileText}
-    headerGradient="bg-gradient-to-br from-gray-900 via-gray-800 to-gray-700"
-    iconWrapClass="bg-white/10 border-white/20"
-    iconClass="text-amber-400"
-    otherLink={{ to: '/privacy', label: 'سياسة الخصوصية' }}
-    fallbackContent={<FallbackTerms />}
-  />
+  <>
+    <SeoHead {...PAGE_SEO.terms} />
+    <LegalDocumentPage
+      docId="termsAndConditions"
+      defaultTitle="الشروط والأحكام"
+      subtitle="يرجى قراءة هذه الشروط بعناية قبل استخدام تطبيق فزّاعين. استخدامك للتطبيق يعني قبولك التام لهذه الشروط."
+      Icon={FileText}
+      headerGradient="bg-gradient-to-br from-gray-900 via-gray-800 to-gray-700"
+      iconWrapClass="bg-white/10 border-white/20"
+      iconClass="text-amber-400"
+      otherLink={{ to: '/privacy', label: 'سياسة الخصوصية' }}
+      fallbackContent={<FallbackTerms />}
+    />
+  </>
 );

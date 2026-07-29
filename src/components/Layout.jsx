@@ -11,6 +11,7 @@ import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../services/firebase';
 import { signOut } from 'firebase/auth';
 import { isUnresolvedEscalation, isUnreadEscalation, getSeenEscalationIds, ESCALATIONS_SEEN_EVENT } from '../utils/escalationStatus';
+import { SeoHead } from './SeoHead';
 
 export const Layout = () => {
   const navigate = useNavigate();
@@ -247,6 +248,12 @@ export const Layout = () => {
 
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden" dir="rtl">
+      <SeoHead
+        title="لوحة التحكم | فزاعين"
+        description="لوحة تحكم إدارة منصة فزاعين"
+        path="/admin"
+        noindex
+      />
 
       {/* Mobile Overlay */}
       {isMobile && sidebarOpen && (

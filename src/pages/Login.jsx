@@ -4,6 +4,8 @@ import { Lock, Mail, Eye, EyeOff } from 'lucide-react';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../services/firebase';
+import { SeoHead } from '../components/SeoHead';
+import { PAGE_SEO } from '../seo/config';
 
 export const Login = ({ onLogin }) => {
   const [email, setEmail] = useState('');
@@ -87,6 +89,7 @@ export const Login = ({ onLogin }) => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary-orange via-orange-400 to-primary-yellow flex items-center justify-center p-3 sm:p-4 md:p-6">
+      <SeoHead {...PAGE_SEO.login} />
       <div className="w-full max-w-md animate-fadeIn">
         {/* Logo Card */}
         <div className="bg-white rounded-2xl sm:rounded-3xl shadow-large p-6 sm:p-8 md:p-10">

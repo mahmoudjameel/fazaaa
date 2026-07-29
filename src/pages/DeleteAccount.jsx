@@ -6,6 +6,8 @@ import { doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { UserX, ArrowRight, Loader2, CheckCircle2 } from 'lucide-react';
 import { auth, db, functions } from '../services/firebase';
 import { WhatsAppFloat } from '../components/WhatsAppFloat';
+import { SeoHead } from '../components/SeoHead';
+import { PAGE_SEO } from '../seo/config';
 
 /** مطابق لـ formatPhoneToInternational في تطبيقات فزّاعين */
 function normalizePhone(raw) {
@@ -142,6 +144,7 @@ export const DeleteAccount = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 relative" dir="rtl">
+      <SeoHead {...PAGE_SEO.deleteAccount} />
       <WhatsAppFloat />
 
       <div className="bg-gradient-to-br from-orange-600 via-orange-500 to-amber-400 text-white pt-14 pb-16 sm:pt-20 sm:pb-24 relative overflow-hidden">

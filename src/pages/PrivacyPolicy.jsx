@@ -1,6 +1,8 @@
 import { Link } from 'react-router-dom';
 import { Shield, ChevronRight } from 'lucide-react';
 import { LegalDocumentPage } from '../components/LegalDocumentPage';
+import { SeoHead } from '../components/SeoHead';
+import { PAGE_SEO } from '../seo/config';
 
 const Section = ({ title, children }) => (
   <div className="mb-8 sm:mb-10">
@@ -182,15 +184,18 @@ const FallbackPrivacy = () => (
 );
 
 export const PrivacyPolicy = () => (
-  <LegalDocumentPage
-    docId="privacyPolicy"
-    defaultTitle="سياسة الخصوصية"
-    subtitle="نحن ملتزمون بحماية خصوصيتك وبياناتك الشخصية. هذه السياسة توضح كيف نجمع المعلومات ونستخدمها ونحميها."
-    Icon={Shield}
-    headerGradient="bg-gradient-to-br from-orange-600 via-orange-500 to-amber-400"
-    iconWrapClass="bg-white/20 border-white/30"
-    iconClass="text-white"
-    otherLink={{ to: '/terms', label: 'الشروط والأحكام' }}
-    fallbackContent={<FallbackPrivacy />}
-  />
+  <>
+    <SeoHead {...PAGE_SEO.privacy} />
+    <LegalDocumentPage
+      docId="privacyPolicy"
+      defaultTitle="سياسة الخصوصية"
+      subtitle="نحن ملتزمون بحماية خصوصيتك وبياناتك الشخصية. هذه السياسة توضح كيف نجمع المعلومات ونستخدمها ونحميها."
+      Icon={Shield}
+      headerGradient="bg-gradient-to-br from-orange-600 via-orange-500 to-amber-400"
+      iconWrapClass="bg-white/20 border-white/30"
+      iconClass="text-white"
+      otherLink={{ to: '/terms', label: 'الشروط والأحكام' }}
+      fallbackContent={<FallbackPrivacy />}
+    />
+  </>
 );
