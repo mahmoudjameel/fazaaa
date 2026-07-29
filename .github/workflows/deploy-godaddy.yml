@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-and-deploy:
@@ -30,7 +30,6 @@ jobs:
       - name: Build
         run: npm run build
 
-      # Upload the build output so it can be downloaded and uploaded manually to cPanel if needed
       - name: Upload dist artifact
         uses: actions/upload-artifact@v4
         with:
@@ -39,14 +38,18 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      # Uploads dist contents to public_html on GoDaddy over FTP.
-      # Required secrets (Settings > Secrets and variables > Actions):
-      #   GODADDY_FTP_SERVER      e.g. ftp.fzaeen.com
-      #   GODADDY_FTP_USERNAME
-      #   GODADDY_FTP_PASSWORD
-      #   GODADDY_FTP_SERVER_DIR  e.g. /public_html/
-      # This step is skipped automatically when the secrets are missing, instead of failing the run.
-      - name: Deploy to GoDaddy (FTP)
+      - name: Publish dist to deploy branch
+        run: |
+          cd dist
+          git init -q
+          git checkout -q -b deploy
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -qm "Build ${{ github.sha }}"
+          git push -q --force "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" deploy:deploy
+
+      - name: Deploy via FTP
         if: ${{ env.FTP_SERVER != '' }}
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
@@ -55,14 +58,7 @@ jobs:
           password: ${{ secrets.GODADDY_FTP_PASSWORD }}
           server-dir: ${{ secrets.GODADDY_FTP_SERVER_DIR }}
           local-dir: ./dist/
-          dangerous-clean-slate: false
-          exclude: |
-            **/.git*
-            **/.git*/**
-            **/node_modules/**
-            **/.DS_Store
 
       - name: FTP deploy skipped
         if: ${{ env.FTP_SERVER == '' }}
-        run: |
-          echo "::warning::FTP deploy skipped because GODADDY_FTP secrets are not configured. Download the dist artifact from this run and upload it manually to public_html, or add the four secrets to enable automatic deployment."
+        run: echo "::warning::FTP secrets are not configured; skipping FTP deploy. The build is published to the deploy branch and as an artifact."
