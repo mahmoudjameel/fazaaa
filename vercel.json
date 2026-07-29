@@ -6,7 +6,7 @@
   "framework": "vite",
   "rewrites": [
     {
-      "source": "/((?!robots\\.txt|sitemap\\.xml).*)",
+      "source": "/((?!robots\\.txt|sitemap\\.xml|favicon\\.ico|favicon-.*\\.png|apple-touch-icon\\.png|site\\.webmanifest|fzaeen-logo\\.jpeg|landing-hero\\.jpg).*)",
       "destination": "/index.html"
     }
   ],

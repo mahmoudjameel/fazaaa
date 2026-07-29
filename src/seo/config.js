@@ -4,7 +4,8 @@ export const SITE_URL = (import.meta.env.VITE_SITE_URL || 'https://fzaeen.com').
 export const SITE_NAME = 'فزاعين';
 export const SITE_NAME_EN = 'Fzaeen';
 export const DEFAULT_OG_IMAGE = `${SITE_URL}/landing-hero.jpg`;
-export const LOGO_URL = `${SITE_URL}/fzaeen-logo.jpeg`;
+export const LOGO_URL = `${SITE_URL}/favicon-192x192.png`;
+export const FAVICON_URL = `${SITE_URL}/favicon-48x48.png`;
 export const CONTACT_EMAIL = 'fzaeen@fzaeen.com';
 export const LOCALE = 'ar_SA';
 
