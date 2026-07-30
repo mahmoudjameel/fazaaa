@@ -101,6 +101,7 @@ export const Providers = () => {
   const [lowBalanceFilter, setLowBalanceFilter] = useState(false);
   const [executedOrdersFilter, setExecutedOrdersFilter] = useState(false);
   const [providerIdsWithCompletedOrders, setProviderIdsWithCompletedOrders] = useState(null);
+  const [executedOrdersCounts, setExecutedOrdersCounts] = useState({});
   const [loadingExecutedOrdersFilter, setLoadingExecutedOrdersFilter] = useState(false);
   const [hasAddPermission, setHasAddPermission] = useState(false);
   const [providersSection, setProvidersSection] = useState('list'); // 'list' | 'profile_requests'
@@ -213,7 +214,7 @@ export const Providers = () => {
 
   useEffect(() => {
     filterProviders();
-  }, [providers, mainServices, searchTerm, statusFilter, typeFilter, groupFilter, serviceFilter, cityFilter, nationalityFilter, lowBalanceFilter, executedOrdersFilter, providerIdsWithCompletedOrders]);
+  }, [providers, mainServices, searchTerm, statusFilter, typeFilter, groupFilter, serviceFilter, cityFilter, nationalityFilter, lowBalanceFilter, executedOrdersFilter, providerIdsWithCompletedOrders, executedOrdersCounts]);
 
   useEffect(() => {
     if (!executedOrdersFilter || providerIdsWithCompletedOrders) return undefined;
@@ -225,6 +226,7 @@ export const Providers = () => {
         const result = await getProviderIdsWithCompletedOrders();
         if (!cancelled) {
           setProviderIdsWithCompletedOrders(new Set(result.providerIds || []));
+          setExecutedOrdersCounts(result.counts || {});
         }
       } catch (error) {
         console.error('Error loading providers with completed orders:', error);
@@ -699,12 +701,17 @@ export const Providers = () => {
       );
     }
 
-    // مزودون سبق لهم تنفيذ طلب مكتمل واحد على الأقل
+    // مزودون نفّذوا طلباً واحداً على الأقل مرّ بمراحل التنفيذ من تطبيق المزود
     if (executedOrdersFilter) {
       if (!providerIdsWithCompletedOrders) {
         filtered = [];
       } else {
-        filtered = filtered.filter((p) => providerIdsWithCompletedOrders.has(String(p.id)));
+        filtered = filtered
+          .filter((p) => providerIdsWithCompletedOrders.has(String(p.id)))
+          .sort(
+            (a, b) =>
+              (executedOrdersCounts[String(b.id)] || 0) - (executedOrdersCounts[String(a.id)] || 0)
+          );
       }
     }
 
@@ -1422,7 +1429,7 @@ export const Providers = () => {
                         {loadingExecutedOrdersFilter
                           ? 'جاري تحميل المزودين الذين نفّذوا طلبات...'
                           : executedOrdersFilter
-                            ? 'لا يوجد مزودون سبق لهم تنفيذ طلب مكتمل'
+                            ? 'لا يوجد مزودون نفّذوا طلباً فعلياً'
                             : lowBalanceFilter
                               ? `لا يوجد مزودون مفعّلون برصيد ${LOW_BALANCE_THRESHOLD} ريال أو أقل`
                               : 'لا توجد نتائج'}
@@ -1439,6 +1446,7 @@ export const Providers = () => {
                       const TypeIcon = typeBadge.icon;
                       const walletBalance = resolveProviderWalletBalance(provider);
                       const isLowBalance = isLowWalletBalance(provider);
+                      const executedOrdersCount = executedOrdersCounts[String(provider.id)] || 0;
                       return (
                         <tr key={provider.id} className="hover:bg-gray-50">
                           <td className="px-6 py-4">
@@ -1451,6 +1459,11 @@ export const Providers = () => {
                                   <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
                                     <Phone size={10} className="ml-1" />
                                     OTP
+                                  </span>
+                                )}
+                                {executedOrdersCount > 0 && (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-teal-100 text-teal-800">
+                                    نفّذ {executedOrdersCount} طلب
                                   </span>
                                 )}
                               </div>

@@ -1990,18 +1990,59 @@ export const getProviderOrderStats = async (providerId) => {
   }
 };
 
+// مراحل يكتبها المزود بنفسه من التطبيق — وجودها يثبت تنفيذاً فعلياً وليس إغلاقاً إدارياً
+const PROVIDER_WORK_STATUSES = new Set([
+  'en_route',
+  'arrived',
+  'in_progress',
+  'pending_client_confirmation',
+]);
+
+// طوابع زمنية لا تُكتب إلا من تطبيق المزود عند تنفيذ المراحل
+const PROVIDER_WORK_TIMESTAMPS = [
+  'enRouteAt',
+  'arrivedAt',
+  'startedAt',
+  'providerCompletedAt',
+  'pending_client_confirmation_at',
+];
+
 /**
- * معرفات المزودين الذين نفّذوا طلباً مكتملاً واحداً على الأقل (بغض النظر عن العدد)
- * @returns {Promise<{ success: boolean, providerIds: string[] }>}
+ * هل مرّ الطلب فعلياً بمراحل تنفيذ المزود؟
+ * يستبعد الطلبات التي وُضعت حالتها "مكتمل" مباشرة من اللوحة أو أُنشئت للتجربة.
+ */
+function hasProviderExecutionEvidence(data) {
+  if (PROVIDER_WORK_TIMESTAMPS.some((field) => data?.[field])) return true;
+
+  const history = Array.isArray(data?.history) ? data.history : [];
+  return history.some((entry) => {
+    if (PROVIDER_WORK_STATUSES.has(entry?.status)) return true;
+    // مسار فتح السيارة ينتقل إلى completed مباشرة لكن بتوقيع المزود
+    return entry?.status === 'completed' && entry?.updatedBy === 'provider';
+  });
+}
+
+/**
+ * عدد الطلبات المنفّذة فعلياً لكل مزود
+ * لا يُحتسب الطلب إلا إذا كان مكتملاً ومرّ بمراحل تنفيذ المزود من التطبيق.
+ * @returns {Promise<{ success: boolean, providerIds: string[], counts: Record<string, number> }>}
  */
 export const getProviderIdsWithCompletedOrders = async () => {
   try {
-    const providerIds = new Set();
+    const seenRequestIds = new Set();
+    const counts = {};
 
     const collectFromSnap = (snap) => {
       snap.forEach((d) => {
-        const providerId = d.data()?.providerId;
-        if (providerId) providerIds.add(String(providerId));
+        if (seenRequestIds.has(d.id)) return;
+        seenRequestIds.add(d.id);
+
+        const data = d.data() || {};
+        const providerId = data.providerId ? String(data.providerId) : '';
+        if (!providerId) return;
+        if (!hasProviderExecutionEvidence(data)) return;
+
+        counts[providerId] = (counts[providerId] || 0) + 1;
       });
     };
 
@@ -2023,7 +2064,7 @@ export const getProviderIdsWithCompletedOrders = async () => {
       console.warn('completed orders query:', e.message);
     }
 
-    return { success: true, providerIds: Array.from(providerIds) };
+    return { success: true, providerIds: Object.keys(counts), counts };
   } catch (error) {
     console.error('Get providers with completed orders error:', error);
     throw error;
