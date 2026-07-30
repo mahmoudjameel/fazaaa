@@ -39,6 +39,8 @@ import {
   getProvidersBySearch,
   createManualOrder,
   updateOrderDetails,
+  updateRequestRating,
+  getProviderIdsWithCompletedOrders,
   getAllCities
 } from '../services/adminService';
 import { format } from 'date-fns';
@@ -265,6 +267,12 @@ export const Orders = () => {
     cancelReason: '',
     status: ''
   });
+  const [isEditingRating, setIsEditingRating] = useState(false);
+  const [ratingForm, setRatingForm] = useState({ rating: 0, comment: '' });
+  const [savingRating, setSavingRating] = useState(false);
+  const [executedProviderFilter, setExecutedProviderFilter] = useState('all');
+  const [executedProviderIds, setExecutedProviderIds] = useState(null);
+  const [loadingExecutedProviders, setLoadingExecutedProviders] = useState(false);
 
   useEffect(() => {
     // جلب المزودين لغرض حساب مسافة SLA للطلبات القديمة التي لم يُحفظ فيها الوقت
@@ -322,7 +330,7 @@ export const Orders = () => {
 
     const fromList = requests.find((r) => r.id === orderId);
     if (fromList) {
-      setSelectedRequest(fromList);
+      openOrderDetails(fromList);
       return;
     }
 
@@ -331,7 +339,7 @@ export const Orders = () => {
       try {
         const snap = await getDoc(doc(db, 'requests', orderId));
         if (cancelled || !snap.exists()) return;
-        setSelectedRequest({ id: snap.id, ...snap.data() });
+        openOrderDetails({ id: snap.id, ...snap.data() });
       } catch (e) {
         console.warn('Failed to open order from deep link:', e?.message);
       }
@@ -415,7 +423,31 @@ export const Orders = () => {
 
   useEffect(() => {
     filterOrders();
-  }, [requests, searchTerm, statusFilter, cityFilter, serviceFilter, matchedUids]);
+  }, [requests, searchTerm, statusFilter, cityFilter, serviceFilter, slaFilter, executedProviderFilter, executedProviderIds, matchedUids, providersDict]);
+
+  // معرفات المزودين الذين نفّذوا طلباً مكتملاً واحداً على الأقل
+  useEffect(() => {
+    if (executedProviderFilter === 'all' || executedProviderIds) return undefined;
+
+    let cancelled = false;
+    (async () => {
+      setLoadingExecutedProviders(true);
+      try {
+        const result = await getProviderIdsWithCompletedOrders();
+        if (!cancelled) setExecutedProviderIds(new Set(result.providerIds || []));
+      } catch (error) {
+        console.error('Error loading providers with completed orders:', error);
+        if (!cancelled) {
+          alert('تعذر تحميل قائمة المزودين الذين نفّذوا طلبات');
+          setExecutedProviderFilter('all');
+        }
+      } finally {
+        if (!cancelled) setLoadingExecutedProviders(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [executedProviderFilter, executedProviderIds]);
 
   // جلب بيانات العميل عند فتح Modal تفاصيل الطلب
   useEffect(() => {
@@ -570,6 +602,34 @@ export const Orders = () => {
     return R * c;
   };
 
+  // زمن وصول المزود للطلب: محفوظ مسبقاً أو مُقدَّر من موقع المزود الحالي
+  const resolveOrderArrival = (order) => {
+    if (order?.providerAcceptedDurationMin != null) {
+      return {
+        durationMin: Number(order.providerAcceptedDurationMin),
+        distanceKm: order.providerAcceptedDistanceKm ?? null,
+        isCalculated: false,
+      };
+    }
+
+    const lat = order?.coordinates?.latitude ?? order?.coordinates?.lat;
+    const lng = order?.coordinates?.longitude ?? order?.coordinates?.lng;
+    if (!lat || !lng || !order?.providerId) return null;
+
+    const pData = providersDict[order.providerId];
+    const loc = pData?.locationCoordinates || pData?.location || pData?.coordinates;
+    const pLat = loc?.latitude ?? loc?.lat;
+    const pLng = loc?.longitude ?? loc?.lng;
+    if (!pLat || !pLng) return null;
+
+    const distanceKm = calculateDistanceKm(lat, lng, pLat, pLng);
+    return {
+      durationMin: Math.round((distanceKm / 40) * 60) || 1,
+      distanceKm,
+      isCalculated: true,
+    };
+  };
+
   const filterOrders = () => {
     let filtered = requests;
     const sTerm = searchTerm.trim();
@@ -626,36 +686,30 @@ export const Orders = () => {
       }
     }
 
-    // 4. Filter by SLA (> 15 min travel time)
+    // 4. Filter by SLA (زمن وصول المزود) — الطلبات بلا بيانات وصول تُستبعد
     if (slaFilter !== 'all') {
       filtered = filtered.filter(req => {
-        let isOver15 = false;
-        
-        // إذا كان وقت الوصول أو المسافة محفوظاً بشكل مسبق (الطلبات الجديدة)
-        if (req.providerAcceptedDurationMin != null) {
-          isOver15 = req.providerAcceptedDurationMin > 15;
-        } else if (req.coordinates && req.coordinates.latitude && req.coordinates.longitude && req.providerId) {
-          // Fallback للطلبات القديمة (حساب ديناميكي باستخدام موقع المزود الحالي إذا أمكن)
-          const pData = providersDict[req.providerId];
-          if (pData) {
-            const loc = pData.locationCoordinates || pData.location || pData.coordinates;
-            if (loc && (loc.latitude ?? loc.lat) && (loc.longitude ?? loc.lng)) {
-              const pLat = loc.latitude ?? loc.lat;
-              const pLng = loc.longitude ?? loc.lng;
-              const distKm = calculateDistanceKm(req.coordinates.latitude, req.coordinates.longitude, pLat, pLng);
-              const estimatedMin = Math.round((distKm / 40) * 60) || 1;
-              isOver15 = estimatedMin > 15;
-            }
-          }
-        }
-        
-        if (slaFilter === 'over_15') return isOver15;
-        if (slaFilter === 'under_15') return !isOver15;
+        const arrival = resolveOrderArrival(req);
+        if (!arrival || arrival.durationMin == null) return false;
+
+        if (slaFilter === 'over_15') return arrival.durationMin > 15;
+        if (slaFilter === 'under_15') return arrival.durationMin <= 15;
         return true;
       });
     }
 
-    // 5. تطبيق البحث (Search)
+    // 5. فلتر المزودين حسب سابقة التنفيذ
+    if (executedProviderFilter !== 'all') {
+      filtered = filtered.filter((req) => {
+        const providerId = req.providerId ? String(req.providerId) : '';
+        if (!providerId) return false;
+        if (!executedProviderIds) return false;
+        const hasExecuted = executedProviderIds.has(providerId);
+        return executedProviderFilter === 'executed' ? hasExecuted : !hasExecuted;
+      });
+    }
+
+    // 6. تطبيق البحث (Search)
     if (sTerm) {
       const searchLower = sTerm.toLowerCase();
       const normalize = (val) => String(val || '').replace(/\D/g, '');
@@ -814,6 +868,53 @@ export const Orders = () => {
       }
     } catch (error) {
       alert('حدث خطأ أثناء تحديث الطلب: ' + error.message);
+    }
+  };
+
+  const openOrderDetails = (order) => {
+    setSelectedRequest(order);
+    setIsEditingRating(false);
+    setRatingForm({
+      rating: Number(order?.rating) || 0,
+      comment: order?.ratingComment || '',
+    });
+  };
+
+  const startEditRating = () => {
+    setRatingForm({
+      rating: Number(selectedRequest?.rating) || 0,
+      comment: selectedRequest?.ratingComment || '',
+    });
+    setIsEditingRating(true);
+  };
+
+  const handleSaveRating = async () => {
+    if (!selectedRequest?.id) return;
+    if (!ratingForm.rating || ratingForm.rating < 1 || ratingForm.rating > 5) {
+      alert('اختر تقييماً من 1 إلى 5 نجوم');
+      return;
+    }
+    setSavingRating(true);
+    try {
+      await updateRequestRating(selectedRequest.id, {
+        rating: ratingForm.rating,
+        comment: ratingForm.comment,
+      });
+      const updated = {
+        ...selectedRequest,
+        rated: true,
+        rating: ratingForm.rating,
+        ratingComment: (ratingForm.comment || '').trim(),
+        ratingUpdatedByAdmin: true,
+      };
+      setSelectedRequest(updated);
+      setRequests((prev) => prev.map((r) => (r.id === updated.id ? { ...r, ...updated } : r)));
+      setIsEditingRating(false);
+      alert('تم حفظ التقييم بنجاح');
+    } catch (error) {
+      alert(error?.message || 'فشل حفظ التقييم');
+    } finally {
+      setSavingRating(false);
     }
   };
 
@@ -1309,7 +1410,7 @@ export const Orders = () => {
         </div>
 
         {/* صف الفلاتر */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
           {/* الحالة */}
           <div className="relative">
             <select
@@ -1369,11 +1470,33 @@ export const Orders = () => {
                   : 'bg-gray-50 border-gray-200 text-gray-700 focus:border-teal-400'
               }`}
             >
-              <option value="all">كل الاستجابات (SLA)</option>
-              <option value="over_15">استجابة &gt; 15 دقيقة</option>
-              <option value="under_15">استجابة ≤ 15 دقيقة</option>
+              <option value="all">كل أوقات الوصول</option>
+              <option value="under_15">وصول ١٥ دقيقة أو أقل</option>
+              <option value="over_15">وصول أكثر من ١٥ دقيقة</option>
             </select>
             <ChevronDown size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          </div>
+
+          {/* مزودون سبق لهم تنفيذ طلبات */}
+          <div className="relative">
+            <select
+              value={executedProviderFilter}
+              onChange={(e) => setExecutedProviderFilter(e.target.value)}
+              className={`w-full appearance-none pr-3 pl-7 py-2 border rounded-xl text-sm font-semibold focus:outline-none cursor-pointer transition-colors ${
+                executedProviderFilter !== 'all'
+                  ? 'bg-teal-50 border-teal-300 text-teal-800 focus:border-teal-400'
+                  : 'bg-gray-50 border-gray-200 text-gray-700 focus:border-teal-400'
+              }`}
+            >
+              <option value="all">كل المزودين</option>
+              <option value="executed">مزودون سبق لهم تنفيذ طلبات</option>
+              <option value="never_executed">مزودون لم ينفذوا أي طلب</option>
+            </select>
+            {loadingExecutedProviders ? (
+              <RefreshCw size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-teal-600 animate-spin" />
+            ) : (
+              <ChevronDown size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            )}
           </div>
         </div>
       </div>
@@ -1535,28 +1658,14 @@ export const Orders = () => {
                     const chips = [];
 
                     // SLA
-                    let durationMin = order.providerAcceptedDurationMin;
-                    let distanceKm = order.providerAcceptedDistanceKm;
-                    let isCalculated = false;
-                    if (durationMin == null && order.coordinates?.latitude && order.coordinates?.longitude && order.providerId) {
-                      const pData = providersDict[order.providerId];
-                      if (pData) {
-                        const loc = pData.locationCoordinates || pData.location || pData.coordinates;
-                        if (loc && (loc.latitude ?? loc.lat) && (loc.longitude ?? loc.lng)) {
-                          const pLat = loc.latitude ?? loc.lat;
-                          const pLng = loc.longitude ?? loc.lng;
-                          distanceKm = calculateDistanceKm(order.coordinates.latitude, order.coordinates.longitude, pLat, pLng);
-                          durationMin = Math.round((distanceKm / 40) * 60) || 1;
-                          isCalculated = true;
-                        }
-                      }
-                    }
-                    if (durationMin != null) {
+                    const arrival = resolveOrderArrival(order);
+                    if (arrival?.durationMin != null) {
+                      const { durationMin, distanceKm, isCalculated } = arrival;
                       const exceeded = durationMin > 15;
                       chips.push(
                         <span key="sla" className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border ${exceeded ? 'bg-red-50 text-red-700 border-red-200' : 'bg-green-50 text-green-700 border-green-200'}`}>
                           <Clock size={11} />
-                          SLA: {durationMin} د {distanceKm != null ? `(${distanceKm.toFixed(1)} km)` : ''}{isCalculated ? ' ‎*' : ''}
+                          وصول: {durationMin} د {distanceKm != null ? `(${distanceKm.toFixed(1)} km)` : ''}{isCalculated ? ' ‎*' : ''}
                           {exceeded && <span className="text-[10px] font-black">⚠ تجاوز</span>}
                         </span>
                       );
@@ -2163,43 +2272,115 @@ export const Orders = () => {
                   </div>
                 </div>
 
-                {/* Rating Section */}
-                {selectedRequest.rated && (
+                {/* Rating Section — عرض وتعديل من الأدمن */}
+                {(selectedRequest.rated || selectedRequest.status === 'completed' || selectedRequest.providerId) && (
                   <div className="bg-yellow-50 rounded-xl p-4 border border-yellow-100">
-                    <h3 className="font-semibold text-gray-700 mb-2 flex items-center gap-2">
-                      <Star className="text-yellow-500 fill-yellow-500" size={20} />
-                      تقييم العميل
-                    </h3>
-                    <div className="flex items-center gap-1 mb-2">
-                      {[...Array(5)].map((_, i) => (
-                        <Star
-                          key={i}
-                          size={20}
-                          className={`${i < selectedRequest.rating
-                            ? 'text-yellow-500 fill-yellow-500'
-                            : 'text-gray-300'
-                            }`}
-                        />
-                      ))}
-                      <span className="mr-2 font-bold text-gray-700">
-                        ({selectedRequest.rating}/5)
-                      </span>
+                    <div className="flex items-center justify-between gap-3 mb-3">
+                      <h3 className="font-semibold text-gray-700 flex items-center gap-2">
+                        <Star className="text-yellow-500 fill-yellow-500" size={20} />
+                        تقييم العميل
+                      </h3>
+                      {!isEditingRating && (
+                        <button
+                          type="button"
+                          onClick={startEditRating}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-lg bg-white border border-yellow-200 text-yellow-800 hover:bg-yellow-100"
+                        >
+                          <Edit size={14} />
+                          {selectedRequest.rated ? 'تعديل التقييم' : 'إضافة تقييم'}
+                        </button>
+                      )}
                     </div>
-                    {selectedRequest.ratingComment && (
-                      <p className="text-gray-600 text-sm bg-white p-3 rounded-lg border border-yellow-100 italic">
-                        "{selectedRequest.ratingComment}"
-                      </p>
-                    )}
-                    {selectedRequest.ratedAt && (
-                      <p className="text-xs text-gray-500 mt-2">
-                        تاريخ التقييم: {format(
-                          selectedRequest.ratedAt?.toMillis
-                            ? new Date(selectedRequest.ratedAt.toMillis())
-                            : new Date(selectedRequest.ratedAt),
-                          'dd MMM yyyy, HH:mm',
-                          { locale: ar }
+
+                    {isEditingRating ? (
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-1 flex-wrap">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <button
+                              key={star}
+                              type="button"
+                              onClick={() => setRatingForm((f) => ({ ...f, rating: star }))}
+                              className="p-0.5"
+                              aria-label={`${star} نجوم`}
+                            >
+                              <Star
+                                size={28}
+                                className={star <= ratingForm.rating
+                                  ? 'text-yellow-500 fill-yellow-500'
+                                  : 'text-gray-300'}
+                              />
+                            </button>
+                          ))}
+                          <span className="mr-2 font-bold text-gray-700">
+                            ({ratingForm.rating || 0}/5)
+                          </span>
+                        </div>
+                        <textarea
+                          value={ratingForm.comment}
+                          onChange={(e) => setRatingForm((f) => ({ ...f, comment: e.target.value }))}
+                          rows={3}
+                          placeholder="تعليق التقييم (اختياري)"
+                          className="w-full px-3 py-2 rounded-lg border border-yellow-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                          dir="rtl"
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            disabled={savingRating}
+                            onClick={handleSaveRating}
+                            className="px-4 py-2 rounded-lg bg-teal-600 text-white font-semibold hover:bg-teal-700 disabled:opacity-50"
+                          >
+                            {savingRating ? 'جاري الحفظ...' : 'حفظ التقييم'}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={savingRating}
+                            onClick={() => setIsEditingRating(false)}
+                            className="px-4 py-2 rounded-lg bg-gray-200 text-gray-700 font-semibold hover:bg-gray-300"
+                          >
+                            إلغاء
+                          </button>
+                        </div>
+                      </div>
+                    ) : selectedRequest.rated ? (
+                      <>
+                        <div className="flex items-center gap-1 mb-2">
+                          {[...Array(5)].map((_, i) => (
+                            <Star
+                              key={i}
+                              size={20}
+                              className={`${i < selectedRequest.rating
+                                ? 'text-yellow-500 fill-yellow-500'
+                                : 'text-gray-300'
+                                }`}
+                            />
+                          ))}
+                          <span className="mr-2 font-bold text-gray-700">
+                            ({selectedRequest.rating}/5)
+                          </span>
+                        </div>
+                        {selectedRequest.ratingComment && (
+                          <p className="text-gray-600 text-sm bg-white p-3 rounded-lg border border-yellow-100 italic">
+                            "{selectedRequest.ratingComment}"
+                          </p>
                         )}
-                      </p>
+                        {selectedRequest.ratedAt && (
+                          <p className="text-xs text-gray-500 mt-2">
+                            تاريخ التقييم: {format(
+                              selectedRequest.ratedAt?.toMillis
+                                ? new Date(selectedRequest.ratedAt.toMillis())
+                                : new Date(selectedRequest.ratedAt),
+                              'dd MMM yyyy, HH:mm',
+                              { locale: ar }
+                            )}
+                          </p>
+                        )}
+                        {selectedRequest.ratingUpdatedByAdmin && (
+                          <p className="text-xs text-teal-700 mt-1 font-semibold">تم تعديله من لوحة الإدارة</p>
+                        )}
+                      </>
+                    ) : (
+                      <p className="text-sm text-gray-500">لم يُقيَّم هذا الطلب بعد — يمكنك إضافة تقييم من الإدارة.</p>
                     )}
                   </div>
                 )}

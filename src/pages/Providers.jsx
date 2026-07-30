@@ -21,6 +21,7 @@ import {
   removeProviderDocument,
   addOrUpdateProviderDocument,
   getProviderOrderStats,
+  getProviderIdsWithCompletedOrders,
   toggleProviderVIP,
   getProviderWalletHistory,
   adjustProviderWallet,
@@ -98,6 +99,9 @@ export const Providers = () => {
   const [selectedProvider, setSelectedProvider] = useState(null);
   const [selectedProvidersForGroup, setSelectedProvidersForGroup] = useState([]);
   const [lowBalanceFilter, setLowBalanceFilter] = useState(false);
+  const [executedOrdersFilter, setExecutedOrdersFilter] = useState(false);
+  const [providerIdsWithCompletedOrders, setProviderIdsWithCompletedOrders] = useState(null);
+  const [loadingExecutedOrdersFilter, setLoadingExecutedOrdersFilter] = useState(false);
   const [hasAddPermission, setHasAddPermission] = useState(false);
   const [providersSection, setProvidersSection] = useState('list'); // 'list' | 'profile_requests'
   const navigate = useNavigate();
@@ -209,7 +213,32 @@ export const Providers = () => {
 
   useEffect(() => {
     filterProviders();
-  }, [providers, mainServices, searchTerm, statusFilter, typeFilter, groupFilter, serviceFilter, cityFilter, nationalityFilter, lowBalanceFilter]);
+  }, [providers, mainServices, searchTerm, statusFilter, typeFilter, groupFilter, serviceFilter, cityFilter, nationalityFilter, lowBalanceFilter, executedOrdersFilter, providerIdsWithCompletedOrders]);
+
+  useEffect(() => {
+    if (!executedOrdersFilter || providerIdsWithCompletedOrders) return undefined;
+
+    let cancelled = false;
+    (async () => {
+      setLoadingExecutedOrdersFilter(true);
+      try {
+        const result = await getProviderIdsWithCompletedOrders();
+        if (!cancelled) {
+          setProviderIdsWithCompletedOrders(new Set(result.providerIds || []));
+        }
+      } catch (error) {
+        console.error('Error loading providers with completed orders:', error);
+        if (!cancelled) {
+          alert('تعذر تحميل قائمة المزودين الذين نفّذوا طلبات');
+          setExecutedOrdersFilter(false);
+        }
+      } finally {
+        if (!cancelled) setLoadingExecutedOrdersFilter(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [executedOrdersFilter, providerIdsWithCompletedOrders]);
 
   const getProviderServiceList = (provider) => {
     const services = provider?.services || {};
@@ -566,6 +595,9 @@ export const Providers = () => {
         email: editProviderForm.email || null,
         nationality: editProviderForm.nationality,
         city: editProviderForm.city || '',
+        providerType: editProviderForm.providerType || 'saudi',
+        shopName: editProviderForm.shopName?.trim() || '',
+        freelanceDocumentNumber: editProviderForm.freelanceDocumentNumber?.trim() || '',
       });
       await refreshSelectedProvider();
       setEditProviderForm(null);
@@ -665,6 +697,15 @@ export const Providers = () => {
       filtered = [...filtered].sort(
         (a, b) => resolveProviderWalletBalance(a) - resolveProviderWalletBalance(b)
       );
+    }
+
+    // مزودون سبق لهم تنفيذ طلب مكتمل واحد على الأقل
+    if (executedOrdersFilter) {
+      if (!providerIdsWithCompletedOrders) {
+        filtered = [];
+      } else {
+        filtered = filtered.filter((p) => providerIdsWithCompletedOrders.has(String(p.id)));
+      }
     }
 
     if (statusFilter !== 'all') {
@@ -1333,6 +1374,26 @@ export const Providers = () => {
                     </span>
                   )}
                 </div>
+                <div className="flex items-center gap-2 px-4 py-3 bg-teal-50 rounded-lg border border-teal-100 sm:col-span-2 lg:col-span-1 xl:col-span-2 min-w-0">
+                  <input
+                    type="checkbox"
+                    id="executedOrders"
+                    checked={executedOrdersFilter}
+                    onChange={(e) => setExecutedOrdersFilter(e.target.checked)}
+                    className="w-4 h-4 flex-shrink-0 text-teal-600 rounded focus:ring-teal-500 cursor-pointer"
+                  />
+                  <label htmlFor="executedOrders" className="text-sm font-bold text-teal-800 cursor-pointer truncate">
+                    مزودون سبق لهم تنفيذ طلبات
+                  </label>
+                  {loadingExecutedOrdersFilter && (
+                    <Loader2 size={14} className="animate-spin text-teal-600 flex-shrink-0" />
+                  )}
+                  {executedOrdersFilter && !loadingExecutedOrdersFilter && (
+                    <span className="text-xs font-semibold text-teal-700 bg-white px-2 py-0.5 rounded-full border border-teal-100 flex-shrink-0">
+                      {filteredProviders.length}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -1358,9 +1419,13 @@ export const Providers = () => {
                   {filteredProviders.length === 0 ? (
                     <tr>
                       <td colSpan="9" className="px-6 py-12 text-center text-gray-500">
-                        {lowBalanceFilter
-                          ? `لا يوجد مزودون مفعّلون برصيد ${LOW_BALANCE_THRESHOLD} ريال أو أقل`
-                          : 'لا توجد نتائج'}
+                        {loadingExecutedOrdersFilter
+                          ? 'جاري تحميل المزودين الذين نفّذوا طلبات...'
+                          : executedOrdersFilter
+                            ? 'لا يوجد مزودون سبق لهم تنفيذ طلب مكتمل'
+                            : lowBalanceFilter
+                              ? `لا يوجد مزودون مفعّلون برصيد ${LOW_BALANCE_THRESHOLD} ريال أو أقل`
+                              : 'لا توجد نتائج'}
                       </td>
                     </tr>
                   ) : (
@@ -1834,7 +1899,9 @@ export const Providers = () => {
                           </h3>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
-                              <label className="block text-sm font-semibold text-gray-700 mb-1">الاسم الأول</label>
+                              <label className="block text-sm font-semibold text-gray-700 mb-1">
+                                {editProviderForm.providerType === 'non_saudi' ? 'الاسم الأول للمفوض' : 'الاسم الأول'}
+                              </label>
                               <input
                                 type="text"
                                 value={editProviderForm.firstName}
@@ -1843,7 +1910,9 @@ export const Providers = () => {
                               />
                             </div>
                             <div>
-                              <label className="block text-sm font-semibold text-gray-700 mb-1">الاسم الأخير</label>
+                              <label className="block text-sm font-semibold text-gray-700 mb-1">
+                                {editProviderForm.providerType === 'non_saudi' ? 'الاسم الأخير للمفوض' : 'الاسم الأخير'}
+                              </label>
                               <input
                                 type="text"
                                 value={editProviderForm.lastName}
@@ -1851,6 +1920,44 @@ export const Providers = () => {
                                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
                               />
                             </div>
+                            <div className="md:col-span-2">
+                              <label className="block text-sm font-semibold text-gray-700 mb-1">صفة التسجيل</label>
+                              <select
+                                value={editProviderForm.providerType || 'saudi'}
+                                onChange={(e) => setEditProviderForm(f => ({
+                                  ...f,
+                                  providerType: e.target.value,
+                                  nationality: e.target.value === 'saudi' ? 'sa' : (f.nationality === 'sa' ? '' : f.nationality),
+                                }))}
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                              >
+                                <option value="saudi">سعودي</option>
+                                <option value="non_saudi">غير سعودي (مفوّض منشأة)</option>
+                              </select>
+                            </div>
+                            {editProviderForm.providerType === 'non_saudi' ? (
+                              <div className="md:col-span-2">
+                                <label className="block text-sm font-semibold text-gray-700 mb-1">اسم المحل / المنشأة</label>
+                                <input
+                                  type="text"
+                                  required
+                                  value={editProviderForm.shopName || ''}
+                                  onChange={(e) => setEditProviderForm(f => ({ ...f, shopName: e.target.value }))}
+                                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                                />
+                              </div>
+                            ) : (
+                              <div className="md:col-span-2">
+                                <label className="block text-sm font-semibold text-gray-700 mb-1">رقم وثيقة العمل الحر</label>
+                                <input
+                                  type="text"
+                                  value={editProviderForm.freelanceDocumentNumber || ''}
+                                  onChange={(e) => setEditProviderForm(f => ({ ...f, freelanceDocumentNumber: e.target.value }))}
+                                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                                  placeholder="اختياري"
+                                />
+                              </div>
+                            )}
                             <div>
                               <label className="block text-sm font-semibold text-gray-700 mb-1">رقم الهاتف</label>
                               <input
@@ -1917,8 +2024,42 @@ export const Providers = () => {
                         </form>
                       ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div className="md:col-span-2 rounded-xl border border-teal-100 bg-teal-50 p-4">
+                            <h3 className="font-bold text-teal-800 mb-3">بيانات التسجيل والمفوّض</h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div>
+                                <p className="text-sm font-semibold text-gray-600 mb-1">صفة التسجيل</p>
+                                <span className="inline-flex px-3 py-1 rounded-full bg-white text-teal-800 font-bold text-sm border border-teal-200">
+                                  {selectedProvider.providerType === 'non_saudi' ? 'غير سعودي — مفوّض منشأة' : 'سعودي'}
+                                </span>
+                              </div>
+                              {selectedProvider.providerType === 'non_saudi' ? (
+                                <>
+                                  <div>
+                                    <p className="text-sm font-semibold text-gray-600 mb-1">اسم المحل / المنشأة</p>
+                                    <p className="text-gray-900 font-bold">{selectedProvider.shopName || 'غير محدد'}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-sm font-semibold text-gray-600 mb-1">اسم المفوض</p>
+                                    <p className="text-gray-900 font-medium">
+                                      {[selectedProvider.firstName, selectedProvider.lastName].filter(Boolean).join(' ') || 'غير محدد'}
+                                    </p>
+                                  </div>
+                                </>
+                              ) : (
+                                <div>
+                                  <p className="text-sm font-semibold text-gray-600 mb-1">رقم وثيقة العمل الحر</p>
+                                  <p className="text-gray-900 font-medium" dir="ltr">
+                                    {selectedProvider.freelanceDocumentNumber || 'لم يتم إدخالها'}
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
                           <div>
-                            <h3 className="font-semibold text-gray-700 mb-2">الاسم</h3>
+                            <h3 className="font-semibold text-gray-700 mb-2">
+                              {selectedProvider.providerType === 'non_saudi' ? 'اسم المفوض' : 'الاسم'}
+                            </h3>
                             <p className="text-gray-800 font-medium">
                               {selectedProvider.firstName} {selectedProvider.lastName}
                             </p>
@@ -1964,6 +2105,9 @@ export const Providers = () => {
                                 email: selectedProvider.email || '',
                                 nationality: selectedProvider.nationality || '',
                                 city: selectedProvider.city || '',
+                                providerType: selectedProvider.providerType || 'saudi',
+                                shopName: selectedProvider.shopName || '',
+                                freelanceDocumentNumber: selectedProvider.freelanceDocumentNumber || '',
                               })}
                               className="inline-flex items-center gap-2 px-4 py-2 bg-teal-50 text-teal-700 rounded-lg hover:bg-teal-100 font-semibold"
                             >

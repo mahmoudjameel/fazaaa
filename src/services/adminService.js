@@ -1750,6 +1750,118 @@ export const updateOrderDetails = async (orderId, updateData) => {
     throw error;
   }
 };
+
+/**
+ * تحديث متوسط تقييم المزود من مجموعة ratings
+ */
+const recalculateProviderRatingAverage = async (providerId) => {
+  if (!providerId) return;
+  const ratingsRef = collection(db, 'ratings');
+  const q = query(ratingsRef, where('providerId', '==', providerId));
+  const querySnapshot = await getDocs(q);
+
+  let totalRating = 0;
+  let count = 0;
+  querySnapshot.forEach((snap) => {
+    const value = Number(snap.data()?.rating) || 0;
+    if (value > 0) {
+      totalRating += value;
+      count += 1;
+    }
+  });
+
+  const average = count > 0 ? totalRating / count : 0;
+  await updateDoc(doc(db, 'providers', providerId), {
+    rating: {
+      average: parseFloat(average.toFixed(2)),
+      count,
+      total: totalRating,
+    },
+    ratingUpdatedAt: serverTimestamp(),
+  });
+};
+
+/**
+ * تعديل أو إضافة تقييم الطلب من لوحة الإدارة
+ * يحدّث الطلب + مستند ratings + متوسط تقييم المزود
+ */
+export const updateRequestRating = async (requestId, { rating, comment = '' } = {}) => {
+  const ratingNum = Math.round(Number(rating));
+  if (!requestId) throw new Error('معرّف الطلب مطلوب');
+  if (!Number.isFinite(ratingNum) || ratingNum < 1 || ratingNum > 5) {
+    throw new Error('التقييم يجب أن يكون بين 1 و 5');
+  }
+
+  const requestRef = doc(db, 'requests', requestId);
+  const requestSnap = await getDoc(requestRef);
+  if (!requestSnap.exists()) {
+    throw new Error('الطلب غير موجود');
+  }
+
+  const requestData = requestSnap.data();
+  const providerId = requestData.providerId || null;
+  const customerId = requestData.customerId || requestData.userId || null;
+  const commentText = String(comment || '').trim();
+  const adminMeta = {
+    ratingUpdatedByAdmin: true,
+    ratingUpdatedAtByAdmin: serverTimestamp(),
+    ratingUpdatedBy: localStorage.getItem('admin_email') || localStorage.getItem('admin_name') || 'admin',
+  };
+
+  const history = Array.isArray(requestData.history) ? [...requestData.history] : [];
+  history.push({
+    action: 'admin_rating_update',
+    timestamp: new Date().toISOString(),
+    message: `تم تعديل التقييم من الإدارة إلى ${ratingNum}/5`,
+    updatedBy: 'admin',
+    previousRating: requestData.rating ?? null,
+    previousComment: requestData.ratingComment ?? null,
+    rating: ratingNum,
+    comment: commentText,
+  });
+
+  await updateDoc(requestRef, {
+    rated: true,
+    rating: ratingNum,
+    ratingComment: commentText,
+    ratedAt: requestData.ratedAt || serverTimestamp(),
+    history,
+    updatedAt: serverTimestamp(),
+    ...adminMeta,
+  });
+
+  // مزامنة مجموعة ratings (إن وُجد تقييم سابق يُحدَّث، وإلا يُنشأ)
+  const ratingsQ = query(collection(db, 'ratings'), where('requestId', '==', requestId), limit(1));
+  const ratingsSnap = await getDocs(ratingsQ);
+  if (!ratingsSnap.empty) {
+    const ratingDoc = ratingsSnap.docs[0];
+    await updateDoc(ratingDoc.ref, {
+      rating: ratingNum,
+      comment: commentText,
+      updatedAt: serverTimestamp(),
+      updatedByAdmin: true,
+    });
+    const existingProviderId = ratingDoc.data()?.providerId || providerId;
+    if (existingProviderId) {
+      await recalculateProviderRatingAverage(existingProviderId);
+    }
+  } else if (providerId) {
+    await addDoc(collection(db, 'ratings'), {
+      requestId,
+      customerId,
+      providerId,
+      rating: ratingNum,
+      comment: commentText,
+      createdAt: serverTimestamp(),
+      createdByAdmin: true,
+      updatedAt: serverTimestamp(),
+    });
+    await recalculateProviderRatingAverage(providerId);
+  }
+
+  return { success: true, rating: ratingNum, comment: commentText };
+};
+
 /**
  * الحصول على سجل محفظة المزود
  * @param {string} providerId - معرف المزود
@@ -1874,6 +1986,46 @@ export const getProviderOrderStats = async (providerId) => {
     return { success: true, completed, cancelled, active, total: orders.length, orders };
   } catch (error) {
     console.error('Get provider order stats error:', error);
+    throw error;
+  }
+};
+
+/**
+ * معرفات المزودين الذين نفّذوا طلباً مكتملاً واحداً على الأقل (بغض النظر عن العدد)
+ * @returns {Promise<{ success: boolean, providerIds: string[] }>}
+ */
+export const getProviderIdsWithCompletedOrders = async () => {
+  try {
+    const providerIds = new Set();
+
+    const collectFromSnap = (snap) => {
+      snap.forEach((d) => {
+        const providerId = d.data()?.providerId;
+        if (providerId) providerIds.add(String(providerId));
+      });
+    };
+
+    try {
+      const requestsSnap = await getDocs(
+        query(collection(db, 'requests'), where('status', '==', 'completed'))
+      );
+      collectFromSnap(requestsSnap);
+    } catch (e) {
+      console.warn('completed requests query:', e.message);
+    }
+
+    try {
+      const ordersSnap = await getDocs(
+        query(collection(db, 'orders'), where('status', '==', 'completed'))
+      );
+      collectFromSnap(ordersSnap);
+    } catch (e) {
+      console.warn('completed orders query:', e.message);
+    }
+
+    return { success: true, providerIds: Array.from(providerIds) };
+  } catch (error) {
+    console.error('Get providers with completed orders error:', error);
     throw error;
   }
 };
