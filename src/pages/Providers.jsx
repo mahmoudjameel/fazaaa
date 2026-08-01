@@ -590,6 +590,7 @@ export const Providers = () => {
     if (!selectedProvider || !editProviderForm) return;
     setSavingEdit(true);
     try {
+      const providerType = editProviderForm.providerType === 'non_saudi' ? 'non_saudi' : 'saudi';
       await updateProvider(selectedProvider.id, {
         firstName: editProviderForm.firstName,
         lastName: editProviderForm.lastName,
@@ -597,9 +598,10 @@ export const Providers = () => {
         email: editProviderForm.email || null,
         nationality: editProviderForm.nationality,
         city: editProviderForm.city || '',
-        providerType: editProviderForm.providerType || 'saudi',
-        shopName: editProviderForm.shopName?.trim() || '',
-        freelanceDocumentNumber: editProviderForm.freelanceDocumentNumber?.trim() || '',
+        providerType,
+        shopName: providerType === 'non_saudi' ? (editProviderForm.shopName?.trim() || '') : '',
+        freelanceDocumentNumber:
+          providerType === 'saudi' ? (editProviderForm.freelanceDocumentNumber?.trim() || '') : '',
       });
       await refreshSelectedProvider();
       setEditProviderForm(null);
@@ -1411,6 +1413,7 @@ export const Providers = () => {
               <table className="w-full">
                 <thead className="bg-gray-50">
                   <tr>
+                    <th className="px-4 py-4 text-center text-sm font-semibold text-gray-700">#</th>
                     <th className="px-6 py-4 text-right text-sm font-semibold text-gray-700">المزود</th>
                     <th className="px-6 py-4 text-right text-sm font-semibold text-gray-700">الرصيد</th>
                     <th className="px-6 py-4 text-right text-sm font-semibold text-gray-700">الخدمات</th>
@@ -1425,7 +1428,7 @@ export const Providers = () => {
                 <tbody className="divide-y divide-gray-200">
                   {filteredProviders.length === 0 ? (
                     <tr>
-                      <td colSpan="9" className="px-6 py-12 text-center text-gray-500">
+                      <td colSpan="10" className="px-6 py-12 text-center text-gray-500">
                         {loadingExecutedOrdersFilter
                           ? 'جاري تحميل المزودين الذين نفّذوا طلبات...'
                           : executedOrdersFilter
@@ -1436,7 +1439,7 @@ export const Providers = () => {
                       </td>
                     </tr>
                   ) : (
-                    filteredProviders.map((provider) => {
+                    filteredProviders.map((provider, index) => {
                       // استخدام approvalStatus بدلاً من status (status قد يكون "online"/"offline")
                       const approvalStatus = provider.approvalStatus || provider.status;
                       const statusBadge = getStatusBadge(approvalStatus);
@@ -1449,6 +1452,11 @@ export const Providers = () => {
                       const executedOrdersCount = executedOrdersCounts[String(provider.id)] || 0;
                       return (
                         <tr key={provider.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-4 text-center">
+                            <span className="inline-flex min-w-8 h-8 items-center justify-center rounded-full bg-gray-100 text-sm font-black text-gray-700">
+                              {new Intl.NumberFormat('ar-SA').format(index + 1)}
+                            </span>
+                          </td>
                           <td className="px-6 py-4">
                             <div>
                               <div className="flex items-center gap-2">

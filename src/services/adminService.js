@@ -650,6 +650,13 @@ export const updateProvider = async (providerId, data) => {
     if (data.email !== undefined) updates.email = data.email;
     if (data.nationality !== undefined) updates.nationality = data.nationality;
     if (data.city !== undefined) updates.city = data.city;
+    if (data.providerType !== undefined) {
+      updates.providerType = data.providerType === 'non_saudi' ? 'non_saudi' : 'saudi';
+    }
+    if (data.shopName !== undefined) updates.shopName = String(data.shopName || '').trim();
+    if (data.freelanceDocumentNumber !== undefined) {
+      updates.freelanceDocumentNumber = String(data.freelanceDocumentNumber || '').trim();
+    }
     await updateDoc(providerRef, updates);
     return { success: true };
   } catch (error) {
