@@ -40,6 +40,7 @@ import {
   createManualOrder,
   updateOrderDetails,
   updateRequestRating,
+  cancelCompletedOrderByAdmin,
   getProviderIdsWithCompletedOrders,
   getAllCities
 } from '../services/adminService';
@@ -270,6 +271,9 @@ export const Orders = () => {
   const [isEditingRating, setIsEditingRating] = useState(false);
   const [ratingForm, setRatingForm] = useState({ rating: 0, comment: '' });
   const [savingRating, setSavingRating] = useState(false);
+  const [cancelCompletedReason, setCancelCompletedReason] = useState('');
+  const [showCancelCompletedConfirm, setShowCancelCompletedConfirm] = useState(false);
+  const [cancellingCompleted, setCancellingCompleted] = useState(false);
   const [executedProviderFilter, setExecutedProviderFilter] = useState('all');
   const [executedProviderIds, setExecutedProviderIds] = useState(null);
   const [loadingExecutedProviders, setLoadingExecutedProviders] = useState(false);
@@ -874,6 +878,8 @@ export const Orders = () => {
   const openOrderDetails = (order) => {
     setSelectedRequest(order);
     setIsEditingRating(false);
+    setShowCancelCompletedConfirm(false);
+    setCancelCompletedReason('');
     setRatingForm({
       rating: Number(order?.rating) || 0,
       comment: order?.ratingComment || '',
@@ -918,6 +924,38 @@ export const Orders = () => {
     }
   };
 
+  const handleCancelCompletedOrder = async () => {
+    if (!selectedRequest?.id || selectedRequest.status !== 'completed') return;
+    setCancellingCompleted(true);
+    try {
+      const result = await cancelCompletedOrderByAdmin(selectedRequest.id, {
+        reason: cancelCompletedReason,
+      });
+      const updated = {
+        ...selectedRequest,
+        status: 'canceled_by_admin',
+        cancelReason: cancelCompletedReason.trim() || 'إلغاء من لوحة التحكم',
+        cancelledBy: 'admin',
+        adminCancelledCompleted: true,
+        commissionRefunded: result.refunded || selectedRequest.commissionDeducted || false,
+        commissionRefundAmount: result.refundAmount || 0,
+      };
+      setSelectedRequest(updated);
+      setRequests((prev) => prev.map((r) => (r.id === updated.id ? { ...r, ...updated } : r)));
+      setShowCancelCompletedConfirm(false);
+      setCancelCompletedReason('');
+      if (result.refunded) {
+        alert(`تم إلغاء الطلب واسترجاع ${result.refundAmount} ر.س للمزود (طلب ${result.orderLabel})`);
+      } else {
+        alert('تم إلغاء الطلب. لم تُسترجع عمولة لأن الخصم لم يكن مسجلاً على الطلب.');
+      }
+    } catch (error) {
+      alert(error?.message || 'فشل إلغاء الطلب');
+    } finally {
+      setCancellingCompleted(false);
+    }
+  };
+
   const getStatusBadge = (status) => {
     const badges = {
       searching: { text: 'جاري البحث', color: 'bg-yellow-100 text-yellow-700' },
@@ -934,6 +972,7 @@ export const Orders = () => {
       canceled_by_provider: { text: 'ملغي من المزود', color: 'bg-red-100 text-red-700' },
       canceled_by_client_with_reason: { text: 'ملغي', color: 'bg-red-100 text-red-700' },
       canceled_by_provider_with_reason: { text: 'ملغي', color: 'bg-red-100 text-red-700' },
+      canceled_by_admin: { text: 'ملغي من الإدارة', color: 'bg-rose-100 text-rose-700' },
       timed_out: { text: 'انتهت المهلة', color: 'bg-purple-100 text-purple-700' },
     };
     return badges[status] || { text: status, color: 'bg-gray-100 text-gray-700' };
@@ -1887,6 +1926,87 @@ export const Orders = () => {
                   >
                     {getStatusBadge(selectedRequest.status).text}
                   </span>
+
+                  {selectedRequest.status === 'completed' && (
+                    <div className="mt-4 p-4 rounded-xl border border-rose-200 bg-rose-50">
+                      <div className="flex items-start gap-3">
+                        <AlertTriangle className="text-rose-600 flex-shrink-0 mt-0.5" size={18} />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-rose-800 text-sm">إلغاء طلب مكتمل</p>
+                          <p className="text-xs text-rose-700 mt-1 leading-relaxed">
+                            سيتم إلغاء الطلب
+                            {selectedRequest.commissionDeducted
+                              ? ` واسترجاع ${(selectedRequest.commission || 5)} ر.س تلقائياً لمحفظة المزود مع إشعار ورقم الطلب.`
+                              : ' بدون استرجاع عمولة (لم يُسجَّل خصم عمولة على هذا الطلب).'}
+                          </p>
+
+                          {!showCancelCompletedConfirm ? (
+                            <button
+                              type="button"
+                              onClick={() => setShowCancelCompletedConfirm(true)}
+                              className="mt-3 inline-flex items-center gap-2 px-4 py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700 font-semibold text-sm"
+                            >
+                              <XCircle size={16} />
+                              إلغاء الطلب
+                            </button>
+                          ) : (
+                            <div className="mt-3 space-y-3">
+                              <textarea
+                                value={cancelCompletedReason}
+                                onChange={(e) => setCancelCompletedReason(e.target.value)}
+                                rows={2}
+                                placeholder="سبب الإلغاء (اختياري)"
+                                className="w-full px-3 py-2 border border-rose-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-rose-300"
+                              />
+                              <div className="flex flex-wrap gap-2">
+                                <button
+                                  type="button"
+                                  disabled={cancellingCompleted}
+                                  onClick={handleCancelCompletedOrder}
+                                  className="inline-flex items-center gap-2 px-4 py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700 disabled:opacity-50 font-semibold text-sm"
+                                >
+                                  {cancellingCompleted ? (
+                                    <>
+                                      <RefreshCw size={14} className="animate-spin" />
+                                      جاري الإلغاء...
+                                    </>
+                                  ) : (
+                                    'تأكيد الإلغاء واسترجاع العمولة'
+                                  )}
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={cancellingCompleted}
+                                  onClick={() => {
+                                    setShowCancelCompletedConfirm(false);
+                                    setCancelCompletedReason('');
+                                  }}
+                                  className="px-4 py-2 bg-white text-rose-700 border border-rose-200 rounded-lg hover:bg-rose-100 font-semibold text-sm"
+                                >
+                                  تراجع
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedRequest.status === 'canceled_by_admin' && (
+                    <div className="mt-3 p-3 rounded-xl border border-rose-200 bg-rose-50 text-sm text-rose-800">
+                      <p className="font-bold">ملغي من الإدارة</p>
+                      {selectedRequest.cancelReason && (
+                        <p className="mt-1">السبب: {selectedRequest.cancelReason}</p>
+                      )}
+                      {selectedRequest.commissionRefunded && (
+                        <p className="mt-1 font-semibold">
+                          تم استرجاع {selectedRequest.commissionRefundAmount || selectedRequest.commission || 5} ر.س للمزود
+                        </p>
+                      )}
+                    </div>
+                  )}
+
                   {/* سبب إلغاء المزود — عرض مرتب */}
                   {(() => {
                     const cancelEvents = Array.isArray(selectedRequest.history)

@@ -1702,6 +1702,7 @@ const TERMINAL_ORDER_STATUSES = [
   'canceled_by_client_with_reason',
   'canceled_by_provider',
   'canceled_by_provider_with_reason',
+  'canceled_by_admin',
   'escalated_to_city_manager',
 ];
 
@@ -1867,6 +1868,120 @@ export const updateRequestRating = async (requestId, { rating, comment = '' } = 
   }
 
   return { success: true, rating: ratingNum, comment: commentText };
+};
+
+/**
+ * إلغاء طلب مكتمل من لوحة التحكم مع استرجاع عمولة المزود تلقائياً
+ * @param {string} requestId
+ * @param {{ reason?: string }} [options]
+ */
+export const cancelCompletedOrderByAdmin = async (requestId, { reason = '' } = {}) => {
+  if (!requestId) throw new Error('معرف الطلب مطلوب');
+
+  const requestRef = doc(db, 'requests', requestId);
+  const cancelReason = String(reason || '').trim() || 'إلغاء من لوحة التحكم';
+
+  const result = await runTransaction(db, async (transaction) => {
+    const snap = await transaction.get(requestRef);
+    if (!snap.exists()) throw new Error('الطلب غير موجود');
+
+    const data = snap.data() || {};
+    if (data.status !== 'completed') {
+      throw new Error('يمكن إلغاء الطلبات المكتملة فقط');
+    }
+    if (data.commissionRefunded === true) {
+      throw new Error('تم استرجاع عمولة هذا الطلب مسبقاً');
+    }
+
+    const providerId = data.providerId ? String(data.providerId) : '';
+    const orderNumber = data.orderNumber ?? null;
+    const orderLabel =
+      orderNumber != null && orderNumber !== ''
+        ? `#${String(orderNumber).padStart(9, '0')}`
+        : requestId.slice(-6).toUpperCase();
+
+    const shouldRefund = data.commissionDeducted === true && !!providerId;
+    const refundAmount = shouldRefund
+      ? Number(data.commission) > 0
+        ? Number(data.commission)
+        : 5
+      : 0;
+
+    let newBalance = null;
+    if (shouldRefund && refundAmount > 0) {
+      const providerRef = doc(db, 'providers', providerId);
+      const providerSnap = await transaction.get(providerRef);
+      if (!providerSnap.exists()) {
+        throw new Error('المزود غير موجود — تعذر استرجاع العمولة');
+      }
+
+      const providerData = providerSnap.data() || {};
+      const currentBalance = Number(providerData.wallet?.balance ?? providerData.walletBalance ?? 0) || 0;
+      newBalance = currentBalance + refundAmount;
+
+      transaction.update(providerRef, {
+        'wallet.balance': newBalance,
+        'wallet.lastUpdated': serverTimestamp(),
+        walletBalance: deleteField(),
+      });
+
+      const transRef = doc(collection(db, 'providers', providerId, 'transactions'));
+      transaction.set(transRef, {
+        type: 'refund',
+        amount: refundAmount,
+        balance: newBalance,
+        reason: `استرجاع عمولة طلب رقم ${orderLabel}`,
+        requestId,
+        orderNumber,
+        source: 'admin_panel',
+        adminAction: 'cancel_completed_order',
+        timestamp: serverTimestamp(),
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    const history = Array.isArray(data.history) ? [...data.history] : [];
+    history.push({
+      status: 'canceled_by_admin',
+      action: 'admin_cancel_completed',
+      message: shouldRefund
+        ? `تم إلغاء الطلب المكتمل من الإدارة واسترجاع ${refundAmount} ر.س للمزود. السبب: ${cancelReason}`
+        : `تم إلغاء الطلب المكتمل من الإدارة. السبب: ${cancelReason}`,
+      timestamp: new Date().toISOString(),
+      updatedBy: 'admin',
+      cancelReason,
+      refundAmount: shouldRefund ? refundAmount : 0,
+      providerId: providerId || null,
+    });
+
+    const requestUpdate = {
+      status: 'canceled_by_admin',
+      cancelReason,
+      cancelledBy: 'admin',
+      cancelledAt: serverTimestamp(),
+      adminCancelledCompleted: true,
+      updatedAt: serverTimestamp(),
+      history,
+    };
+
+    if (shouldRefund) {
+      requestUpdate.commissionRefunded = true;
+      requestUpdate.commissionRefundedAt = serverTimestamp();
+      requestUpdate.commissionRefundAmount = refundAmount;
+    }
+
+    transaction.update(requestRef, requestUpdate);
+
+    return {
+      providerId: providerId || null,
+      orderLabel,
+      refunded: shouldRefund,
+      refundAmount,
+      newBalance,
+    };
+  });
+
+  return { success: true, ...result };
 };
 
 /**
