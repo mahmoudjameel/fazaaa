@@ -277,6 +277,7 @@ export const Orders = () => {
   const [executedProviderFilter, setExecutedProviderFilter] = useState('all');
   const [executedProviderIds, setExecutedProviderIds] = useState(null);
   const [loadingExecutedProviders, setLoadingExecutedProviders] = useState(false);
+  const [dateRangeFilter, setDateRangeFilter] = useState('all');
 
   useEffect(() => {
     // جلب المزودين لغرض حساب مسافة SLA للطلبات القديمة التي لم يُحفظ فيها الوقت
@@ -427,7 +428,7 @@ export const Orders = () => {
 
   useEffect(() => {
     filterOrders();
-  }, [requests, searchTerm, statusFilter, cityFilter, serviceFilter, slaFilter, executedProviderFilter, executedProviderIds, matchedUids, providersDict]);
+  }, [requests, searchTerm, statusFilter, cityFilter, serviceFilter, slaFilter, executedProviderFilter, executedProviderIds, dateRangeFilter, matchedUids, providersDict]);
 
   // معرفات المزودين الذين نفّذوا طلباً مكتملاً واحداً على الأقل
   useEffect(() => {
@@ -713,7 +714,35 @@ export const Orders = () => {
       });
     }
 
-    // 6. تطبيق البحث (Search)
+    // 6. فلتر الفترة الزمنية حسب تاريخ إنشاء الطلب
+    if (dateRangeFilter !== 'all') {
+      const rangeMs = {
+        '24h': 24 * 60 * 60 * 1000,
+        '7d': 7 * 24 * 60 * 60 * 1000,
+        '30d': 30 * 24 * 60 * 60 * 1000,
+        '90d': 90 * 24 * 60 * 60 * 1000,
+      }[dateRangeFilter];
+
+      if (rangeMs) {
+        const cutoff = Date.now() - rangeMs;
+        filtered = filtered.filter((req) => {
+          const createdAt = req?.createdAt;
+          if (!createdAt) return false;
+          let createdMs = null;
+          if (typeof createdAt.toMillis === 'function') createdMs = createdAt.toMillis();
+          else if (typeof createdAt.toDate === 'function') createdMs = createdAt.toDate().getTime();
+          else if (createdAt.seconds) createdMs = createdAt.seconds * 1000;
+          else {
+            const parsed = new Date(createdAt).getTime();
+            createdMs = Number.isFinite(parsed) ? parsed : null;
+          }
+          if (createdMs == null) return false;
+          return createdMs >= cutoff;
+        });
+      }
+    }
+
+    // 7. تطبيق البحث (Search)
     if (sTerm) {
       const searchLower = sTerm.toLowerCase();
       const normalize = (val) => String(val || '').replace(/\D/g, '');
@@ -1449,7 +1478,27 @@ export const Orders = () => {
         </div>
 
         {/* صف الفلاتر */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+          {/* الفترة الزمنية */}
+          <div className="relative">
+            <select
+              value={dateRangeFilter}
+              onChange={(e) => setDateRangeFilter(e.target.value)}
+              className={`w-full appearance-none pr-3 pl-7 py-2 border rounded-xl text-sm font-semibold focus:outline-none cursor-pointer transition-colors ${
+                dateRangeFilter !== 'all'
+                  ? 'bg-indigo-50 border-indigo-300 text-indigo-800 focus:border-indigo-400'
+                  : 'bg-gray-50 border-gray-200 text-gray-700 focus:border-teal-400'
+              }`}
+            >
+              <option value="all">كل الفترات</option>
+              <option value="24h">خلال ٢٤ ساعة</option>
+              <option value="7d">خلال أسبوع</option>
+              <option value="30d">خلال شهر</option>
+              <option value="90d">خلال ٩٠ يوم</option>
+            </select>
+            <ChevronDown size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          </div>
+
           {/* الحالة */}
           <div className="relative">
             <select
