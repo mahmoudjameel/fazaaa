@@ -42,7 +42,8 @@ import {
   updateRequestRating,
   cancelCompletedOrderByAdmin,
   getProviderIdsWithCompletedOrders,
-  getAllCities
+  getAllCities,
+  phonesMatchForSearch,
 } from '../services/adminService';
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
@@ -745,14 +746,12 @@ export const Orders = () => {
     // 7. تطبيق البحث (Search)
     if (sTerm) {
       const searchLower = sTerm.toLowerCase();
-      const normalize = (val) => String(val || '').replace(/\D/g, '');
-      const normalizedSearch = normalize(sTerm);
 
       filtered = filtered.filter(
         (r) => {
           const matchOrder = r.orderNumber != null && String(r.orderNumber).includes(sTerm);
-          const matchCustomerPhone = normalizedSearch && normalize(r.customerPhone).includes(normalizedSearch);
-          const matchProviderPhone = normalizedSearch && normalize(r.providerPhone).includes(normalizedSearch);
+          const matchCustomerPhone = phonesMatchForSearch(r.customerPhone, sTerm);
+          const matchProviderPhone = phonesMatchForSearch(r.providerPhone, sTerm);
           const matchUid = matchedUids.includes(r.customerId) ||
             matchedUids.includes(r.providerId) ||
             matchedUids.includes(r.userId) ||

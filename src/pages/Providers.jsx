@@ -34,6 +34,7 @@ import {
   banPhoneNumber,
   unbanPhoneNumber,
   isPhoneBlocked,
+  phonesMatchForSearch,
 } from '../services/adminService';
 import ProviderProfileRequests from './ProviderProfileRequests';
 import {
@@ -685,8 +686,8 @@ export const Providers = () => {
       const searchLower = searchTerm.toLowerCase();
       filtered = filtered.filter(p =>
         (p.firstName + ' ' + p.lastName).toLowerCase().includes(searchLower) ||
-        p.phone?.includes(searchTerm) ||
-        p.email?.toLowerCase().includes(searchLower)
+        p.email?.toLowerCase().includes(searchLower) ||
+        phonesMatchForSearch(p.phone, searchTerm)
       );
     }
 
@@ -801,7 +802,7 @@ export const Providers = () => {
         (p) =>
           p.firstName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
           p.lastName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          p.phone?.includes(searchTerm)
+          phonesMatchForSearch(p.phone, searchTerm)
       );
     }
 

@@ -46,12 +46,39 @@ export const getAllProviders = async () => {
 };
 
 const normalizePhoneTo966 = (phone) => {
-  const clean = String(phone || '').replace(/[^0-9]/g, '');
+  let clean = String(phone || '').replace(/[^0-9]/g, '');
   if (!clean) return '';
+  // 00966... → 966...
+  if (clean.startsWith('00')) clean = clean.slice(2);
   if (clean.startsWith('966')) return clean;
   if (clean.startsWith('0')) return '966' + clean.slice(1);
   if (clean.startsWith('5') && clean.length === 9) return '966' + clean;
   return clean.length >= 9 ? '966' + clean.slice(-9) : '966' + clean;
+};
+
+/**
+ * رقم محلي سعودي للمقارنة في البحث (بدون 00 / 966 / صفر بادئ)
+ * أمثلة: 9665xxxxxxx | 009665xxxxxxx | 05xxxxxxx | 5xxxxxxx → 5xxxxxxx
+ */
+export const toSaudiLocalPhoneDigits = (phone) => {
+  let digits = String(phone || '').replace(/\D/g, '');
+  if (!digits) return '';
+  if (digits.startsWith('00')) digits = digits.slice(2);
+  if (digits.startsWith('966')) digits = digits.slice(3);
+  if (digits.startsWith('0')) digits = digits.slice(1);
+  return digits;
+};
+
+/**
+ * مطابقة مرنة لرقم جوال في البحث الإداري
+ * تقبل 966 / 00966 / 05 / 5 كصيغة واحدة لنفس الرقم
+ */
+export const phonesMatchForSearch = (storedPhone, searchTerm, { minDigits = 3 } = {}) => {
+  const searchKey = toSaudiLocalPhoneDigits(searchTerm);
+  if (!searchKey || searchKey.length < minDigits) return false;
+  const storedKey = toSaudiLocalPhoneDigits(storedPhone);
+  if (!storedKey) return false;
+  return storedKey.includes(searchKey) || searchKey.includes(storedKey);
 };
 
 const toMillis = (value) => {
@@ -1489,8 +1516,7 @@ export const getProvidersBySearch = async (term) => {
   try {
     const providersRef = collection(db, 'providers');
     const searchLower = term.toLowerCase().trim();
-    const normalize = (val) => String(val || '').replace(/\D/g, '');
-    const searchDigits = normalize(term);
+    const searchDigits = toSaudiLocalPhoneDigits(term);
 
     const q = query(providersRef, limit(100));
     const querySnapshot = await getDocs(q);
@@ -1498,11 +1524,14 @@ export const getProvidersBySearch = async (term) => {
     const providers = [];
     querySnapshot.forEach((doc) => {
       const data = doc.data();
-      const phoneMatch = searchDigits && normalize(data.phone).includes(searchDigits);
+      if (data?.mergedInto) return;
+      const phoneMatch = phonesMatchForSearch(data.phone, term);
       const textMatch = data.firstName?.toLowerCase().includes(searchLower) ||
         data.lastName?.toLowerCase().includes(searchLower) ||
         data.name?.toLowerCase().includes(searchLower) ||
-        data.email?.toLowerCase().includes(searchLower);
+        data.email?.toLowerCase().includes(searchLower) ||
+        // دعم البحث الجزئي بالأرقام الخام أيضاً
+        (searchDigits.length >= 3 && String(data.phone || '').replace(/\D/g, '').includes(String(term || '').replace(/\D/g, '')));
 
       if (phoneMatch || textMatch) {
         providers.push({ ...data, id: doc.id });
