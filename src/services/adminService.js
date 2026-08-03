@@ -1739,28 +1739,57 @@ export const updateOrderDetails = async (orderId, updateData) => {
   try {
     const orderRef = doc(db, 'requests', orderId);
 
+    const {
+      previousServiceName,
+      previousServicePrice,
+      ...fieldsToSave
+    } = updateData || {};
+
     const updatePayload = {
-      ...updateData,
+      ...fieldsToSave,
       updatedAt: serverTimestamp(),
     };
 
-    // إضافة سجل للتغيير في history إذا أردنا
-    // سنقوم بجلب المستند أولاً لإضافة التاريخ
+    // إضافة سجل للتغيير في history
     const snap = await getDoc(orderRef);
     if (snap.exists()) {
       const currentData = snap.data();
-      const history = Array.isArray(currentData.history) ? currentData.history : [];
-      history.push({
-        action: 'admin_update',
-        timestamp: new Date().toISOString(),
-        message: 'تم تحديث تفاصيل الطلب عن طريق الإدارة',
-        updatedBy: 'admin',
-        changes: updateData
-      });
+      const history = Array.isArray(currentData.history) ? [...currentData.history] : [];
+
+      const oldName = (previousServiceName ?? currentData.serviceName ?? '').trim();
+      const newName = (fieldsToSave.serviceName ?? '').trim();
+      const oldPrice = Number(previousServicePrice ?? currentData.servicePrice ?? currentData.price ?? 0);
+      const newPrice = Number(fieldsToSave.servicePrice ?? fieldsToSave.price ?? 0);
+      const serviceChanged = oldName && newName && (oldName !== newName || oldPrice !== newPrice);
+
+      if (serviceChanged) {
+        history.push({
+          action: 'admin_service_change',
+          status: currentData.status || fieldsToSave.status || null,
+          timestamp: new Date().toISOString(),
+          message: `تم تعديل الخدمة من «${oldName}» (${oldPrice} ر.س) إلى «${newName}» (${newPrice} ر.س)`,
+          updatedBy: 'admin',
+          oldService: { name: oldName, price: oldPrice },
+          newService: {
+            name: newName,
+            price: newPrice,
+            serviceId: fieldsToSave.serviceId || null,
+            serviceCategory: fieldsToSave.serviceCategory || null,
+          },
+        });
+      } else {
+        history.push({
+          action: 'admin_update',
+          timestamp: new Date().toISOString(),
+          message: 'تم تحديث تفاصيل الطلب عن طريق الإدارة',
+          updatedBy: 'admin',
+          changes: fieldsToSave,
+        });
+      }
       updatePayload.history = history;
 
       // عند إلغاء/إكمال الطلب من الأدمن — تحرير انشغال المزود
-      if (updateData.status && TERMINAL_ORDER_STATUSES.includes(updateData.status)) {
+      if (fieldsToSave.status && TERMINAL_ORDER_STATUSES.includes(fieldsToSave.status)) {
         const providerId = currentData.providerId;
         if (providerId) {
           await releaseProviderBusy(providerId).catch((e) =>
@@ -1783,7 +1812,7 @@ export const updateOrderDetails = async (orderId, updateData) => {
     await updateDoc(orderRef, updatePayload);
     return { success: true };
   } catch (error) {
-    console.error('Update order details error:', error);
+    console.error('updateOrderDetails error:', error);
     throw error;
   }
 };

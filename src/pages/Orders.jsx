@@ -263,12 +263,16 @@ export const Orders = () => {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState(null);
   const [editOrderData, setEditOrderData] = useState({
+    serviceId: '',
     serviceName: '',
+    serviceCategory: '',
     price: '',
     location: '',
     cancelReason: '',
     status: ''
   });
+  const [showEditServiceConfirm, setShowEditServiceConfirm] = useState(false);
+  const [savingEditOrder, setSavingEditOrder] = useState(false);
   const [isEditingRating, setIsEditingRating] = useState(false);
   const [ratingForm, setRatingForm] = useState({ rating: 0, comment: '' });
   const [savingRating, setSavingRating] = useState(false);
@@ -873,33 +877,72 @@ export const Orders = () => {
     if (e) e.stopPropagation();
     setEditingOrder(order);
     setEditOrderData({
+      serviceId: order.serviceId || '',
       serviceName: order.serviceName || '',
+      serviceCategory: order.serviceCategory || order.serviceType || '',
       price: order.price || order.servicePrice || '',
       location: order.location || '',
       cancelReason: order.cancelReason || '',
       status: order.status || ''
     });
+    setShowEditServiceConfirm(false);
     setIsEditModalOpen(true);
   };
 
-  const handleUpdateOrder = async (e) => {
+  const isEditServiceChanged = () => {
+    if (!editingOrder) return false;
+    const oldName = (editingOrder.serviceName || '').trim();
+    const newName = (editOrderData.serviceName || '').trim();
+    const oldPrice = Number(editingOrder.price ?? editingOrder.servicePrice ?? 0);
+    const newPrice = Number(editOrderData.price);
+    return oldName !== newName || oldPrice !== newPrice;
+  };
+
+  const handleUpdateOrderSubmit = (e) => {
     e.preventDefault();
+    if (!editOrderData.serviceName?.trim()) {
+      alert('يرجى اختيار الخدمة');
+      return;
+    }
+    if (editOrderData.price === '' || editOrderData.price == null || Number.isNaN(Number(editOrderData.price))) {
+      alert('يرجى اختيار خدمة لها سعر صالح');
+      return;
+    }
+    if (isEditServiceChanged()) {
+      setShowEditServiceConfirm(true);
+      return;
+    }
+    handleUpdateOrder();
+  };
+
+  const handleUpdateOrder = async () => {
+    if (!editingOrder?.id) return;
+    setSavingEditOrder(true);
     try {
       const newPrice = Number(editOrderData.price);
+      const oldName = editingOrder.serviceName || '';
+      const oldPrice = Number(editingOrder.price ?? editingOrder.servicePrice ?? 0);
       const result = await updateOrderDetails(editingOrder.id, {
+        serviceId: editOrderData.serviceId || null,
         serviceName: editOrderData.serviceName,
+        serviceCategory: editOrderData.serviceCategory || null,
         price: newPrice,
         servicePrice: newPrice,
         location: editOrderData.location,
         cancelReason: editOrderData.cancelReason,
-        status: editOrderData.status
+        status: editOrderData.status,
+        previousServiceName: oldName,
+        previousServicePrice: oldPrice,
       });
       if (result.success) {
         alert('تم تحديث الطلب بنجاح');
+        setShowEditServiceConfirm(false);
         setIsEditModalOpen(false);
       }
     } catch (error) {
       alert('حدث خطأ أثناء تحديث الطلب: ' + error.message);
+    } finally {
+      setSavingEditOrder(false);
     }
   };
 
@@ -2280,6 +2323,79 @@ export const Orders = () => {
                     </p>
                   </div>
                 )}
+
+                {/* سجل تعديلات الخدمة (أدمن / مزود ↔ عميل) */}
+                {Array.isArray(selectedRequest.history) && selectedRequest.history.some((h) =>
+                  h?.action === 'admin_service_change' ||
+                  h?.action === 'service_modification_approved' ||
+                  h?.action === 'service_modification_rejected' ||
+                  h?.action === 'service_modification_requested' ||
+                  (h?.oldService && h?.newService)
+                ) && (
+                  <div className="bg-indigo-50 rounded-xl p-4 sm:p-5 border border-indigo-100">
+                    <h3 className="font-semibold text-sm sm:text-base text-indigo-900 mb-3 flex items-center gap-2">
+                      <RefreshCw className="w-4 h-4 text-indigo-600" />
+                      سجل تعديلات الخدمة
+                    </h3>
+                    <div className="space-y-3">
+                      {[...selectedRequest.history]
+                        .filter((h) =>
+                          h?.action === 'admin_service_change' ||
+                          h?.action === 'service_modification_approved' ||
+                          h?.action === 'service_modification_rejected' ||
+                          h?.action === 'service_modification_requested' ||
+                          (h?.oldService && h?.newService)
+                        )
+                        .map((h, idx) => {
+                          const oldName = h.oldService?.name || h.changes?.previousServiceName;
+                          const newName = h.newService?.name || h.changes?.serviceName;
+                          const oldPrice = h.oldService?.price;
+                          const newPrice = h.newService?.price;
+                          const byLabel =
+                            h.updatedBy === 'admin' ? 'الإدارة' :
+                            h.updatedBy === 'provider' ? 'المزود' :
+                            h.updatedBy === 'customer' || h.updatedBy === 'client' ? 'العميل' :
+                            h.updatedBy || 'النظام';
+                          let dateText = '';
+                          try {
+                            const raw = h.timestamp;
+                            const d = raw?.toDate ? raw.toDate()
+                              : raw?.toMillis ? new Date(raw.toMillis())
+                              : raw?.seconds ? new Date(raw.seconds * 1000)
+                              : raw ? new Date(raw) : null;
+                            if (d && !Number.isNaN(d.getTime())) {
+                              dateText = format(d, 'dd MMM yyyy, HH:mm', { locale: ar });
+                            }
+                          } catch (_) {}
+                          return (
+                            <div key={`svc-hist-${idx}`} className="bg-white rounded-xl border border-indigo-100 p-3 text-sm">
+                              <p className="font-semibold text-gray-800 leading-6">
+                                {h.message || (
+                                  oldName && newName
+                                    ? `تم تعديل الخدمة من «${oldName}» إلى «${newName}»`
+                                    : 'تحديث على الخدمة'
+                                )}
+                              </p>
+                              {oldName && newName && (
+                                <p className="text-xs text-gray-600 mt-1.5">
+                                  الأساسي: <strong>{oldName}</strong>
+                                  {oldPrice != null ? ` (${oldPrice} ر.س)` : ''}
+                                  {' → '}
+                                  الجديد: <strong>{newName}</strong>
+                                  {newPrice != null ? ` (${newPrice} ر.س)` : ''}
+                                </p>
+                              )}
+                              <p className="text-xs text-indigo-600 mt-1.5">
+                                بواسطة: {byLabel}
+                                {dateText ? ` · ${dateText}` : ''}
+                              </p>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </div>
+                )}
+
                 {/* Timeline Section */}
                 <div className="bg-gray-50 rounded-xl p-4 sm:p-5 border border-gray-200">
                   <h3 className="font-semibold text-sm sm:text-base text-gray-700 mb-4 flex items-center gap-2">
@@ -3355,36 +3471,109 @@ export const Orders = () => {
       {
         isEditModalOpen && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-auto">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-auto relative">
               <div className="p-6 border-b border-gray-200 flex justify-between items-center">
                 <h2 className="text-xl font-bold text-gray-800">تعديل الطلب {formatOrderNumberLabel(editingOrder?.orderNumber)}</h2>
-                <button onClick={() => setIsEditModalOpen(false)} className="text-gray-400 hover:text-gray-600">
+                <button
+                  onClick={() => {
+                    setShowEditServiceConfirm(false);
+                    setIsEditModalOpen(false);
+                  }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
                   <X size={24} />
                 </button>
               </div>
 
-              <form onSubmit={handleUpdateOrder} className="p-6 space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="block text-sm font-semibold text-gray-700">اسم الخدمة</label>
-                    <input
-                      type="text"
-                      required
-                      value={editOrderData.serviceName}
-                      onChange={(e) => setEditOrderData({ ...editOrderData, serviceName: e.target.value })}
-                      className="w-full px-4 py-3 border-2 border-gray-100 rounded-xl focus:border-primary-blue outline-none transition-all"
-                    />
+              <form onSubmit={handleUpdateOrderSubmit} className="p-6 space-y-6">
+                <div className="space-y-3">
+                  <label className="block text-sm font-semibold text-gray-700">اختر الخدمة</label>
+                  <div className="space-y-3 max-h-64 overflow-y-auto border border-gray-100 rounded-xl p-3">
+                    {mainServices.filter((s) => s.isActive !== false).map((service) => (
+                      <div key={service.id} className="space-y-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditOrderData({
+                              ...editOrderData,
+                              serviceId: service.id,
+                              serviceName: service.name,
+                              serviceCategory: service.name,
+                              price: service.price != null && service.price !== ''
+                                ? String(service.price)
+                                : editOrderData.price,
+                            });
+                          }}
+                          className={`w-full text-right px-4 py-3 rounded-xl font-bold transition-all flex items-center justify-between ${
+                            editOrderData.serviceId === service.id && editOrderData.serviceName === service.name
+                              ? 'bg-teal-500 text-white shadow-md'
+                              : 'bg-gray-50 text-gray-800 hover:bg-teal-50'
+                          }`}
+                        >
+                          <span className="text-xs opacity-70">{service.subServices?.length || 0} خدمة فرعية</span>
+                          <span>{service.name}</span>
+                        </button>
+                        {service.subServices && service.subServices.length > 0 && (
+                          <div className="mr-4 space-y-1">
+                            {service.subServices.map((sub) => (
+                              <button
+                                key={sub.id}
+                                type="button"
+                                onClick={() => {
+                                  setEditOrderData({
+                                    ...editOrderData,
+                                    serviceId: sub.id,
+                                    serviceName: sub.name,
+                                    serviceCategory: service.name,
+                                    price: sub.price != null ? String(sub.price) : '',
+                                  });
+                                }}
+                                className={`w-full text-right px-4 py-2.5 rounded-lg text-sm transition-all flex items-center justify-between ${
+                                  editOrderData.serviceId === sub.id || editOrderData.serviceName === sub.name
+                                    ? 'bg-teal-100 text-teal-800 border-2 border-teal-400 font-bold'
+                                    : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-100'
+                                }`}
+                              >
+                                {sub.price > 0 && (
+                                  <span className="text-xs font-semibold text-green-600">{sub.price} ر.س</span>
+                                )}
+                                <span>{sub.name}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
                   </div>
-                  <div className="space-y-2">
-                    <label className="block text-sm font-semibold text-gray-700">السعر (ر.س)</label>
-                    <input
-                      type="number"
-                      required
-                      value={editOrderData.price}
-                      onChange={(e) => setEditOrderData({ ...editOrderData, price: e.target.value })}
-                      className="w-full px-4 py-3 border-2 border-gray-100 rounded-xl focus:border-primary-blue outline-none transition-all"
-                    />
-                  </div>
+                  {editOrderData.serviceName && (
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-sm bg-teal-50 text-teal-800 px-3 py-2.5 rounded-xl border border-teal-100">
+                      <span>
+                        المحدد: <strong>{editOrderData.serviceName}</strong>
+                        {editOrderData.serviceCategory &&
+                          editOrderData.serviceCategory !== editOrderData.serviceName && (
+                            <span className="text-gray-500"> ({editOrderData.serviceCategory})</span>
+                          )}
+                      </span>
+                      <span className="font-black text-green-700">
+                        {editOrderData.price !== '' && editOrderData.price != null
+                          ? `${editOrderData.price} ر.س`
+                          : '—'}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <label className="block text-sm font-semibold text-gray-700">السعر (ر.س)</label>
+                  <input
+                    type="number"
+                    required
+                    readOnly
+                    value={editOrderData.price}
+                    className="w-full px-4 py-3 border-2 border-gray-100 rounded-xl bg-gray-50 text-gray-700 outline-none cursor-not-allowed"
+                    title="يُحدَّث تلقائياً عند اختيار الخدمة"
+                  />
+                  <p className="text-xs text-gray-500">يظهر السعر تلقائياً عند اختيار الخدمة من القائمة</p>
                 </div>
 
                 <div className="space-y-2">
@@ -3433,13 +3622,17 @@ export const Orders = () => {
                 <div className="flex gap-4 pt-4">
                   <button
                     type="submit"
-                    className="flex-1 py-3 bg-primary-blue text-white rounded-xl font-bold hover:bg-blue-600 transition-all shadow-lg shadow-blue-100"
+                    disabled={savingEditOrder}
+                    className="flex-1 py-3 bg-primary-blue text-white rounded-xl font-bold hover:bg-blue-600 transition-all shadow-lg shadow-blue-100 disabled:opacity-50"
                   >
                     حفظ التغييرات
                   </button>
                   <button
                     type="button"
-                    onClick={() => setIsEditModalOpen(false)}
+                    onClick={() => {
+                      setShowEditServiceConfirm(false);
+                      setIsEditModalOpen(false);
+                    }}
                     className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition-all"
                   >
                     إلغاء
@@ -3447,6 +3640,47 @@ export const Orders = () => {
                 </div>
               </form>
             </div>
+
+            {showEditServiceConfirm && (
+              <div className="absolute inset-0 bg-black/40 flex items-center justify-center p-4 rounded-2xl">
+                <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4 border border-gray-100">
+                  <h3 className="text-lg font-bold text-gray-800 text-center">تأكيد تغيير الخدمة</h3>
+                  <p className="text-sm text-gray-700 text-center leading-7">
+                    هل أنت متأكد من تغيير الخدمة إلى{' '}
+                    <strong className="text-teal-700">«{editOrderData.serviceName}»</strong>
+                    {editOrderData.price !== '' && editOrderData.price != null ? (
+                      <> بسعر <strong>{editOrderData.price} ر.س</strong></>
+                    ) : null}
+                    ؟
+                  </p>
+                  {(editingOrder?.serviceName || editingOrder?.servicePrice != null) && (
+                    <p className="text-xs text-gray-500 text-center bg-gray-50 rounded-lg px-3 py-2">
+                      الخدمة الحالية: {editingOrder.serviceName || '—'}
+                      {' · '}
+                      {(editingOrder.price ?? editingOrder.servicePrice ?? 0)} ر.س
+                    </p>
+                  )}
+                  <div className="flex gap-3 pt-1">
+                    <button
+                      type="button"
+                      disabled={savingEditOrder}
+                      onClick={handleUpdateOrder}
+                      className="flex-1 py-3 bg-teal-600 text-white rounded-xl font-bold hover:bg-teal-700 disabled:opacity-50"
+                    >
+                      نعم
+                    </button>
+                    <button
+                      type="button"
+                      disabled={savingEditOrder}
+                      onClick={() => setShowEditServiceConfirm(false)}
+                      className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200"
+                    >
+                      تراجع
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )
       }
