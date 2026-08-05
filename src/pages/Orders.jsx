@@ -1084,13 +1084,13 @@ export const Orders = () => {
 
     if (order.status === 'timed_out') {
       return {
-        finalTitle: 'النتيجة النهائية: انتهت المهلة',
-        finalDetail: 'انتهى وقت البحث دون قبول مزود للطلب.',
+        finalTitle: 'انتهت المهلة',
+        finalDetail: 'ما لقى الطلب مزود يقبل قبل ما يخلص الوقت.',
         priorTitle: providerReason
-          ? 'حدث سابق: مزود قبل الطلب ثم ألغاه'
+          ? 'قبل كذا: مزود قبل ثم ألغى'
           : null,
         priorDetail: providerReason
-          ? `سبب إلغاء المزود: ${providerReason}`
+          ? `سبب الإلغاء: ${providerReason}`
           : null,
         tone: 'purple',
       };
@@ -1101,10 +1101,10 @@ export const Orders = () => {
       order.status === 'canceled_by_provider_with_reason'
     ) {
       return {
-        finalTitle: 'النتيجة النهائية: ملغي من المزود',
+        finalTitle: 'ملغي من المزود',
         finalDetail: providerReason
           ? `السبب: ${providerReason}`
-          : (order.cancelReason ? `السبب: ${order.cancelReason}` : 'لم يُحدد سبب'),
+          : (order.cancelReason ? `السبب: ${order.cancelReason}` : 'ما انكتب سبب'),
         priorTitle: null,
         priorDetail: null,
         tone: 'red',
@@ -1116,8 +1116,8 @@ export const Orders = () => {
       order.status === 'canceled_by_client_with_reason'
     ) {
       return {
-        finalTitle: 'النتيجة النهائية: ملغي من العميل',
-        finalDetail: order.cancelReason ? `السبب: ${order.cancelReason}` : 'لم يُحدد سبب',
+        finalTitle: 'ملغي من العميل',
+        finalDetail: order.cancelReason ? `السبب: ${order.cancelReason}` : 'ما انكتب سبب',
         priorTitle: null,
         priorDetail: null,
         tone: 'orange',
@@ -1126,8 +1126,8 @@ export const Orders = () => {
 
     if (order.status === 'canceled_by_admin') {
       return {
-        finalTitle: 'النتيجة النهائية: ملغي من الإدارة',
-        finalDetail: order.cancelReason ? `السبب: ${order.cancelReason}` : 'لم يُحدد سبب',
+        finalTitle: 'ملغي من الإدارة',
+        finalDetail: order.cancelReason ? `السبب: ${order.cancelReason}` : 'ما انكتب سبب',
         priorTitle: null,
         priorDetail: null,
         tone: 'rose',
@@ -1139,8 +1139,8 @@ export const Orders = () => {
       return {
         finalTitle: null,
         finalDetail: null,
-        priorTitle: 'حدث سابق: مزود قبل الطلب ثم ألغاه',
-        priorDetail: `سبب إلغاء المزود: ${providerReason}`,
+        priorTitle: 'قبل كذا: مزود قبل ثم ألغى',
+        priorDetail: `سبب الإلغاء: ${providerReason}`,
         tone: 'amber',
       };
     }
@@ -1930,12 +1930,12 @@ export const Orders = () => {
                         <span
                           key="sla"
                           className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border ${exceeded ? 'bg-slate-50 text-slate-700 border-slate-200' : 'bg-green-50 text-green-700 border-green-200'}`}
-                          title="وقت ومسافة الوصول المتوقع عند قبول المزود — ليست سبب الإلغاء"
+                          title="وقت ومسافة الوصول وقت قبول المزود — مو سبب الإلغاء"
                         >
                           <Clock size={11} />
-                          ETA عند القبول: {durationMin} د {distanceKm != null ? `(${distanceKm.toFixed(1)} km)` : ''}
+                          وصول متوقع: {durationMin} د {distanceKm != null ? `(${distanceKm.toFixed(1)} km)` : ''}
                           {isCalculated ? ' *' : ''}
-                          {exceeded && <span className="text-[10px] font-black">تجاوز هدف 15د</span>}
+                          {exceeded && <span className="text-[10px] font-black">أكثر من 15 د</span>}
                         </span>
                       );
                     }
@@ -2242,7 +2242,7 @@ export const Orders = () => {
                                 )}
                                 {selectedRequest.status === 'timed_out' && (
                                   <p className="text-xs mt-2 opacity-75">
-                                    بعد إلغاء المزود عاد الطلب للبحث عن مزود آخر، ثم انتهت المهلة دون قبول.
+                                    بعد الإلغاء رجع الطلب يدور على مزود ثاني، وما أحد قبل لين خلصت المهلة.
                                   </p>
                                 )}
                               </div>
@@ -2259,7 +2259,7 @@ export const Orders = () => {
                     if (cancelEvents.length === 0) return null;
 
                     const latestCancel = cancelEvents[cancelEvents.length - 1];
-                    const reason = getProviderCancelReasonFromEvent(latestCancel) || 'لم يُحدد';
+                    const reason = getProviderCancelReasonFromEvent(latestCancel) || 'ما انكتب سبب';
                     const isFinalProviderCancel =
                       selectedRequest.status === 'canceled_by_provider' ||
                       selectedRequest.status === 'canceled_by_provider_with_reason';
@@ -2275,8 +2275,8 @@ export const Orders = () => {
                             <XCircle className={`w-5 h-5 flex-shrink-0 ${isFinalProviderCancel ? 'text-red-600' : 'text-amber-600'}`} />
                             <h4 className={`text-base font-bold ${isFinalProviderCancel ? 'text-red-800' : 'text-amber-900'}`}>
                               {isFinalProviderCancel
-                                ? 'إلغاء المزود (النتيجة النهائية)'
-                                : 'إلغاء مزود سابق (ليس النتيجة النهائية)'}
+                                ? 'إلغاء المزود'
+                                : 'إلغاء مزود قبل كذا (مو الحالة الحالية)'}
                             </h4>
                           </div>
                           <dl className="space-y-2 text-sm">
