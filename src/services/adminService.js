@@ -1123,6 +1123,17 @@ export const getDashboardStats = async () => {
     const activeOrders = allOrders.filter((o) => ACTIVE_REQUEST_STATUSES.includes(o.status));
     const cancelledOrders = allOrders.filter((o) => CANCELLED_REQUEST_STATUSES.includes(o.status));
 
+    const providersWithCompletedOrders = new Set(
+      completed
+        .map((o) => (o.providerId ? String(o.providerId) : ''))
+        .filter(Boolean)
+    );
+
+    const approvedProviders = providers.filter((p) => {
+      const approvalStatus = p.approvalStatus || p.status;
+      return approvalStatus === 'approved';
+    });
+
     const now = new Date();
     const todayStr = now.toDateString();
     const yesterday = new Date(now); yesterday.setDate(yesterday.getDate() - 1);
@@ -1153,9 +1164,14 @@ export const getDashboardStats = async () => {
     const stats = {
       totalProviders: providers.length,
       totalCustomers: customers.length,
-      activeProviders: providers.filter((p) => {
+      approvedProviders: approvedProviders.length,
+      // نشط = معتمد ونفّذ طلب مكتمل واحد على الأقل (مو مجرد isActive/isOnline)
+      activeProviders: approvedProviders.filter((p) =>
+        providersWithCompletedOrders.has(String(p.id))
+      ).length,
+      onlineProviders: providers.filter((p) => {
         const approvalStatus = p.approvalStatus || p.status;
-        return approvalStatus === 'approved' && p.isOnline;
+        return approvalStatus === 'approved' && p.isOnline === true;
       }).length,
       pendingProviders: providers.filter((p) => {
         const approvalStatus = p.approvalStatus || p.status;

@@ -96,7 +96,7 @@ export const Dashboard = () => {
       iconBg: 'bg-emerald-50',
       iconColor: 'text-emerald-600',
       borderColor: 'border-r-emerald-500',
-      change: 'متصل الآن',
+      change: 'معتمدون نفّذوا طلب',
       dir: 'up',
       link: '/admin/providers',
     },

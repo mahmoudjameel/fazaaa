@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   Search, CheckCircle, XCircle, Clock, Eye, Phone, Mail, Star, Power,
-  UserCheck, Users, Plus, Edit2, Trash2, Tag, X, FileText, ShieldBan, ShieldOff, Loader2
+  UserCheck, Users, Plus, Edit2, Trash2, Tag, X, FileText, ShieldBan, ShieldOff, ShieldCheck, Loader2
 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -217,9 +217,8 @@ export const Providers = () => {
     filterProviders();
   }, [providers, mainServices, searchTerm, statusFilter, typeFilter, groupFilter, serviceFilter, cityFilter, nationalityFilter, lowBalanceFilter, executedOrdersFilter, providerIdsWithCompletedOrders, executedOrdersCounts]);
 
+  // تحميل قائمة من نفّذوا طلبات — للإحصائيات وللفلتر
   useEffect(() => {
-    if (!executedOrdersFilter || providerIdsWithCompletedOrders) return undefined;
-
     let cancelled = false;
     (async () => {
       setLoadingExecutedOrdersFilter(true);
@@ -232,8 +231,8 @@ export const Providers = () => {
       } catch (error) {
         console.error('Error loading providers with completed orders:', error);
         if (!cancelled) {
-          alert('تعذر تحميل قائمة المزودين الذين نفّذوا طلبات');
-          setExecutedOrdersFilter(false);
+          setProviderIdsWithCompletedOrders(new Set());
+          setExecutedOrdersCounts({});
         }
       } finally {
         if (!cancelled) setLoadingExecutedOrdersFilter(false);
@@ -241,7 +240,20 @@ export const Providers = () => {
     })();
 
     return () => { cancelled = true; };
-  }, [executedOrdersFilter, providerIdsWithCompletedOrders]);
+  }, []);
+
+  const getProviderApprovalStatus = (provider) =>
+    provider?.approvalStatus || provider?.status;
+
+  const approvedProvidersCount = providers.filter(
+    (p) => getProviderApprovalStatus(p) === 'approved'
+  ).length;
+
+  const activeProvidersCount = providers.filter((p) => {
+    if (getProviderApprovalStatus(p) !== 'approved') return false;
+    if (!providerIdsWithCompletedOrders) return false;
+    return providerIdsWithCompletedOrders.has(String(p.id));
+  }).length;
 
   const getProviderServiceList = (provider) => {
     const services = provider?.services || {};
@@ -1255,6 +1267,25 @@ export const Providers = () => {
                 <span className="text-xs md:text-sm text-gray-600">إجمالي المزودين</span>
               </div>
               <p className="text-2xl md:text-3xl font-black text-gray-800">{providers.length}</p>
+              <p className="text-[11px] text-gray-400 mt-1">كل الحسابات بما فيها غير المعتمدة</p>
+            </div>
+            <div className="bg-white rounded-2xl p-4 md:p-6 shadow-lg">
+              <div className="flex items-center justify-between mb-2">
+                <ShieldCheck className="text-indigo-500" size={20} />
+                <span className="text-xs md:text-sm text-gray-600">معتمدون</span>
+              </div>
+              <p className="text-2xl md:text-3xl font-black text-gray-800">{approvedProvidersCount}</p>
+              <p className="text-[11px] text-gray-400 mt-1">موافقة الإدارة فقط</p>
+            </div>
+            <div className="bg-white rounded-2xl p-4 md:p-6 shadow-lg">
+              <div className="flex items-center justify-between mb-2">
+                <CheckCircle className="text-green-500" size={20} />
+                <span className="text-xs md:text-sm text-gray-600">نشطون</span>
+              </div>
+              <p className="text-2xl md:text-3xl font-black text-gray-800">
+                {providerIdsWithCompletedOrders ? activeProvidersCount : '…'}
+              </p>
+              <p className="text-[11px] text-gray-400 mt-1">معتمدون ونفّذوا طلب واحد على الأقل</p>
             </div>
             <div className="bg-white rounded-2xl p-4 md:p-6 shadow-lg">
               <div className="flex items-center justify-between mb-2">
@@ -1264,22 +1295,6 @@ export const Providers = () => {
               <p className="text-2xl md:text-3xl font-black text-gray-800">
                 {providers.filter((p) => p.type === 'vip').length}
               </p>
-            </div>
-            <div className="bg-white rounded-2xl p-4 md:p-6 shadow-lg">
-              <div className="flex items-center justify-between mb-2">
-                <CheckCircle className="text-green-500" size={20} />
-                <span className="text-xs md:text-sm text-gray-600">نشطون</span>
-              </div>
-              <p className="text-2xl md:text-3xl font-black text-gray-800">
-                {providers.filter((p) => p.isActive !== false).length}
-              </p>
-            </div>
-            <div className="bg-white rounded-2xl p-4 md:p-6 shadow-lg">
-              <div className="flex items-center justify-between mb-2">
-                <Users className="text-teal-500" size={20} />
-                <span className="text-xs md:text-sm text-gray-600">المجموعات</span>
-              </div>
-              <p className="text-2xl md:text-3xl font-black text-gray-800">{groups.length}</p>
             </div>
           </div>
 

@@ -433,7 +433,7 @@ export const Orders = () => {
 
   useEffect(() => {
     filterOrders();
-  }, [requests, searchTerm, statusFilter, cityFilter, serviceFilter, slaFilter, executedProviderFilter, executedProviderIds, dateRangeFilter, matchedUids, providersDict]);
+  }, [requests, searchTerm, statusFilter, cityFilter, serviceFilter, slaFilter, executedProviderFilter, executedProviderIds, dateRangeFilter, matchedUids, providersDict, mainServices, services, cities]);
 
   // معرفات المزودين الذين نفّذوا طلباً مكتملاً واحداً على الأقل
   useEffect(() => {
@@ -502,16 +502,26 @@ export const Orders = () => {
 
     console.log('Order data:', order); // للتتبع
 
-    // محاولة جلب providerId بطرق مختلفة
-    let providerId = order.providerId || order.provider?.id;
+    // الحالي، أو السابق بعد إلغاء المزود وإعادة البحث (يُمسح providerId عمداً)
+    let providerId =
+      order.providerId ||
+      order.provider?.id ||
+      order.previousProviderId ||
+      order.cancelledBy ||
+      resolveDisplayProvider(order)?.id;
 
     // إذا لم يكن موجوداً مباشرة، نبحث في history
     if (!providerId && order.history && Array.isArray(order.history)) {
-      const assignedEvent = order.history.find(h =>
-        (h.status === 'assigned' && h.providerId) ||
-        h.providerId
+      const assignedEvent = [...order.history].reverse().find(h =>
+        h?.providerId && (
+          h.status === 'assigned' ||
+          h.action === 'assigned' ||
+          h.action === 'provider_cancellation' ||
+          h.status === 'canceled_by_provider' ||
+          h.status === 'canceled_by_provider_with_reason'
+        )
       );
-      if (assignedEvent && assignedEvent.providerId) {
+      if (assignedEvent?.providerId) {
         providerId = assignedEvent.providerId;
       }
     }
@@ -640,14 +650,94 @@ export const Orders = () => {
     };
   };
 
+  const getRequestCreatedMs = (req) => {
+    const createdAt = req?.createdAt;
+    if (!createdAt) return 0;
+    if (typeof createdAt.toMillis === 'function') return createdAt.toMillis();
+    if (typeof createdAt.toDate === 'function') return createdAt.toDate().getTime();
+    if (createdAt.seconds) return createdAt.seconds * 1000;
+    const parsed = new Date(createdAt).getTime();
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+
+  const orderMatchesServiceFilter = (req, selectedServiceId) => {
+    if (!req || !selectedServiceId || selectedServiceId === 'all') return true;
+
+    const sid = String(req.serviceId || '');
+    const stype = String(req.serviceType || '');
+    const parentId = String(req.parentServiceId || '');
+    const category = String(req.serviceCategory || '').trim();
+    const name = String(req.serviceName || '').trim();
+
+    if (
+      sid === selectedServiceId ||
+      stype === selectedServiceId ||
+      parentId === selectedServiceId
+    ) {
+      return true;
+    }
+
+    // خدمة فرعية محفوظة كـ sub-{parentId}-...
+    if (sid.startsWith('sub-') && sid.includes(selectedServiceId)) return true;
+    if (stype.startsWith('sub-') && stype.includes(selectedServiceId)) return true;
+
+    const parentService =
+      mainServices.find((s) => s.id === selectedServiceId || s.serviceId === selectedServiceId) ||
+      services.find((s) => s.id === selectedServiceId || s.serviceId === selectedServiceId);
+
+    if (!parentService) return false;
+
+    const parentName = String(parentService.name || '').trim();
+    const parentNameLower = parentName.toLowerCase();
+
+    const subIds = new Set(
+      (parentService.subServices || [])
+        .map((sub) => String(sub.id || ''))
+        .filter(Boolean)
+    );
+
+    if (subIds.has(sid) || subIds.has(stype)) return true;
+
+    if (parentName) {
+      if (category === parentName || name === parentName) return true;
+      if (category.toLowerCase() === parentNameLower) return true;
+      // اسم الخدمة الفرعية تحت نفس التصنيف (مثل: تبديل البطارية...)
+      if (category.toLowerCase().includes(parentNameLower)) return true;
+      if (name.toLowerCase().includes(parentNameLower)) return true;
+
+      // مطابقة مرنة للكلمة الجوهرية: بطار / إطار / قفال...
+      const coreTokens = ['بطار', 'إطار', 'اطار', 'قفال', 'وقود', 'سطح', 'ونش', 'تعبئة'];
+      const catLower = category.toLowerCase();
+      const nameLower = name.toLowerCase();
+      for (const token of coreTokens) {
+        if (
+          parentNameLower.includes(token) &&
+          (catLower.includes(token) || nameLower.includes(token))
+        ) {
+          return true;
+        }
+      }
+    }
+
+    // أسماء فرعية محفوظة في الكتالوج
+    const subNames = (parentService.subServices || [])
+      .map((sub) => String(sub.name || '').trim().toLowerCase())
+      .filter(Boolean);
+    if (subNames.includes(name.toLowerCase()) || subNames.includes(category.toLowerCase())) {
+      return true;
+    }
+
+    return false;
+  };
+
   const filterOrders = () => {
     let filtered = requests;
     const sTerm = searchTerm.trim();
 
 
-    // 1. Filter by Service
+    // 1. Filter by Service (يشمل الخدمة الرئيسية + الفرعية + التصنيف)
     if (serviceFilter !== 'all') {
-      filtered = filtered.filter(req => req.serviceId === serviceFilter || req.serviceType === serviceFilter);
+      filtered = filtered.filter((req) => orderMatchesServiceFilter(req, serviceFilter));
     }
 
     // 2. Filter by City
@@ -769,6 +859,9 @@ export const Orders = () => {
         }
       );
     }
+
+    // الأحدث أولاً دائماً بعد الفلترة
+    filtered = [...filtered].sort((a, b) => getRequestCreatedMs(b) - getRequestCreatedMs(a));
 
     setFilteredRequests(filtered);
   };
@@ -1073,26 +1166,88 @@ export const Orders = () => {
   };
 
   /**
-   * خلاصة واضحة للنتيجة النهائية مقابل الأحداث السابقة
-   * (حتى لا يختلط timed_out مع رفض مزود سابق أو شارة المسافة)
+   * المزود الحالي، أو آخر مزود قبل ما يتنمسح بعد الإلغاء/إعادة البحث
+   */
+  const resolveDisplayProvider = (order) => {
+    if (!order) return null;
+
+    const nameFromDict = (id) => {
+      if (!id || !providersDict[id]) return null;
+      const p = providersDict[id];
+      return p.name || p.fullName || p.displayName || p.providerName || null;
+    };
+
+    if (order.providerId || order.providerName) {
+      return {
+        id: order.providerId || null,
+        name: order.providerName || nameFromDict(order.providerId) || null,
+        phone: order.providerPhone || providersDict[order.providerId]?.phone || null,
+        isPrevious: false,
+      };
+    }
+
+    const cancelEvents = getProviderCancelEvents(order);
+    const latestCancel = cancelEvents[cancelEvents.length - 1] || null;
+    let histId = latestCancel?.providerId || null;
+    let histName = latestCancel?.providerName || null;
+
+    if (Array.isArray(order.history)) {
+      for (let i = order.history.length - 1; i >= 0; i -= 1) {
+        const h = order.history[i];
+        if (!h?.providerId && !h?.providerName) continue;
+        if (
+          h.status === 'assigned' ||
+          h.action === 'assigned' ||
+          h.status === 'canceled_by_provider' ||
+          h.status === 'canceled_by_provider_with_reason' ||
+          h.action === 'provider_cancellation'
+        ) {
+          histId = histId || h.providerId || null;
+          histName = histName || h.providerName || null;
+          break;
+        }
+      }
+    }
+
+    const id =
+      order.previousProviderId ||
+      order.cancelledBy ||
+      histId ||
+      null;
+    const name = histName || nameFromDict(id);
+    if (!id && !name) return null;
+
+    return {
+      id,
+      name: name || (id ? `مزود ${String(id).slice(-6)}` : null),
+      phone: providersDict[id]?.phone || null,
+      isPrevious: true,
+    };
+  };
+
+  /**
+   * سبب واحد واضح — بدون تكرار ولا صياغة معقدة
    */
   const getOrderOutcomeSummary = (order) => {
     if (!order) return null;
     const providerCancels = getProviderCancelEvents(order);
     const latestProviderCancel = providerCancels[providerCancels.length - 1] || null;
     const providerReason = getProviderCancelReasonFromEvent(latestProviderCancel);
+    const lastProvider = resolveDisplayProvider(order);
+    const providerLabel = lastProvider?.name ? `«${lastProvider.name}»` : 'مزود';
 
     if (order.status === 'timed_out') {
+      if (providerReason) {
+        return {
+          reason: `${providerLabel} ألغى (${providerReason})، وبعدها ما أحد قبل وانتهت المهلة`,
+          tone: 'purple',
+          lastProvider,
+        };
+      }
       return {
-        finalTitle: 'انتهت المهلة',
-        finalDetail: 'ما لقى الطلب مزود يقبل قبل ما يخلص الوقت.',
-        priorTitle: providerReason
-          ? 'قبل كذا: مزود قبل ثم ألغى'
-          : null,
-        priorDetail: providerReason
-          ? `سبب الإلغاء: ${providerReason}`
-          : null,
+        reason: 'انتهت المهلة — ما أحد قبل الطلب',
         tone: 'purple',
+        lastProvider: lastProvider?.isPrevious ? lastProvider : null,
       };
     }
 
@@ -1100,13 +1255,9 @@ export const Orders = () => {
       order.status === 'canceled_by_provider' ||
       order.status === 'canceled_by_provider_with_reason'
     ) {
+      const r = providerReason || order.cancelReason;
       return {
-        finalTitle: 'ملغي من المزود',
-        finalDetail: providerReason
-          ? `السبب: ${providerReason}`
-          : (order.cancelReason ? `السبب: ${order.cancelReason}` : 'ما انكتب سبب'),
-        priorTitle: null,
-        priorDetail: null,
+        reason: r ? `المزود ألغى — ${r}` : 'المزود ألغى الطلب',
         tone: 'red',
       };
     }
@@ -1116,31 +1267,25 @@ export const Orders = () => {
       order.status === 'canceled_by_client_with_reason'
     ) {
       return {
-        finalTitle: 'ملغي من العميل',
-        finalDetail: order.cancelReason ? `السبب: ${order.cancelReason}` : 'ما انكتب سبب',
-        priorTitle: null,
-        priorDetail: null,
+        reason: order.cancelReason
+          ? `العميل ألغى — ${order.cancelReason}`
+          : 'العميل ألغى الطلب',
         tone: 'orange',
       };
     }
 
     if (order.status === 'canceled_by_admin') {
       return {
-        finalTitle: 'ملغي من الإدارة',
-        finalDetail: order.cancelReason ? `السبب: ${order.cancelReason}` : 'ما انكتب سبب',
-        priorTitle: null,
-        priorDetail: null,
+        reason: order.cancelReason
+          ? `الإدارة ألغت — ${order.cancelReason}`
+          : 'الإدارة ألغت الطلب',
         tone: 'rose',
       };
     }
 
-    // طلب نشط/مكتمل لكن فيه إلغاء مزود سابق في الهيستري (نادر بعد إعادة البحث ثم الإكمال)
     if (providerReason && providerCancels.length > 0) {
       return {
-        finalTitle: null,
-        finalDetail: null,
-        priorTitle: 'قبل كذا: مزود قبل ثم ألغى',
-        priorDetail: `سبب الإلغاء: ${providerReason}`,
+        reason: `مزود ألغى قبل كذا — ${providerReason}`,
         tone: 'amber',
       };
     }
@@ -1838,18 +1983,25 @@ export const Orders = () => {
                             return isNaN(date.getTime()) ? '-' : format(date, 'dd MMM yyyy, HH:mm', { locale: ar });
                           })()}
                         </span>
-                        {order.providerName && (
-                          <span className="flex items-center gap-1">
-                            <User size={12} className="shrink-0 text-gray-400" />
-                            <button
-                              type="button"
-                              onClick={(e) => handleProviderClick(order, e)}
-                              className="text-teal-600 hover:text-teal-700 font-semibold underline decoration-dotted"
-                            >
-                              {order.providerName}
-                            </button>
-                          </span>
-                        )}
+                        {(() => {
+                          const displayProvider = resolveDisplayProvider(order);
+                          if (!displayProvider?.name) return null;
+                          return (
+                            <span className="flex items-center gap-1">
+                              <User size={12} className="shrink-0 text-gray-400" />
+                              {displayProvider.isPrevious && (
+                                <span className="text-gray-400">آخر مزود:</span>
+                              )}
+                              <button
+                                type="button"
+                                onClick={(e) => handleProviderClick(order, e)}
+                                className="text-teal-600 hover:text-teal-700 font-semibold underline decoration-dotted"
+                              >
+                                {displayProvider.name}
+                              </button>
+                            </span>
+                          );
+                        })()}
                       </div>
                     </div>
 
@@ -1882,12 +2034,12 @@ export const Orders = () => {
                     </div>
                   </div>
 
-                  {/* ── شريط التنبيهات: خلاصة النتيجة + SLA + أحداث سابقة ── */}
+                  {/* ── شريط التنبيهات: السبب + الوصول ── */}
                   {(() => {
                     const chips = [];
                     const outcome = getOrderOutcomeSummary(order);
 
-                    if (outcome?.finalTitle) {
+                    if (outcome?.reason) {
                       const toneClass =
                         outcome.tone === 'purple'
                           ? 'bg-purple-50 text-purple-800 border-purple-200'
@@ -1895,33 +2047,22 @@ export const Orders = () => {
                             ? 'bg-red-50 text-red-800 border-red-200'
                             : outcome.tone === 'orange'
                               ? 'bg-orange-50 text-orange-800 border-orange-200'
-                              : 'bg-rose-50 text-rose-800 border-rose-200';
+                              : outcome.tone === 'amber'
+                                ? 'bg-amber-50 text-amber-900 border-amber-200'
+                                : 'bg-rose-50 text-rose-800 border-rose-200';
                       chips.push(
                         <span
-                          key="final-outcome"
+                          key="reason"
                           className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border ${toneClass} max-w-full`}
-                          title={outcome.finalDetail || outcome.finalTitle}
+                          title={outcome.reason}
                         >
                           <Info size={11} />
-                          {outcome.finalTitle}
+                          السبب: {outcome.reason}
                         </span>
                       );
                     }
 
-                    if (outcome?.priorTitle) {
-                      chips.push(
-                        <span
-                          key="prior-cancel"
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border bg-amber-50 text-amber-900 border-amber-200 max-w-xs truncate"
-                          title={outcome.priorDetail || outcome.priorTitle}
-                        >
-                          <AlertTriangle size={11} />
-                          {outcome.priorDetail || outcome.priorTitle}
-                        </span>
-                      );
-                    }
-
-                    // SLA = وقت/مسافة الوصول المتوقع عند القبول — ليست سبب الرفض
+                    // SLA = وقت/مسافة الوصول وقت القبول — مو سبب الإلغاء
                     const arrival = resolveOrderArrival(order);
                     if (arrival?.durationMin != null) {
                       const { durationMin, distanceKm, isCalculated } = arrival;
@@ -2207,42 +2348,48 @@ export const Orders = () => {
                     </div>
                   )}
 
-                  {/* خلاصة السبب — تفصل النتيجة النهائية عن أحداث سابقة */}
+                  {/* السبب — صندوق واحد بس + آخر مزود لو انمسح بعد الإلغاء */}
                   {(() => {
                     const outcome = getOrderOutcomeSummary(selectedRequest);
-                    if (!outcome?.finalTitle && !outcome?.priorTitle) return null;
+                    const displayProvider = resolveDisplayProvider(selectedRequest);
+                    if (!outcome?.reason && !displayProvider?.name) return null;
                     const boxClass =
-                      outcome.tone === 'purple'
+                      outcome?.tone === 'purple'
                         ? 'bg-purple-50 border-purple-200 text-purple-900'
-                        : outcome.tone === 'red'
+                        : outcome?.tone === 'red'
                           ? 'bg-red-50 border-red-200 text-red-900'
-                          : outcome.tone === 'orange'
+                          : outcome?.tone === 'orange'
                             ? 'bg-orange-50 border-orange-200 text-orange-900'
-                            : outcome.tone === 'amber'
+                            : outcome?.tone === 'amber'
                               ? 'bg-amber-50 border-amber-200 text-amber-900'
                               : 'bg-rose-50 border-rose-200 text-rose-900';
                     return (
-                      <div className={`mt-3 p-4 rounded-xl border ${boxClass}`}>
-                        <div className="flex items-start gap-2 mb-2">
+                      <div className={`mt-3 p-4 rounded-xl border ${boxClass || 'bg-gray-50 border-gray-200 text-gray-800'}`}>
+                        <div className="flex items-start gap-2">
                           <Info className="w-5 h-5 flex-shrink-0 mt-0.5" />
-                          <div>
-                            {outcome.finalTitle && (
+                          <div className="min-w-0">
+                            {outcome?.reason && (
                               <>
-                                <p className="font-bold text-base">{outcome.finalTitle}</p>
-                                {outcome.finalDetail && (
-                                  <p className="text-sm mt-1 opacity-90">{outcome.finalDetail}</p>
-                                )}
+                                <p className="text-xs font-semibold opacity-70 mb-1">السبب</p>
+                                <p className="font-bold text-base leading-7">{outcome.reason}</p>
                               </>
                             )}
-                            {outcome.priorTitle && (
-                              <div className={`${outcome.finalTitle ? 'mt-3 pt-3 border-t border-current/10' : ''}`}>
-                                <p className="font-bold text-sm">{outcome.priorTitle}</p>
-                                {outcome.priorDetail && (
-                                  <p className="text-sm mt-1 opacity-90">{outcome.priorDetail}</p>
-                                )}
-                                {selectedRequest.status === 'timed_out' && (
-                                  <p className="text-xs mt-2 opacity-75">
-                                    بعد الإلغاء رجع الطلب يدور على مزود ثاني، وما أحد قبل لين خلصت المهلة.
+                            {displayProvider?.name && (
+                              <div className={`${outcome?.reason ? 'mt-3 pt-3 border-t border-current/10' : ''}`}>
+                                <p className="text-xs font-semibold opacity-70 mb-1">
+                                  {displayProvider.isPrevious ? 'آخر مزود على الطلب' : 'المزود'}
+                                </p>
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleProviderClick(selectedRequest, e)}
+                                  className="font-bold text-sm underline decoration-dotted hover:opacity-80"
+                                >
+                                  {displayProvider.name}
+                                  {displayProvider.phone ? ` · ${displayProvider.phone}` : ''}
+                                </button>
+                                {displayProvider.isPrevious && (
+                                  <p className="text-xs mt-1.5 opacity-75 leading-5">
+                                    بيانات المزود تتنمسح تلقائياً بعد الإلغاء لأن النظام يرجع يدور على بديل.
                                   </p>
                                 )}
                               </div>
@@ -2253,51 +2400,45 @@ export const Orders = () => {
                     );
                   })()}
 
-                  {/* سبب إلغاء المزود — عرض مرتب (من الهيستري فقط) */}
+                  {/* تفاصيل إلغاء المزود — فقط إذا الحالة النهائية إلغاء مزود */}
                   {(() => {
+                    const isFinalProviderCancel =
+                      selectedRequest.status === 'canceled_by_provider' ||
+                      selectedRequest.status === 'canceled_by_provider_with_reason';
+                    if (!isFinalProviderCancel) return null;
+
                     const cancelEvents = getProviderCancelEvents(selectedRequest);
                     if (cancelEvents.length === 0) return null;
 
                     const latestCancel = cancelEvents[cancelEvents.length - 1];
                     const reason = getProviderCancelReasonFromEvent(latestCancel) || 'ما انكتب سبب';
-                    const isFinalProviderCancel =
-                      selectedRequest.status === 'canceled_by_provider' ||
-                      selectedRequest.status === 'canceled_by_provider_with_reason';
 
                     return (
                       <div className="space-y-3">
-                        <div className={`mt-3 p-4 border border-r-4 rounded-xl shadow-sm ${
-                          isFinalProviderCancel
-                            ? 'bg-red-50 border-red-200 border-r-red-500'
-                            : 'bg-amber-50 border-amber-200 border-r-amber-500'
-                        }`}>
+                        <div className="mt-3 p-4 border border-r-4 rounded-xl shadow-sm bg-red-50 border-red-200 border-r-red-500">
                           <div className="flex items-center gap-2 mb-3">
-                            <XCircle className={`w-5 h-5 flex-shrink-0 ${isFinalProviderCancel ? 'text-red-600' : 'text-amber-600'}`} />
-                            <h4 className={`text-base font-bold ${isFinalProviderCancel ? 'text-red-800' : 'text-amber-900'}`}>
-                              {isFinalProviderCancel
-                                ? 'إلغاء المزود'
-                                : 'إلغاء مزود قبل كذا (مو الحالة الحالية)'}
-                            </h4>
+                            <XCircle className="w-5 h-5 flex-shrink-0 text-red-600" />
+                            <h4 className="text-base font-bold text-red-800">إلغاء المزود</h4>
                           </div>
                           <dl className="space-y-2 text-sm">
                             <div>
-                              <dt className={`font-semibold mb-0.5 ${isFinalProviderCancel ? 'text-red-600' : 'text-amber-700'}`}>سبب الإلغاء</dt>
-                              <dd className={`rounded-lg px-3 py-2 border bg-white/60 ${isFinalProviderCancel ? 'text-red-800 border-red-100' : 'text-amber-900 border-amber-100'}`}>
+                              <dt className="font-semibold mb-0.5 text-red-600">سبب الإلغاء</dt>
+                              <dd className="rounded-lg px-3 py-2 border bg-white/60 text-red-800 border-red-100">
                                 {reason}
                               </dd>
                             </div>
                             {latestCancel?.timestamp && (
                               <div>
-                                <dt className={`font-semibold mb-0.5 ${isFinalProviderCancel ? 'text-red-600' : 'text-amber-700'}`}>وقت الإلغاء</dt>
-                                <dd className={isFinalProviderCancel ? 'text-red-700' : 'text-amber-800'}>
+                                <dt className="font-semibold mb-0.5 text-red-600">وقت الإلغاء</dt>
+                                <dd className="text-red-700">
                                   {format(new Date(latestCancel.timestamp), 'dd MMMM yyyy، الساعة HH:mm', { locale: ar })}
                                 </dd>
                               </div>
                             )}
                             {latestCancel?.providerId && (
                               <div>
-                                <dt className={`font-semibold mb-0.5 ${isFinalProviderCancel ? 'text-red-600' : 'text-amber-700'}`}>معرف المزود</dt>
-                                <dd className={`font-mono text-xs ${isFinalProviderCancel ? 'text-red-700' : 'text-amber-800'}`}>{latestCancel.providerId}</dd>
+                                <dt className="font-semibold mb-0.5 text-red-600">معرف المزود</dt>
+                                <dd className="font-mono text-xs text-red-700">{latestCancel.providerId}</dd>
                               </div>
                             )}
                           </dl>
@@ -2305,7 +2446,7 @@ export const Orders = () => {
 
                         {cancelEvents.length > 1 && (
                           <div className="mt-2 p-3 bg-gray-50 border border-gray-200 rounded-lg">
-                            <h4 className="text-xs font-bold text-gray-700 mb-2 uppercase tracking-wider">سجل الرفض المتكرر ({cancelEvents.length})</h4>
+                            <h4 className="text-xs font-bold text-gray-700 mb-2">إلغاءات سابقة ({cancelEvents.length - 1})</h4>
                             <div className="space-y-2">
                               {cancelEvents.slice(0, -1).reverse().map((event, idx) => (
                                 <div key={idx} className="text-xs border-b border-gray-100 pb-2 last:border-0">
