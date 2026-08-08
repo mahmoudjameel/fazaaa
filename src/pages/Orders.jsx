@@ -660,6 +660,39 @@ export const Orders = () => {
     return Number.isFinite(parsed) ? parsed : 0;
   };
 
+  /** سعر الخدمة الفعلي — price أو servicePrice أو آخر تعديل معتمد */
+  const resolveOrderPrice = (order) => {
+    if (!order) return 0;
+
+    const toNum = (value) => {
+      const n = Number(value);
+      return Number.isFinite(n) ? n : null;
+    };
+
+    const candidates = [
+      toNum(order.price),
+      toNum(order.servicePrice),
+      toNum(order.serviceModificationRequest?.newService?.price),
+      toNum(order.providerServiceModificationRequest?.newService?.price),
+    ];
+
+    const positive = candidates.find((n) => n != null && n > 0);
+    if (positive != null) return positive;
+
+    const explicitZero = candidates.find((n) => n === 0);
+    if (explicitZero != null) return 0;
+
+    if (Array.isArray(order.history)) {
+      for (let i = order.history.length - 1; i >= 0; i -= 1) {
+        const h = order.history[i];
+        const fromUpdate = toNum(h?.newPrice ?? h?.newService?.price);
+        if (fromUpdate != null && fromUpdate > 0) return fromUpdate;
+      }
+    }
+
+    return 0;
+  };
+
   const orderMatchesServiceFilter = (req, selectedServiceId) => {
     if (!req || !selectedServiceId || selectedServiceId === 'all') return true;
 
@@ -2009,7 +2042,7 @@ export const Orders = () => {
                     <div className="flex flex-col items-end gap-2.5 flex-shrink-0">
                       <div className="text-left">
                         <p className="text-xl font-black text-green-600 leading-none">
-                          {order.price || 0} <span className="text-sm font-bold text-green-500">ر.س</span>
+                          {resolveOrderPrice(order)} <span className="text-sm font-bold text-green-500">ر.س</span>
                         </p>
                         {order.status === 'completed' && order.commission != null && (
                           <p className="text-[11px] font-bold text-teal-600 mt-0.5">عمولة: {order.commission} ر.س</p>
@@ -2250,7 +2283,7 @@ export const Orders = () => {
                 <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-xl">
                   <div>
                     <h3 className="font-semibold text-xs sm:text-sm text-gray-600 mb-1">سعر الخدمة</h3>
-                    <p className="text-lg font-bold text-green-600">{selectedRequest.price || selectedRequest.servicePrice || 0} ر.س</p>
+                    <p className="text-lg font-bold text-green-600">{resolveOrderPrice(selectedRequest)} ر.س</p>
                   </div>
                   {selectedRequest.status === 'completed' && (
                     <div>
@@ -2604,7 +2637,7 @@ export const Orders = () => {
                   <div>
                     <h3 className="font-semibold text-sm sm:text-base text-gray-700 mb-1 sm:mb-2">السعر الإجمالي</h3>
                     <p className="text-xl sm:text-2xl font-black text-green-600">
-                      {selectedRequest.servicePrice || selectedRequest.price || 0} ر.س
+                      {resolveOrderPrice(selectedRequest)} ر.س
                     </p>
                   </div>
                   {selectedRequest.status === 'completed' && (
@@ -2620,7 +2653,7 @@ export const Orders = () => {
                   <div className="bg-green-50 rounded-xl p-4 border border-green-100">
                     <h3 className="font-semibold text-sm text-green-800 mb-1">صافي ربح المزود</h3>
                     <p className="text-2xl font-black text-green-700">
-                      {(selectedRequest.servicePrice || selectedRequest.price || 0) - (selectedRequest.commission || 5)} ر.س
+                      {resolveOrderPrice(selectedRequest) - (selectedRequest.commission || 5)} ر.س
                     </p>
                   </div>
                 )}
@@ -3406,8 +3439,8 @@ export const Orders = () => {
                                               {format(orderDate, 'dd MMM, HH:mm', { locale: ar })}
                                             </span>
                                           )}
-                                          {order.price && (
-                                            <span className="text-[10px] text-teal-600 font-bold">{order.price} ر.س</span>
+                                          {resolveOrderPrice(order) > 0 && (
+                                            <span className="text-[10px] text-teal-600 font-bold">{resolveOrderPrice(order)} ر.س</span>
                                           )}
                                         </div>
                                       </div>
