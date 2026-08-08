@@ -2160,20 +2160,29 @@ export const Orders = () => {
                       );
                     }
 
-                    // SLA = وقت/مسافة الوصول وقت القبول — مو سبب الإلغاء
+                    // SLA = وقت/مسافة الوصول وقت القبول (Google إن توفر، وإلا تقديري)
                     const arrival = resolveOrderArrival(order);
                     if (arrival?.durationMin != null) {
-                      const { durationMin, distanceKm, isCalculated } = arrival;
+                      const { durationMin, distanceKm, isCalculated, source } = arrival;
                       const exceeded = durationMin > 15;
+                      const isGoogle = source === 'google' || source === 'google_traffic';
                       chips.push(
                         <span
                           key="sla"
                           className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border ${exceeded ? 'bg-slate-50 text-slate-700 border-slate-200' : 'bg-green-50 text-green-700 border-green-200'}`}
-                          title="وقت ومسافة الوصول وقت قبول المزود — مو سبب الإلغاء"
+                          title={
+                            isGoogle
+                              ? 'من Google Maps (قيادة + ازدحام) وقت قبول المزود'
+                              : 'تقدير تقريبي — بانتظار حساب Google أو فشل الـ API'
+                          }
                         >
                           <Clock size={11} />
-                          وصول متوقع: {durationMin} د {distanceKm != null ? `(${distanceKm.toFixed(1)} km)` : ''}
-                          {isCalculated ? ' *' : ''}
+                          وصول متوقع: {durationMin} د {distanceKm != null ? `(${Number(distanceKm).toFixed(1)} km)` : ''}
+                          {isGoogle ? (
+                            <span className="text-[10px] font-semibold opacity-80">Maps</span>
+                          ) : (
+                            <span className="text-[10px] font-black text-amber-700">تقديري</span>
+                          )}
                           {exceeded && <span className="text-[10px] font-black">أكثر من 15 د</span>}
                         </span>
                       );
