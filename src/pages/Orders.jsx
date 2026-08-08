@@ -622,13 +622,16 @@ export const Orders = () => {
     return R * c;
   };
 
-  // زمن وصول المزود للطلب: محفوظ مسبقاً أو مُقدَّر من موقع المزود الحالي
+  // زمن وصول المزود للطلب: محفوظ من Google عند القبول، أو تقدير احتياطي
   const resolveOrderArrival = (order) => {
     if (order?.providerAcceptedDurationMin != null) {
+      const source = order.providerAcceptedEtaSource || null;
+      const isEstimate = !source || source === 'estimate' || source === 'preview';
       return {
         durationMin: Number(order.providerAcceptedDurationMin),
         distanceKm: order.providerAcceptedDistanceKm ?? null,
-        isCalculated: false,
+        isCalculated: isEstimate,
+        source,
       };
     }
 
@@ -647,6 +650,7 @@ export const Orders = () => {
       durationMin: Math.round((distanceKm / 40) * 60) || 1,
       distanceKm,
       isCalculated: true,
+      source: 'estimate',
     };
   };
 
