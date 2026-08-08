@@ -225,6 +225,8 @@ export const Orders = () => {
   const [slaFilter, setSlaFilter] = useState('all');
   const [serviceFilter, setServiceFilter] = useState('all');
   const [cities, setCities] = useState(SAUDI_CITIES_FALLBACK);
+  /** يحدّث شارة «جاري البحث» فور انتهاء مهلة 3 دقائق بدون انتظار Firestore */
+  const [nowTick, setNowTick] = useState(() => Date.now());
 
   const [providersDict, setProvidersDict] = useState({});
   const [selectedRequest, setSelectedRequest] = useState(null);
@@ -432,8 +434,15 @@ export const Orders = () => {
   }, [searchTerm]);
 
   useEffect(() => {
+    const hasSearching = requests.some((r) => r.status === 'searching');
+    if (!hasSearching) return undefined;
+    const id = setInterval(() => setNowTick(Date.now()), 15000);
+    return () => clearInterval(id);
+  }, [requests]);
+
+  useEffect(() => {
     filterOrders();
-  }, [requests, searchTerm, statusFilter, cityFilter, serviceFilter, slaFilter, executedProviderFilter, executedProviderIds, dateRangeFilter, matchedUids, providersDict, mainServices, services, cities]);
+  }, [requests, searchTerm, statusFilter, cityFilter, serviceFilter, slaFilter, executedProviderFilter, executedProviderIds, dateRangeFilter, matchedUids, providersDict, mainServices, services, cities, nowTick]);
 
   // معرفات المزودين الذين نفّذوا طلباً مكتملاً واحداً على الأقل
   useEffect(() => {
@@ -664,6 +673,42 @@ export const Orders = () => {
     return Number.isFinite(parsed) ? parsed : 0;
   };
 
+  const toFirestoreMs = (value) => {
+    if (!value) return 0;
+    if (typeof value.toMillis === 'function') return value.toMillis();
+    if (typeof value.toDate === 'function') return value.toDate().getTime();
+    if (typeof value.seconds === 'number') return value.seconds * 1000;
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value < 1e12 ? value * 1000 : value;
+    }
+    const parsed = new Date(value).getTime();
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+
+  const SEARCH_WINDOW_MS = 3 * 60 * 1000;
+
+  /**
+   * حالة العرض مثل التطبيق: searching تنتهي بعد searchEndsAt (أو 3 دقائق)
+   * حتى لو تأخر الـ Cloud Function في كتابة timed_out
+   */
+  const resolveDisplayStatus = (order) => {
+    if (!order) return '';
+    const raw = order.status || '';
+    if (raw !== 'searching') return raw;
+
+    const now = Date.now();
+    const endsMs = toFirestoreMs(order.searchEndsAt);
+    if (endsMs > 0 && endsMs <= now) return 'timed_out';
+
+    // بدون searchEndsAt: مهلة من آخر تحديث (آمن للبحث البديل) ثم الإنشاء
+    if (!endsMs) {
+      const startMs = toFirestoreMs(order.updatedAt) || toFirestoreMs(order.createdAt) || getRequestCreatedMs(order);
+      if (startMs > 0 && now - startMs >= SEARCH_WINDOW_MS) return 'timed_out';
+    }
+
+    return raw;
+  };
+
   /** سعر الخدمة الفعلي — price أو servicePrice أو آخر تعديل معتمد */
   const resolveOrderPrice = (order) => {
     if (!order) return 0;
@@ -791,7 +836,9 @@ export const Orders = () => {
     // 3. Filter by Status
     if (statusFilter !== 'all') {
       if (statusFilter === 'active') {
-        filtered = filtered.filter((r) => ['searching', 'assigned', 'en_route', 'arrived', 'in_progress'].includes(r.status));
+        filtered = filtered.filter((r) =>
+          ['searching', 'assigned', 'en_route', 'arrived', 'in_progress'].includes(resolveDisplayStatus(r))
+        );
       } else if (statusFilter === 'cancelled') {
         filtered = filtered.filter((r) => r.status?.includes('canceled'));
       } else if (statusFilter === 'cancelled_by_customer') {
@@ -800,7 +847,7 @@ export const Orders = () => {
         filtered = filtered.filter((r) => r.status === 'canceled_by_provider' || r.status === 'canceled_by_provider_with_reason');
       } else if (statusFilter === 'no_providers_timeout') {
         filtered = filtered.filter(o => {
-          if (o.status === 'timed_out') return true;
+          if (resolveDisplayStatus(o) === 'timed_out' || o.status === 'timed_out') return true;
           if (o.status !== 'canceled_by_client' && o.status !== 'canceled_by_client_with_reason') {
             return false;
           }
@@ -818,6 +865,10 @@ export const Orders = () => {
             (Array.isArray(o.history) && o.history.some(h => h.status?.includes('canceled') || h.action?.includes('cancellation')));
           return isCancelled;
         });
+      } else if (statusFilter === 'searching') {
+        filtered = filtered.filter((r) => resolveDisplayStatus(r) === 'searching');
+      } else if (statusFilter === 'timed_out') {
+        filtered = filtered.filter((r) => resolveDisplayStatus(r) === 'timed_out' || r.status === 'timed_out');
       } else {
         filtered = filtered.filter((r) => r.status === statusFilter);
       }
@@ -1253,7 +1304,7 @@ export const Orders = () => {
       return p.name || p.fullName || p.displayName || p.providerName || null;
     };
 
-    const isActive = ACTIVE_ORDER_STATUSES.includes(order.status);
+    const isActive = ACTIVE_ORDER_STATUSES.includes(resolveDisplayStatus(order));
 
     // طلب نشط: المزود الحالي فقط (مو المزود اللي ألغى قبل كذا)
     if (isActive) {
@@ -1267,7 +1318,7 @@ export const Orders = () => {
       }
 
       // عالق: حالة نشطة بدون مزود — لا نعرض الملغي كأنه الحالي
-      if (order.status !== 'searching') {
+      if (resolveDisplayStatus(order) !== 'searching') {
         return null;
       }
 
@@ -1305,15 +1356,16 @@ export const Orders = () => {
    */
   const getOrderOutcomeSummary = (order) => {
     if (!order) return null;
+    const displayStatus = resolveDisplayStatus(order);
     const providerCancels = getProviderCancelEvents(order);
     const latestProviderCancel = providerCancels[providerCancels.length - 1] || null;
     const providerReason = getProviderCancelReasonFromEvent(latestProviderCancel);
     const lastProvider = resolveDisplayProvider(order);
     const providerLabel = lastProvider?.name ? `«${lastProvider.name}»` : 'مزود';
-    const isActive = ACTIVE_ORDER_STATUSES.includes(order.status);
+    const isActive = ACTIVE_ORDER_STATUSES.includes(displayStatus);
     const stuckWithoutProvider =
       isActive &&
-      order.status !== 'searching' &&
+      displayStatus !== 'searching' &&
       !order.providerId &&
       !order.providerName;
 
@@ -1321,8 +1373,8 @@ export const Orders = () => {
     if (stuckWithoutProvider) {
       return {
         reason: providerReason
-          ? `طلب عالق: الحالة «${getStatusBadge(order.status).text}» بدون مزود. إلغاء سابق: ${providerReason}`
-          : `طلب عالق: الحالة «${getStatusBadge(order.status).text}» بدون مزود معيّن`,
+          ? `طلب عالق: الحالة «${getStatusBadge(displayStatus).text}» بدون مزود. إلغاء سابق: ${providerReason}`
+          : `طلب عالق: الحالة «${getStatusBadge(displayStatus).text}» بدون مزود معيّن`,
         tone: 'amber',
         stuck: true,
       };
@@ -1333,7 +1385,7 @@ export const Orders = () => {
       return null;
     }
 
-    if (order.status === 'timed_out') {
+    if (displayStatus === 'timed_out') {
       if (providerReason) {
         return {
           reason: `${providerLabel} ألغى (${providerReason})، وبعدها ما أحد قبل وانتهت المهلة`,
@@ -1439,7 +1491,7 @@ export const Orders = () => {
             key: 'active',
             label: 'قيد التنفيذ',
             icon: Clock,
-            value: requests.filter(o => ['searching','assigned','en_route','arrived','in_progress','pending_legal_docs'].includes(o.status)).length,
+            value: requests.filter(o => ['searching','assigned','en_route','arrived','in_progress','pending_legal_docs'].includes(resolveDisplayStatus(o))).length,
             dot: 'bg-teal-500',
             active: 'bg-teal-600 border-teal-600 text-white',
             inactive: 'bg-white border-gray-200 hover:border-teal-300 text-gray-800',
@@ -1458,7 +1510,7 @@ export const Orders = () => {
             label: 'انتهاء المهلة',
             icon: XCircle,
             value: requests.filter(o => {
-              if (o.status === 'timed_out') return true;
+              if (resolveDisplayStatus(o) === 'timed_out' || o.status === 'timed_out') return true;
               if (o.status !== 'canceled_by_client' && o.status !== 'canceled_by_client_with_reason') return false;
               const wasAccepted = o.assignedAt || (Array.isArray(o.history) && o.history.some(h => h.status === 'assigned'));
               if (wasAccepted) return false;
@@ -1996,17 +2048,18 @@ export const Orders = () => {
           </div>
         ) : (
           filteredRequests.map((order) => {
-            const statusBadge = getStatusBadge(order.status);
-            const isActive = ['searching','assigned','en_route','arrived','in_progress'].includes(order.status);
+            const displayStatus = resolveDisplayStatus(order);
+            const statusBadge = getStatusBadge(displayStatus);
+            const isActive = ['searching','assigned','en_route','arrived','in_progress'].includes(displayStatus);
             return (
               <div
                 key={order.id}
                 className={`bg-white rounded-2xl border-2 overflow-hidden transition-all hover:shadow-md ${
-                  order.status === 'completed'       ? 'border-green-200' :
-                  order.status === 'pending_review'  ? 'border-amber-300' :
-                  order.status === 'timed_out'       ? 'border-purple-200' :
+                  displayStatus === 'completed'       ? 'border-green-200' :
+                  displayStatus === 'pending_review'  ? 'border-amber-300' :
+                  displayStatus === 'timed_out'       ? 'border-purple-200' :
                   isActive                           ? 'border-teal-200'  :
-                  order.status?.includes('canceled') ? 'border-red-200'   : 'border-gray-100'
+                  displayStatus?.includes('canceled') ? 'border-red-200'   : 'border-gray-100'
                 }`}
               >
                 <div className="p-4 sm:p-5">
@@ -2015,17 +2068,17 @@ export const Orders = () => {
                     {/* أيقونة الخدمة */}
                     <div className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${
                       isActive ? 'bg-teal-100' :
-                      order.status === 'completed' ? 'bg-green-100' :
-                      order.status === 'pending_review' ? 'bg-amber-100' :
-                      order.status === 'timed_out' ? 'bg-purple-100' :
-                      order.status?.includes('canceled') ? 'bg-red-50' : 'bg-gray-100'
+                      displayStatus === 'completed' ? 'bg-green-100' :
+                      displayStatus === 'pending_review' ? 'bg-amber-100' :
+                      displayStatus === 'timed_out' ? 'bg-purple-100' :
+                      displayStatus?.includes('canceled') ? 'bg-red-50' : 'bg-gray-100'
                     }`}>
                       <ShoppingBag size={20} className={
                         isActive ? 'text-teal-600' :
-                        order.status === 'completed' ? 'text-green-600' :
-                        order.status === 'pending_review' ? 'text-amber-600' :
-                        order.status === 'timed_out' ? 'text-purple-500' :
-                        order.status?.includes('canceled') ? 'text-red-400' : 'text-gray-400'
+                        displayStatus === 'completed' ? 'text-green-600' :
+                        displayStatus === 'pending_review' ? 'text-amber-600' :
+                        displayStatus === 'timed_out' ? 'text-purple-500' :
+                        displayStatus?.includes('canceled') ? 'text-red-400' : 'text-gray-400'
                       } />
                     </div>
 
@@ -2369,10 +2422,10 @@ export const Orders = () => {
                 <div>
                   <h3 className="font-semibold text-sm sm:text-base text-gray-700 mb-1 sm:mb-2">الحالة</h3>
                   <span
-                    className={`inline-block px-2 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-semibold ${getStatusBadge(selectedRequest.status).color
+                    className={`inline-block px-2 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-semibold ${getStatusBadge(resolveDisplayStatus(selectedRequest)).color
                       }`}
                   >
-                    {getStatusBadge(selectedRequest.status).text}
+                    {getStatusBadge(resolveDisplayStatus(selectedRequest)).text}
                   </span>
 
                   {selectedRequest.status === 'completed' && (
@@ -3466,8 +3519,8 @@ export const Orders = () => {
                               </h5>
                               {filteredList.length > 0 ? (
                                 filteredList.slice(0, 10).map((order, idx) => {
-                                  let statusText = getStatusBadge(order.status).text;
-                                  let statusColor = getStatusBadge(order.status).color;
+                                  let statusText = getStatusBadge(resolveDisplayStatus(order)).text;
+                                  let statusColor = getStatusBadge(resolveDisplayStatus(order)).color;
 
                                   const didCancelThis = Array.isArray(order.history) && order.history.some(h =>
                                     h.providerId === selectedProvider.id &&
