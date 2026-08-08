@@ -1198,8 +1198,47 @@ export const Orders = () => {
     );
   };
 
+  const ACTIVE_ORDER_STATUSES = [
+    'searching',
+    'assigned',
+    'en_route',
+    'arrived',
+    'in_progress',
+    'pending_client_confirmation',
+    'pending_review',
+    'pending_legal_docs',
+  ];
+
+  const findLatestHistoryProvider = (order, { preferAssigned = false } = {}) => {
+    if (!Array.isArray(order?.history)) return { id: null, name: null };
+
+    for (let i = order.history.length - 1; i >= 0; i -= 1) {
+      const h = order.history[i];
+      if (!h?.providerId && !h?.providerName) continue;
+
+      const isAssigned = h.status === 'assigned' || h.action === 'assigned';
+      const isCancel =
+        h.action === 'provider_cancellation' ||
+        h.status === 'canceled_by_provider' ||
+        h.status === 'canceled_by_provider_with_reason';
+
+      if (preferAssigned) {
+        if (!isAssigned) continue;
+      } else if (!isAssigned && !isCancel) {
+        continue;
+      }
+
+      return {
+        id: h.providerId || null,
+        name: h.providerName || null,
+      };
+    }
+
+    return { id: null, name: null };
+  };
+
   /**
-   * المزود الحالي، أو آخر مزود قبل ما يتنمسح بعد الإلغاء/إعادة البحث
+   * المزود الحالي للطلب النشط، أو آخر مزود بعد انتهاء الطلب/إعادة البحث
    */
   const resolveDisplayProvider = (order) => {
     if (!order) return null;
@@ -1210,6 +1249,27 @@ export const Orders = () => {
       return p.name || p.fullName || p.displayName || p.providerName || null;
     };
 
+    const isActive = ACTIVE_ORDER_STATUSES.includes(order.status);
+
+    // طلب نشط: المزود الحالي فقط (مو المزود اللي ألغى قبل كذا)
+    if (isActive) {
+      if (order.providerId || order.providerName) {
+        return {
+          id: order.providerId || null,
+          name: order.providerName || nameFromDict(order.providerId) || null,
+          phone: order.providerPhone || providersDict[order.providerId]?.phone || null,
+          isPrevious: false,
+        };
+      }
+
+      // عالق: حالة نشطة بدون مزود — لا نعرض الملغي كأنه الحالي
+      if (order.status !== 'searching') {
+        return null;
+      }
+
+      return null;
+    }
+
     if (order.providerId || order.providerName) {
       return {
         id: order.providerId || null,
@@ -1219,35 +1279,13 @@ export const Orders = () => {
       };
     }
 
-    const cancelEvents = getProviderCancelEvents(order);
-    const latestCancel = cancelEvents[cancelEvents.length - 1] || null;
-    let histId = latestCancel?.providerId || null;
-    let histName = latestCancel?.providerName || null;
-
-    if (Array.isArray(order.history)) {
-      for (let i = order.history.length - 1; i >= 0; i -= 1) {
-        const h = order.history[i];
-        if (!h?.providerId && !h?.providerName) continue;
-        if (
-          h.status === 'assigned' ||
-          h.action === 'assigned' ||
-          h.status === 'canceled_by_provider' ||
-          h.status === 'canceled_by_provider_with_reason' ||
-          h.action === 'provider_cancellation'
-        ) {
-          histId = histId || h.providerId || null;
-          histName = histName || h.providerName || null;
-          break;
-        }
-      }
-    }
-
+    const fromHistory = findLatestHistoryProvider(order, { preferAssigned: false });
     const id =
       order.previousProviderId ||
       order.cancelledBy ||
-      histId ||
+      fromHistory.id ||
       null;
-    const name = histName || nameFromDict(id);
+    const name = fromHistory.name || nameFromDict(id);
     if (!id && !name) return null;
 
     return {
@@ -1268,6 +1306,28 @@ export const Orders = () => {
     const providerReason = getProviderCancelReasonFromEvent(latestProviderCancel);
     const lastProvider = resolveDisplayProvider(order);
     const providerLabel = lastProvider?.name ? `«${lastProvider.name}»` : 'مزود';
+    const isActive = ACTIVE_ORDER_STATUSES.includes(order.status);
+    const stuckWithoutProvider =
+      isActive &&
+      order.status !== 'searching' &&
+      !order.providerId &&
+      !order.providerName;
+
+    // طلب نشط بدون مزود معيّن = عالق (غالباً بعد سباق إلغاء/إعادة تعيين)
+    if (stuckWithoutProvider) {
+      return {
+        reason: providerReason
+          ? `طلب عالق: الحالة «${getStatusBadge(order.status).text}» بدون مزود. إلغاء سابق: ${providerReason}`
+          : `طلب عالق: الحالة «${getStatusBadge(order.status).text}» بدون مزود معيّن`,
+        tone: 'amber',
+        stuck: true,
+      };
+    }
+
+    // طلب نشط سليم: لا نعرض سبب إلغاء سابق كأنه النتيجة الحالية
+    if (isActive) {
+      return null;
+    }
 
     if (order.status === 'timed_out') {
       if (providerReason) {
@@ -1316,6 +1376,7 @@ export const Orders = () => {
       };
     }
 
+    // مكتمل أو حالة أخرى وفيها إلغاء سابق في الهيستري فقط
     if (providerReason && providerCancels.length > 0) {
       return {
         reason: `مزود ألغى قبل كذا — ${providerReason}`,
