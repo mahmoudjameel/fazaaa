@@ -618,7 +618,7 @@ export const Orders = () => {
     }
   };
 
-  // دالة حساب المسافة للـ Fallback
+  // دالة حساب المسافة الخطية (احتياطي فقط)
   const calculateDistanceKm = (lat1, lon1, lat2, lon2) => {
     if (!lat1 || !lon1 || !lat2 || !lon2) return 0;
     const R = 6371; // نصف قطر الأرض بالكيلومتر
@@ -631,22 +631,73 @@ export const Orders = () => {
     return R * c;
   };
 
-  // زمن وصول المزود للطلب: محفوظ من Google عند القبول، أو تقدير احتياطي
+  const MAX_SANE_ETA_MIN = 180;
+  const MAX_SANE_DISTANCE_KM = 80;
+  const ACTIVE_ARRIVAL_STATUSES = ['assigned', 'en_route', 'arrived', 'in_progress'];
+
+  const toFiniteNumber = (value) => {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  /** نفس معادلة تطبيق المزود: مسافة طريق تقديرية = خط مستقيم × 1.35 بسرعة 35 كم/س */
+  const estimateDrivingArrival = (straightKm) => {
+    if (straightKm == null || !Number.isFinite(straightKm) || straightKm <= 0) return null;
+    const roadKm = straightKm * 1.35;
+    const durationMin = Math.max(1, Math.ceil((roadKm / 35) * 60));
+    return {
+      durationMin,
+      distanceKm: parseFloat(roadKm.toFixed(2)),
+      isCalculated: true,
+      source: 'estimate',
+    };
+  };
+
+  const sanitizeArrival = (durationMin, distanceKm, source) => {
+    const duration = toFiniteNumber(durationMin);
+    if (duration == null || duration < 1 || duration > MAX_SANE_ETA_MIN) return null;
+    let km = toFiniteNumber(distanceKm);
+    if (km != null && (km < 0 || km > MAX_SANE_DISTANCE_KM)) km = null;
+    const normalizedSource = source || 'estimate';
+    const isEstimate =
+      !normalizedSource ||
+      normalizedSource === 'estimate' ||
+      normalizedSource === 'preview';
+    return {
+      durationMin: Math.round(duration),
+      distanceKm: km,
+      isCalculated: isEstimate,
+      source: normalizedSource,
+    };
+  };
+
+  /**
+   * وصول متوقع = نفس أرقام تطبيق المزود وقت القبول/الإشعار
+   * أولوية: حقول القبول المحفوظة → معاينة السيرفر → تقدير حي للطلبات النشطة فقط
+   * (لا نستخدم موقع المزود الحالي للطلبات القديمة — يعطي مسافات خاطئة مثل 26 كم)
+   */
   const resolveOrderArrival = (order) => {
-    if (order?.providerAcceptedDurationMin != null) {
-      const source = order.providerAcceptedEtaSource || null;
-      const isEstimate = !source || source === 'estimate' || source === 'preview';
-      return {
-        durationMin: Number(order.providerAcceptedDurationMin),
-        distanceKm: order.providerAcceptedDistanceKm ?? null,
-        isCalculated: isEstimate,
-        source,
-      };
-    }
+    if (!order) return null;
+
+    const accepted = sanitizeArrival(
+      order.providerAcceptedDurationMin,
+      order.providerAcceptedDistanceKm ?? order.providerPreviewDistanceKm,
+      order.providerAcceptedEtaSource || null
+    );
+    if (accepted) return accepted;
+
+    const preview = sanitizeArrival(
+      order.providerPreviewEtaMinutes,
+      order.providerPreviewDistanceKm,
+      order.providerPreviewEtaSource || 'preview'
+    );
+    if (preview) return preview;
+
+    if (!ACTIVE_ARRIVAL_STATUSES.includes(order.status) || !order.providerId) return null;
 
     const lat = order?.coordinates?.latitude ?? order?.coordinates?.lat;
     const lng = order?.coordinates?.longitude ?? order?.coordinates?.lng;
-    if (!lat || !lng || !order?.providerId) return null;
+    if (!lat || !lng) return null;
 
     const pData = providersDict[order.providerId];
     const loc = pData?.locationCoordinates || pData?.location || pData?.coordinates;
@@ -654,12 +705,23 @@ export const Orders = () => {
     const pLng = loc?.longitude ?? loc?.lng;
     if (!pLat || !pLng) return null;
 
-    const distanceKm = calculateDistanceKm(lat, lng, pLat, pLng);
+    return estimateDrivingArrival(calculateDistanceKm(lat, lng, pLat, pLng));
+  };
+
+  const formatArrivalChip = (arrival) => {
+    if (!arrival?.durationMin) return null;
+    const { durationMin, distanceKm, source } = arrival;
+    const exceeded = durationMin > 15;
+    const isGoogle = source === 'google' || source === 'google_traffic';
     return {
-      durationMin: Math.round((distanceKm / 40) * 60) || 1,
-      distanceKm,
-      isCalculated: true,
-      source: 'estimate',
+      exceeded,
+      isGoogle,
+      label: `وصول متوقع: ${durationMin} د${distanceKm != null ? ` (${Number(distanceKm).toFixed(1)} km)` : ''}`,
+      title: isGoogle
+        ? 'من Google Maps (قيادة + ازدحام) وقت قبول المزود — مسافة الطريق قد تزيد عن حد البحث الخطي 19 كم'
+        : source === 'preview'
+          ? 'معاينة السيرفر وقت إشعار المزود (نفس تطبيق المزود)'
+          : 'تقدير تقريبي بنفس معادلة تطبيق المزود',
     };
   };
 
@@ -2213,30 +2275,24 @@ export const Orders = () => {
                       );
                     }
 
-                    // SLA = وقت/مسافة الوصول وقت القبول (Google إن توفر، وإلا تقديري)
+                    // SLA = وقت/مسافة الوصول وقت القبول (نفس تطبيق المزود)
                     const arrival = resolveOrderArrival(order);
-                    if (arrival?.durationMin != null) {
-                      const { durationMin, distanceKm, isCalculated, source } = arrival;
-                      const exceeded = durationMin > 15;
-                      const isGoogle = source === 'google' || source === 'google_traffic';
+                    const arrivalChip = formatArrivalChip(arrival);
+                    if (arrivalChip) {
                       chips.push(
                         <span
                           key="sla"
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border ${exceeded ? 'bg-slate-50 text-slate-700 border-slate-200' : 'bg-green-50 text-green-700 border-green-200'}`}
-                          title={
-                            isGoogle
-                              ? 'من Google Maps (قيادة + ازدحام) وقت قبول المزود'
-                              : 'تقدير تقريبي — بانتظار حساب Google أو فشل الـ API'
-                          }
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border ${arrivalChip.exceeded ? 'bg-slate-50 text-slate-700 border-slate-200' : 'bg-green-50 text-green-700 border-green-200'}`}
+                          title={arrivalChip.title}
                         >
                           <Clock size={11} />
-                          وصول متوقع: {durationMin} د {distanceKm != null ? `(${Number(distanceKm).toFixed(1)} km)` : ''}
-                          {isGoogle ? (
+                          {arrivalChip.label}
+                          {arrivalChip.isGoogle ? (
                             <span className="text-[10px] font-semibold opacity-80">Maps</span>
                           ) : (
                             <span className="text-[10px] font-black text-amber-700">تقديري</span>
                           )}
-                          {exceeded && <span className="text-[10px] font-black">أكثر من 15 د</span>}
+                          {arrivalChip.exceeded && <span className="text-[10px] font-black">أكثر من 15 د</span>}
                         </span>
                       );
                     }
@@ -2406,6 +2462,24 @@ export const Orders = () => {
                       فتح في خرائط جوجل
                     </a>
                   )}
+                  {(() => {
+                    const arrivalChip = formatArrivalChip(resolveOrderArrival(selectedRequest));
+                    if (!arrivalChip) return null;
+                    return (
+                      <div
+                        className={`mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-bold border ${arrivalChip.exceeded ? 'bg-slate-50 text-slate-700 border-slate-200' : 'bg-green-50 text-green-700 border-green-200'}`}
+                        title={arrivalChip.title}
+                      >
+                        <Clock size={14} />
+                        {arrivalChip.label}
+                        {arrivalChip.isGoogle ? (
+                          <span className="text-[11px] font-semibold opacity-80">Maps</span>
+                        ) : (
+                          <span className="text-[11px] font-black text-amber-700">تقديري</span>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
                 <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-xl">
                   <div>

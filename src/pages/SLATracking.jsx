@@ -81,20 +81,30 @@ export const SLATracking = () => {
   // ── حساب مدة الاستجابة لكل طلب ──────────────────────────────────────────────
   const withDuration = useMemo(() =>
     requests.map(req => {
-      let durationMin = req.providerAcceptedDurationMin ?? null;
-      let distanceKm  = req.providerAcceptedDistanceKm  ?? null;
-      let isEstimated = false;
+      let durationMin = req.providerAcceptedDurationMin ?? req.providerPreviewEtaMinutes ?? null;
+      let distanceKm  = req.providerAcceptedDistanceKm
+        ?? req.providerPreviewDistanceKm
+        ?? null;
+      let isEstimated = !(req.providerAcceptedEtaSource === 'google' || req.providerAcceptedEtaSource === 'google_traffic');
 
+      // تقدير حي فقط للطلبات النشطة بلا بيانات محفوظة — نفس معادلة التطبيق (×1.35 / 35)
       if (durationMin == null && req.coordinates && req.providerId) {
-        const pData = providersDict[req.providerId];
-        if (pData) {
-          const loc = pData.locationCoordinates || pData.location || pData.coordinates;
-          const lat = loc?.latitude ?? loc?.lat;
-          const lng = loc?.longitude ?? loc?.lng;
-          if (lat && lng) {
-            distanceKm  = calcDistanceKm(req.coordinates.latitude, req.coordinates.longitude, lat, lng);
-            durationMin = Math.round((distanceKm / 40) * 60) || 1;
-            isEstimated = true;
+        const active = ['assigned', 'en_route', 'arrived', 'in_progress'].includes(req.status);
+        if (active) {
+          const pData = providersDict[req.providerId];
+          if (pData) {
+            const loc = pData.locationCoordinates || pData.location || pData.coordinates;
+            const lat = loc?.latitude ?? loc?.lat;
+            const lng = loc?.longitude ?? loc?.lng;
+            const cLat = req.coordinates.latitude ?? req.coordinates.lat;
+            const cLng = req.coordinates.longitude ?? req.coordinates.lng;
+            if (lat && lng && cLat && cLng) {
+              const straightKm = calcDistanceKm(cLat, cLng, lat, lng);
+              const roadKm = straightKm * 1.35;
+              distanceKm = parseFloat(roadKm.toFixed(2));
+              durationMin = Math.max(1, Math.ceil((roadKm / 35) * 60));
+              isEstimated = true;
+            }
           }
         }
       }
