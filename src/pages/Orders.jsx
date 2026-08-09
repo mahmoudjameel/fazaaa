@@ -1345,9 +1345,27 @@ export const Orders = () => {
         continue;
       }
 
+      const providerId = h.providerId || null;
+      let providerName = h.providerName || null;
+
+      // إلغاء المزود غالباً بلا providerName — خذ الاسم من آخر assigned لنفس المزود
+      if (!providerName && providerId && Array.isArray(order.history)) {
+        for (let j = i; j >= 0; j -= 1) {
+          const prev = order.history[j];
+          if (
+            prev?.providerId === providerId &&
+            prev?.providerName &&
+            (prev.status === 'assigned' || prev.action === 'assigned')
+          ) {
+            providerName = prev.providerName;
+            break;
+          }
+        }
+      }
+
       return {
-        id: h.providerId || null,
-        name: h.providerName || null,
+        id: providerId,
+        name: providerName,
       };
     }
 
@@ -1363,7 +1381,15 @@ export const Orders = () => {
     const nameFromDict = (id) => {
       if (!id || !providersDict[id]) return null;
       const p = providersDict[id];
-      return p.name || p.fullName || p.displayName || p.providerName || null;
+      const combined = [p.firstName, p.lastName].filter(Boolean).join(' ').trim();
+      return (
+        p.name ||
+        p.fullName ||
+        p.displayName ||
+        p.providerName ||
+        combined ||
+        null
+      );
     };
 
     const isActive = ACTIVE_ORDER_STATUSES.includes(resolveDisplayStatus(order));
@@ -1374,7 +1400,7 @@ export const Orders = () => {
         return {
           id: order.providerId || null,
           name: order.providerName || nameFromDict(order.providerId) || null,
-          phone: order.providerPhone || providersDict[order.providerId]?.phone || null,
+          phone: order.providerPhone || providersDict[order.providerId]?.phone || providersDict[order.providerId]?.phoneNumber || null,
           isPrevious: false,
         };
       }
@@ -1391,7 +1417,7 @@ export const Orders = () => {
       return {
         id: order.providerId || null,
         name: order.providerName || nameFromDict(order.providerId) || null,
-        phone: order.providerPhone || providersDict[order.providerId]?.phone || null,
+        phone: order.providerPhone || providersDict[order.providerId]?.phone || providersDict[order.providerId]?.phoneNumber || null,
         isPrevious: false,
       };
     }
@@ -1408,7 +1434,7 @@ export const Orders = () => {
     return {
       id,
       name: name || (id ? `مزود ${String(id).slice(-6)}` : null),
-      phone: providersDict[id]?.phone || null,
+      phone: providersDict[id]?.phone || providersDict[id]?.phoneNumber || null,
       isPrevious: true,
     };
   };
