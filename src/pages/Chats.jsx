@@ -1,17 +1,29 @@
 import { useEffect, useState } from 'react';
-import { MessageSquare, Search, Eye, User, Phone, X } from 'lucide-react';
-import { collection, getDocs, doc, getDoc, query, orderBy, onSnapshot } from 'firebase/firestore';
+import { MessageSquare, Search, Eye, User, Phone, X, RefreshCw } from 'lucide-react';
+import { collection, getDocs, doc, getDoc, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
 import { formatOrderNumberLabel } from '../utils/orderNumber';
 
 const CHATS_COLLECTION = 'chats';
+/** لا نجلب كل المحادثات — كانت تسبب تعليق «جاري التحميل» بسبب آلاف القراءات المتسلسلة */
+const CHATS_PAGE_SIZE = 80;
+
+const toMillis = (value) => {
+  if (!value) return 0;
+  if (typeof value.toMillis === 'function') return value.toMillis();
+  if (typeof value.toDate === 'function') return value.toDate().getTime();
+  if (typeof value.seconds === 'number') return value.seconds * 1000;
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+};
 
 export const Chats = () => {
   const [chatsList, setChatsList] = useState([]);
   const [filteredList, setFilteredList] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedChat, setSelectedChat] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -39,51 +51,76 @@ export const Chats = () => {
 
   const loadChats = async () => {
     setLoading(true);
+    setLoadError(null);
     try {
-      const chatsRef = collection(db, CHATS_COLLECTION);
-      const snapshot = await getDocs(chatsRef);
-      const chats = [];
-      for (const d of snapshot.docs) {
-        const data = d.data();
-        const orderId = d.id;
-        let orderNumber = null;
-        let customerName = '—';
-        let providerName = '—';
-        let providerId = null;
-        try {
-          const requestSnap = await getDoc(doc(db, 'requests', orderId));
-          if (requestSnap.exists()) {
-            const req = requestSnap.data();
-            orderNumber = req.orderNumber != null ? req.orderNumber : null;
-            providerId = req.providerId || null;
-            providerName = req.providerName || '—';
-            if (req.customerId) {
-              const custSnap = await getDoc(doc(db, 'customers', req.customerId));
-              if (custSnap.exists()) {
-                const c = custSnap.data();
-                customerName = [c.firstName, c.lastName].filter(Boolean).join(' ') || 'عميل';
-              }
-            }
-          }
-        } catch (_) {}
-        chats.push({
-          id: orderId,
-          orderId,
-          orderNumber,
-          customerName,
-          providerName,
-          providerId,
+      const chatsQuery = query(
+        collection(db, CHATS_COLLECTION),
+        orderBy('updatedAt', 'desc'),
+        limit(CHATS_PAGE_SIZE)
+      );
+      const snapshot = await getDocs(chatsQuery);
+
+      const baseChats = snapshot.docs.map((d) => {
+        const data = d.data() || {};
+        return {
+          id: d.id,
+          orderId: d.id,
           participants: data.participants || [],
           status: data.status || 'active',
           lastMessage: data.lastMessage || null,
-          updatedAt: data.updatedAt?.toMillis ? data.updatedAt.toMillis() : (data.updatedAt ? new Date(data.updatedAt).getTime() : 0),
+          updatedAt: toMillis(data.updatedAt),
           updatedAtRaw: data.updatedAt,
-        });
-      }
-      chats.sort((a, b) => b.updatedAt - a.updatedAt);
+        };
+      });
+
+      // موجة واحدة: جلب الطلبات بالتوازي
+      const requestSnaps = await Promise.all(
+        baseChats.map((chat) =>
+          getDoc(doc(db, 'requests', chat.orderId)).catch(() => null)
+        )
+      );
+
+      const customerIds = new Set();
+      const withRequests = baseChats.map((chat, index) => {
+        const requestSnap = requestSnaps[index];
+        const req = requestSnap?.exists?.() ? requestSnap.data() : null;
+        if (req?.customerId) customerIds.add(req.customerId);
+        return {
+          ...chat,
+          orderNumber: req?.orderNumber != null ? req.orderNumber : null,
+          providerId: req?.providerId || null,
+          providerName: req?.providerName || '—',
+          customerId: req?.customerId || null,
+          customerName: '—',
+        };
+      });
+
+      // موجة ثانية: أسماء العملاء الفريدة فقط
+      const customerEntries = await Promise.all(
+        [...customerIds].map(async (customerId) => {
+          try {
+            const custSnap = await getDoc(doc(db, 'customers', customerId));
+            if (!custSnap.exists()) return [customerId, null];
+            const c = custSnap.data() || {};
+            const name = [c.firstName, c.lastName].filter(Boolean).join(' ') || c.name || 'عميل';
+            return [customerId, name];
+          } catch (_) {
+            return [customerId, null];
+          }
+        })
+      );
+      const customersMap = Object.fromEntries(customerEntries);
+
+      const chats = withRequests.map((chat) => ({
+        ...chat,
+        customerName: (chat.customerId && customersMap[chat.customerId]) || '—',
+      }));
+
       setChatsList(chats);
     } catch (error) {
       console.error('Error loading chats:', error);
+      setLoadError(error?.message || 'فشل تحميل المحادثات');
+      setChatsList([]);
     } finally {
       setLoading(false);
     }
@@ -102,20 +139,27 @@ export const Chats = () => {
   };
 
   useEffect(() => {
-    if (!selectedChat?.orderId) return;
+    if (!selectedChat?.orderId) return undefined;
     const messagesRef = collection(db, CHATS_COLLECTION, selectedChat.orderId, 'messages');
     const q = query(messagesRef, orderBy('createdAt', 'asc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const list = snapshot.docs.map((d) => {
-        const x = d.data();
-        return {
-          id: d.id,
-          ...x,
-          createdAt: x.createdAt?.toMillis ? x.createdAt.toMillis() : (x.createdAt ? new Date(x.createdAt).getTime() : 0),
-        };
-      });
-      setMessages(list);
-    });
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const list = snapshot.docs.map((d) => {
+          const x = d.data();
+          return {
+            id: d.id,
+            ...x,
+            createdAt: toMillis(x.createdAt),
+          };
+        });
+        setMessages(list);
+      },
+      (error) => {
+        console.error('Error listening to chat messages:', error);
+        setMessages([]);
+      }
+    );
     return () => unsubscribe();
   }, [selectedChat?.orderId]);
 
@@ -132,7 +176,8 @@ export const Chats = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
+      <div className="flex flex-col items-center justify-center h-64 gap-3">
+        <RefreshCw className="w-6 h-6 text-teal-600 animate-spin" />
         <div className="text-gray-500">جاري تحميل المحادثات...</div>
       </div>
     );
@@ -140,10 +185,28 @@ export const Chats = () => {
 
   return (
     <div>
-      <div className="mb-4 sm:mb-6 md:mb-8">
-        <h1 className="text-2xl sm:text-3xl font-black text-gray-800 mb-1 sm:mb-2">محادثات العميل والمزود</h1>
-        <p className="text-sm sm:text-base text-gray-600">عرض ومتابعة المحادثات بين العملاء والمزودين حسب الطلب</p>
+      <div className="mb-4 sm:mb-6 md:mb-8 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-black text-gray-800 mb-1 sm:mb-2">محادثات العميل والمزود</h1>
+          <p className="text-sm sm:text-base text-gray-600">
+            أحدث {CHATS_PAGE_SIZE} محادثة — عرض ومتابعة المحادثات حسب الطلب
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={loadChats}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 bg-white text-sm font-semibold text-gray-700 hover:bg-gray-50"
+        >
+          <RefreshCw className="w-4 h-4" />
+          تحديث
+        </button>
       </div>
+
+      {loadError && (
+        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {loadError}
+        </div>
+      )}
 
       <div className="bg-white rounded-xl sm:rounded-2xl shadow-lg p-4 sm:p-5 md:p-6 mb-4 sm:mb-6">
         <div className="relative">
@@ -203,7 +266,6 @@ export const Chats = () => {
         )}
       </div>
 
-      {/* Modal محادثة */}
       {selectedChat && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4 md:p-6">
           <div className="bg-white rounded-xl sm:rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col">
