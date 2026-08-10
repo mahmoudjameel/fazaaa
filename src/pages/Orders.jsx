@@ -672,12 +672,23 @@ export const Orders = () => {
   };
 
   /**
-   * وصول متوقع = نفس أرقام تطبيق المزود وقت القبول/الإشعار
-   * أولوية: حقول القبول المحفوظة → معاينة السيرفر → تقدير حي للطلبات النشطة فقط
-   * (لا نستخدم موقع المزود الحالي للطلبات القديمة — يعطي مسافات خاطئة مثل 26 كم)
+   * وصول متوقع يظهر فقط بعد قبول مزود فعلياً.
+   * معاينة البحث (providerPreview*) = أقرب مزود مُشعَر أثناء البحث — ليست وعداً بوصول.
    */
   const resolveOrderArrival = (order) => {
     if (!order) return null;
+
+    const displayStatus = resolveDisplayStatus(order);
+    const hasAcceptedProvider =
+      !!order.providerId ||
+      ACTIVE_ARRIVAL_STATUSES.includes(displayStatus) ||
+      (order.providerAcceptedDurationMin != null &&
+        (order.assignedAt != null ||
+          (Array.isArray(order.history) &&
+            order.history.some((h) => h?.status === 'assigned' || h?.action === 'assigned'))));
+
+    // أثناء البحث / انتهاء المهلة / بدون مزود: لا نعرض وصول متوقع من معاينة البحث
+    if (!hasAcceptedProvider) return null;
 
     const accepted = sanitizeArrival(
       order.providerAcceptedDurationMin,
@@ -686,12 +697,15 @@ export const Orders = () => {
     );
     if (accepted) return accepted;
 
-    const preview = sanitizeArrival(
-      order.providerPreviewEtaMinutes,
-      order.providerPreviewDistanceKm,
-      order.providerPreviewEtaSource || 'preview'
-    );
-    if (preview) return preview;
+    // معاينة فقط إذا الطلب ما زال مع مزود معيّن (نادر بدون accepted fields)
+    if (order.providerId) {
+      const preview = sanitizeArrival(
+        order.providerPreviewEtaMinutes,
+        order.providerPreviewDistanceKm,
+        order.providerPreviewEtaSource || 'preview'
+      );
+      if (preview) return preview;
+    }
 
     if (!ACTIVE_ARRIVAL_STATUSES.includes(order.status) || !order.providerId) return null;
 
