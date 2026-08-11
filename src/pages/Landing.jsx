@@ -10,6 +10,7 @@ import {
 import { WhatsAppFloat } from '../components/WhatsAppFloat';
 import { LandingSplash } from '../components/LandingSplash';
 import { LandingSeoSection } from '../components/LandingSeoSection';
+import { LandingArticlesSection } from '../components/LandingArticlesSection';
 import { SeoHead } from '../components/SeoHead';
 import { buildHomeJsonLd, PAGE_SEO } from '../seo/config';
 import { db } from '../services/firebase';
@@ -18,11 +19,13 @@ const SCROLL_LINKS = [
   { label: 'الرئيسية', href: '#hero' },
   { label: 'خدماتنا', href: '#services' },
   { label: 'نبذة عنا', href: '#why' },
+  { label: 'المقالات', to: '/blog' },
   { label: 'التطبيقات', href: '#apps' },
   { label: 'تواصل معنا', href: '#contact' },
 ];
 
 const PAGE_LINKS = [
+  { label: 'المقالات', to: '/blog' },
   { label: 'سياسة الخصوصية', to: '/privacy' },
   { label: 'الشروط والأحكام', to: '/terms' },
   { label: 'الدعم', to: '/support' },
@@ -30,6 +33,30 @@ const PAGE_LINKS = [
 ];
 
 const NAV_LINKS = SCROLL_LINKS;
+
+const ARTICLES_NAV = { label: 'المقالات', to: '/blog' };
+
+/** يضمن ظهور تاب المقالات حتى لو روابط Firestore قديمة بدونها */
+function withArticlesNav(links) {
+  const list = Array.isArray(links) && links.length ? links.map((l) => ({ ...l })) : [...SCROLL_LINKS];
+  const isArticles = (l) =>
+    l?.to === '/blog' ||
+    l?.href === '#articles' ||
+    l?.href === '/blog' ||
+    l?.label === 'المقالات' ||
+    l?.label === 'مقالات';
+
+  const idx = list.findIndex(isArticles);
+  if (idx >= 0) {
+    list[idx] = { ...list[idx], ...ARTICLES_NAV };
+    return list;
+  }
+
+  const contactIdx = list.findIndex((l) => l.href === '#contact' || l.label === 'تواصل معنا');
+  if (contactIdx >= 0) list.splice(contactIdx, 0, ARTICLES_NAV);
+  else list.push(ARTICLES_NAV);
+  return list;
+}
 
 const DEFAULT_HERO_BG = '/landing-hero.jpg';
 
@@ -347,7 +374,7 @@ export const Landing = () => {
       setContactSubmitting(false);
     }
   };
-  const headerLinks = landingContent.header?.scrollLinks || SCROLL_LINKS;
+  const headerLinks = withArticlesNav(landingContent.header?.scrollLinks || SCROLL_LINKS);
   const serviceCards = landingContent.services?.cards || DEFAULT_LANDING_CONTENT.services.cards;
   const howSteps = landingContent.how?.steps || DEFAULT_LANDING_CONTENT.how.steps;
   const whyFeatures = landingContent.why?.features || DEFAULT_LANDING_CONTENT.why.features;
@@ -414,10 +441,25 @@ export const Landing = () => {
 
             <nav className="hidden lg:flex items-center gap-1 xl:gap-2">
               {headerLinks.map((l) => {
-                const isActive = activeNav === l.href;
+                const key = l.to || l.href || l.label;
+                const routePath = l.to || (typeof l.href === 'string' && l.href.startsWith('/') ? l.href : null);
+                const isActive = !routePath && activeNav === l.href;
+
+                if (routePath) {
+                  return (
+                    <Link
+                      key={key}
+                      to={routePath}
+                      className="px-3 py-2 rounded-lg text-sm font-bold text-white/75 hover:text-white transition-colors"
+                    >
+                      {l.label}
+                    </Link>
+                  );
+                }
+
                 return (
                   <button
-                    key={l.href}
+                    key={key}
                     type="button"
                     onClick={() => { scrollTo(l.href); setActiveNav(l.href); }}
                     className={`px-3 py-2 rounded-lg text-sm font-bold transition-colors ${
@@ -463,16 +505,32 @@ export const Landing = () => {
         {menuOpen && (
           <div className="lg:hidden bg-black/95 border-t border-white/10 backdrop-blur-md">
             <div className="px-4 py-4 flex flex-col gap-1">
-              {headerLinks.map((l) => (
-                <button
-                  key={l.href}
-                  type="button"
-                  onClick={() => { scrollTo(l.href); setActiveNav(l.href); }}
-                  className="text-white/80 font-bold py-3 text-right hover:text-white transition-colors border-b border-white/5"
-                >
-                  {l.label}
-                </button>
-              ))}
+              {headerLinks.map((l) => {
+                const key = l.to || l.href || l.label;
+                const routePath = l.to || (typeof l.href === 'string' && l.href.startsWith('/') ? l.href : null);
+                if (routePath) {
+                  return (
+                    <Link
+                      key={key}
+                      to={routePath}
+                      onClick={() => setMenuOpen(false)}
+                      className="text-white/80 font-bold py-3 text-right hover:text-white transition-colors border-b border-white/5"
+                    >
+                      {l.label}
+                    </Link>
+                  );
+                }
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => { scrollTo(l.href); setActiveNav(l.href); }}
+                    className="text-white/80 font-bold py-3 text-right hover:text-white transition-colors border-b border-white/5"
+                  >
+                    {l.label}
+                  </button>
+                );
+              })}
               <a
                 href={providerStoreHref}
                 target="_blank"
@@ -941,6 +999,9 @@ export const Landing = () => {
       {/* ── SEO: تغطية السعودية + FAQ ── */}
       <LandingSeoSection primaryColor={theme.primary} />
 
+      {/* ── مقالات من لوحة التحكم ── */}
+      <LandingArticlesSection primaryColor={theme.primary} />
+
       {/* ── Contact ── */}
       <section id="contact" className="py-16 sm:py-24" style={{ backgroundColor: theme.lightSectionBg || '#f9fafb' }}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -1146,6 +1207,7 @@ export const Landing = () => {
               </h4>
               <ul className="space-y-3">
                 {[
+                  { label: 'المقالات', to: '/blog' },
                   { label: 'سياسة الخصوصية', to: '/privacy' },
                   { label: 'الشروط والأحكام', to: '/terms' },
                   { label: 'الدعم', to: '/support' },

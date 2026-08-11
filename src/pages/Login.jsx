@@ -6,6 +6,11 @@ import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../services/firebase';
 import { SeoHead } from '../components/SeoHead';
 import { PAGE_SEO } from '../seo/config';
+import {
+  applyAdminSessionFromDoc,
+  getFirstAllowedAdminPath,
+  writeAdminSessionToStorage,
+} from '../utils/adminPermissions';
 
 export const Login = ({ onLogin }) => {
   const [email, setEmail] = useState('');
@@ -30,18 +35,21 @@ export const Login = ({ onLogin }) => {
 
       if (adminDoc.exists()) {
         const adminData = adminDoc.data();
+        if (adminData.isActive === false) {
+          setError('هذا الحساب موقوف. تواصل مع المدير الرئيسي.');
+          await auth.signOut();
+          return;
+        }
 
         // حفظ بيانات الجلسة والصلاحيات
         localStorage.setItem('admin_authenticated', 'true');
-        localStorage.setItem('admin_role', adminData.role || 'viewer');
-        localStorage.setItem('admin_permissions', JSON.stringify(adminData.permissions || []));
-        localStorage.setItem('admin_email', user.email);
-        localStorage.setItem('admin_name', adminData.name || 'Admin');
+        const session = applyAdminSessionFromDoc(adminData, user.email);
 
         if (onLogin) {
           onLogin();
         }
-        navigate('/admin');
+        const nextPath = getFirstAllowedAdminPath(session) || '/admin';
+        navigate(nextPath);
       } else {
         // BOOTSTRAP: إذا كان هذا هو البريد "admin@fazaaa.com" أو المستخدم يحاول الدخول كمدير رئيسي
         // سنقوم بإنشاء السجل تلقائياً لتسهيل الدخول الأول
@@ -59,10 +67,12 @@ export const Login = ({ onLogin }) => {
 
           // Proceed as Super Admin
           localStorage.setItem('admin_authenticated', 'true');
-          localStorage.setItem('admin_role', 'super_admin');
-          localStorage.setItem('admin_permissions', JSON.stringify([]));
-          localStorage.setItem('admin_email', user.email);
-          localStorage.setItem('admin_name', 'Main Admin');
+          writeAdminSessionToStorage({
+            role: 'super_admin',
+            permissions: [],
+            email: user.email,
+            name: 'Main Admin',
+          });
 
           if (onLogin) onLogin();
           navigate('/admin');

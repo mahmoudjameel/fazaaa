@@ -15,10 +15,12 @@ const DEFAULT_CONTENT = {
       { label: 'الرئيسية', href: '#hero' },
       { label: 'خدماتنا', href: '#services' },
       { label: 'نبذة عنا', href: '#why' },
+      { label: 'المقالات', to: '/blog' },
       { label: 'التطبيقات', href: '#apps' },
       { label: 'تواصل معنا', href: '#contact' },
     ],
     pageLinks: [
+      { label: 'المقالات', to: '/blog' },
       { label: 'سياسة الخصوصية', to: '/privacy' },
       { label: 'الشروط والأحكام', to: '/terms' },
       { label: 'الدعم', to: '/support' },
@@ -268,7 +270,15 @@ export default function LandingSettings() {
 
   const updateScrollLink = (idx, key, value) => {
     const links = [...(content.header.scrollLinks || [])];
-    links[idx] = { ...links[idx], [key]: value };
+    if (key === 'path') {
+      const path = String(value || '').trim();
+      const next = { label: links[idx]?.label || '' };
+      if (path.startsWith('/')) next.to = path;
+      else next.href = path || '#';
+      links[idx] = next;
+    } else {
+      links[idx] = { ...links[idx], [key]: value };
+    }
     setHeader({ scrollLinks: links });
   };
 
@@ -441,9 +451,15 @@ export default function LandingSettings() {
           {(content.header.scrollLinks || []).map((link, idx) => (
             <div key={idx} className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <input className={inputClass} value={link.label || ''} onChange={(e) => updateScrollLink(idx, 'label', e.target.value)} placeholder="اسم الرابط" />
-              <input className={inputClass} value={link.href || ''} onChange={(e) => updateScrollLink(idx, 'href', e.target.value)} placeholder="#hero" />
+              <input
+                className={inputClass}
+                value={link.to || link.href || ''}
+                onChange={(e) => updateScrollLink(idx, 'path', e.target.value)}
+                placeholder="#hero أو /blog"
+              />
             </div>
           ))}
+          <p className="text-xs text-gray-500">للصفحات استخدم مسار مثل <code className="bg-gray-100 px-1 rounded">/blog</code> — وللأقسام استخدم <code className="bg-gray-100 px-1 rounded">#services</code></p>
         </div>
       </div>
 

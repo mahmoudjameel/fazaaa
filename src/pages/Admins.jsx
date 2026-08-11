@@ -4,29 +4,9 @@ import { collection, getDocs, doc, setDoc, updateDoc, serverTimestamp } from 'fi
 import { createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { auth, db, secondaryAuth } from '../services/firebase';
 import { updateDashboardAdminPassword, deleteDashboardAdmin } from '../services/adminService';
+import { ADMIN_PERMISSIONS_LIST } from '../utils/adminPermissions';
 
-const PERMISSIONS_LIST = [
-  { id: 'dashboard',               label: 'لوحة التحكم' },
-  { id: 'emergency_services',      label: 'إدارة الخدمات' },
-  { id: 'providers',               label: 'إدارة المزودين' },
-  { id: 'add_provider',            label: 'إضافة مزود يدوي' },
-  { id: 'orders',                  label: 'إدارة الطلبات' },
-  { id: 'sla_tracking',            label: 'متابعة SLA' },
-  { id: 'escalations',             label: 'تصعيدات النظام' },
-  { id: 'users',                   label: 'العملاء' },
-  { id: 'blocked_phones',          label: 'حظر الأرقام' },
-  { id: 'notifications',           label: 'الإشعارات' },
-  { id: 'support_tickets',         label: 'تذاكر الدعم' },
-  { id: 'cities',                  label: 'إدارة المدن' },
-  { id: 'city_managers',           label: 'مديري المدن' },
-  { id: 'complaints',              label: 'الشكاوي' },
-  { id: 'withdrawal_requests',     label: 'طلبات السحب' },
-  { id: 'distribution',            label: 'توزيع الطلبات' },
-  { id: 'bank_settings',           label: 'إعدادات البنك' },
-  { id: 'app_settings',            label: 'إعدادات التطبيق' },
-  { id: 'provider_drawer_sections',label: 'أقسام Drawer المزود' },
-  { id: 'customer_drawer_sections',label: 'أقسام Drawer العميل' },
-];
+const PERMISSIONS_LIST = ADMIN_PERMISSIONS_LIST;
 
 const emptyForm = {
   name: '',

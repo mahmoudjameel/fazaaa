@@ -4,14 +4,20 @@ import {
   MessageSquare, MessageCircle, UserCheck, Sliders, MapPin,
   UserCog, CreditCard, Banknote, AlertCircle, Shield,
   ChevronLeft, UserPlus, Bell, ImageIcon, Ticket, Timer,
-  PanelRight, PanelLeft,   Route, Globe, AlertTriangle, Stethoscope, FlaskConical, Ban
+  PanelRight, PanelLeft,   Route, Globe, AlertTriangle, Stethoscope, FlaskConical, Ban, FileText
 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../services/firebase';
 import { signOut } from 'firebase/auth';
 import { isUnresolvedEscalation, isUnreadEscalation, getSeenEscalationIds, ESCALATIONS_SEEN_EVENT } from '../utils/escalationStatus';
+import {
+  canAccessMenuItem,
+  getAdminSessionFromStorage,
+  ADMIN_SESSION_UPDATED_EVENT,
+} from '../utils/adminPermissions';
 import { SeoHead } from './SeoHead';
+import { AdminRouteGuard } from './AdminRouteGuard';
 
 export const Layout = () => {
   const navigate = useNavigate();
@@ -21,6 +27,7 @@ export const Layout = () => {
   const [pendingReviewCount, setPendingReviewCount] = useState(0);
   const [openTicketsCount, setOpenTicketsCount] = useState(0);
   const [newEscalationsCount, setNewEscalationsCount] = useState(0);
+  const [sessionVersion, setSessionVersion] = useState(0);
   const lastPendingReviewCountRef = useRef(0);
   const escalationsPrimedRef = useRef(false);
   const latestUnresolvedRef = useRef([]);
@@ -121,6 +128,12 @@ export const Layout = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  useEffect(() => {
+    const onSession = () => setSessionVersion((v) => v + 1);
+    window.addEventListener(ADMIN_SESSION_UPDATED_EVENT, onSession);
+    return () => window.removeEventListener(ADMIN_SESSION_UPDATED_EVENT, onSession);
+  }, []);
+
   const handleLogout = async () => {
     if (window.confirm('هل أنت متأكد من تسجيل الخروج؟')) {
       localStorage.removeItem('admin_authenticated');
@@ -132,15 +145,6 @@ export const Layout = () => {
       navigate('/login');
     }
   };
-
-  useEffect(() => {
-    const role = localStorage.getItem('admin_role');
-    const permissionsStr = localStorage.getItem('admin_permissions');
-    if (role === 'super_admin') return;
-    if (permissionsStr) {
-      try { JSON.parse(permissionsStr); } catch (e) { console.error('Error parsing permissions', e); }
-    }
-  }, []);
 
   const menuItems = [
     { id: 'dashboard',               path: '/admin',                          icon: LayoutDashboard, label: 'لوحة التحكم',             category: 'main' },
@@ -168,24 +172,14 @@ export const Layout = () => {
     { id: 'customer_drawer_sections',path: '/admin/customer-drawer-sections', icon: PanelLeft,       label: 'Drawer العميل',            category: 'settings' },
     { id: 'banners',                 path: '/admin/banners',                  icon: ImageIcon,       label: 'البانرات',                 category: 'settings' },
     { id: 'landing_settings',        path: '/admin/landing-settings',         icon: Globe,           label: 'الاندنق بيج',              category: 'settings' },
+    { id: 'articles',                path: '/admin/articles',                 icon: FileText,        label: 'مقالات SEO',               category: 'settings' },
     { id: 'admins',                  path: '/admin/admins',                   icon: Shield,          label: 'المديرون',                 category: 'settings', restricted: true },
   ];
 
-  const getFilteredItems = () => {
-    const role = localStorage.getItem('admin_role');
-    const permissionsStr = localStorage.getItem('admin_permissions');
-    if (role === 'super_admin') return menuItems;
-    let permissions = [];
-    if (permissionsStr) {
-      try { permissions = JSON.parse(permissionsStr); } catch (e) { console.error('Error parsing permissions', e); }
-    }
-    return menuItems.filter(item => {
-      if (item.restricted && role !== 'super_admin') return false;
-      return permissions.includes(item.id) || permissions.includes(item.category) || permissions.includes('all');
-    });
-  };
-
-  const filteredMenuItems = getFilteredItems();
+  const session = getAdminSessionFromStorage();
+  // sessionVersion يُحدَّث بعد مزامنة Firestore لإعادة رسم القائمة حسب الصلاحيات
+  void sessionVersion;
+  const filteredMenuItems = menuItems.filter((item) => canAccessMenuItem(item, session));
   const groupedMenuItems = {
     main:       filteredMenuItems.filter(i => i.category === 'main'),
     services:   filteredMenuItems.filter(i => i.category === 'services'),
@@ -364,7 +358,9 @@ export const Layout = () => {
         {/* Content */}
         <main className="flex-1 overflow-auto">
           <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full">
-            <Outlet />
+            <AdminRouteGuard>
+              <Outlet />
+            </AdminRouteGuard>
           </div>
         </main>
       </div>

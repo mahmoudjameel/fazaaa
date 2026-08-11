@@ -35,6 +35,9 @@ import { Login } from './pages/Login';
 import ProviderDrawerSections from './pages/ProviderDrawerSections';
 import CustomerDrawerSections from './pages/CustomerDrawerSections';
 import LandingSettings from './pages/LandingSettings';
+import Articles from './pages/Articles';
+import { Blog } from './pages/Blog';
+import { ArticleDetail } from './pages/ArticleDetail';
 import { DeleteAccount } from './pages/DeleteAccount';
 import BlockedPhones from './pages/BlockedPhones';
 
@@ -78,6 +81,8 @@ function App() {
       <Routes>
         {/* Public routes */}
         <Route path="/" element={<Landing />} />
+        <Route path="/blog" element={<Blog />} />
+        <Route path="/blog/:slug" element={<ArticleDetail />} />
         <Route path="/privacy" element={<PrivacyPolicy />} />
         <Route path="/terms" element={<Terms />} />
         <Route path="/support" element={<Support />} />
@@ -117,6 +122,7 @@ function App() {
           <Route path="customer-drawer-sections" element={<CustomerDrawerSections />} />
           <Route path="banners" element={<Banners />} />
           <Route path="landing-settings" element={<LandingSettings />} />
+          <Route path="articles" element={<Articles />} />
           <Route path="support-tickets" element={<SupportTickets />} />
           <Route path="admins" element={<Admins />} />
         </Route>
