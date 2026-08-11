@@ -1,4 +1,8 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
+import {
+  resolveProviderAppArrival,
+  formatProviderAppArrivalLabel,
+} from '../utils/providerEtaDisplay';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Search,
@@ -618,126 +622,12 @@ export const Orders = () => {
     }
   };
 
-  // دالة حساب المسافة الخطية (احتياطي فقط)
-  const calculateDistanceKm = (lat1, lon1, lat2, lon2) => {
-    if (!lat1 || !lon1 || !lat2 || !lon2) return 0;
-    const R = 6371; // نصف قطر الأرض بالكيلومتر
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-              Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return R * c;
-  };
-
-  const MAX_SANE_ETA_MIN = 180;
-  const MAX_SANE_DISTANCE_KM = 80;
-  const ACTIVE_ARRIVAL_STATUSES = ['assigned', 'en_route', 'arrived', 'in_progress'];
-
-  const toFiniteNumber = (value) => {
-    const n = Number(value);
-    return Number.isFinite(n) ? n : null;
-  };
-
-  /** نفس معادلة تطبيق المزود: مسافة طريق تقديرية = خط مستقيم × 1.35 بسرعة 35 كم/س */
-  const estimateDrivingArrival = (straightKm) => {
-    if (straightKm == null || !Number.isFinite(straightKm) || straightKm <= 0) return null;
-    const roadKm = straightKm * 1.35;
-    const durationMin = Math.max(1, Math.ceil((roadKm / 35) * 60));
-    return {
-      durationMin,
-      distanceKm: parseFloat(roadKm.toFixed(2)),
-      isCalculated: true,
-      source: 'estimate',
-    };
-  };
-
-  const sanitizeArrival = (durationMin, distanceKm, source) => {
-    const duration = toFiniteNumber(durationMin);
-    if (duration == null || duration < 1 || duration > MAX_SANE_ETA_MIN) return null;
-    let km = toFiniteNumber(distanceKm);
-    if (km != null && (km < 0 || km > MAX_SANE_DISTANCE_KM)) km = null;
-    const normalizedSource = source || 'estimate';
-    const isEstimate =
-      !normalizedSource ||
-      normalizedSource === 'estimate' ||
-      normalizedSource === 'preview';
-    return {
-      durationMin: Math.round(duration),
-      distanceKm: km,
-      isCalculated: isEstimate,
-      source: normalizedSource,
-    };
-  };
-
-  /**
-   * وصول متوقع يظهر فقط بعد قبول مزود فعلياً.
-   * معاينة البحث (providerPreview*) = أقرب مزود مُشعَر أثناء البحث — ليست وعداً بوصول.
-   */
   const resolveOrderArrival = (order) => {
     if (!order) return null;
-
-    const displayStatus = resolveDisplayStatus(order);
-    const hasAcceptedProvider =
-      !!order.providerId ||
-      ACTIVE_ARRIVAL_STATUSES.includes(displayStatus) ||
-      (order.providerAcceptedDurationMin != null &&
-        (order.assignedAt != null ||
-          (Array.isArray(order.history) &&
-            order.history.some((h) => h?.status === 'assigned' || h?.action === 'assigned'))));
-
-    // أثناء البحث / انتهاء المهلة / بدون مزود: لا نعرض وصول متوقع من معاينة البحث
-    if (!hasAcceptedProvider) return null;
-
-    const accepted = sanitizeArrival(
-      order.providerAcceptedDurationMin,
-      order.providerAcceptedDistanceKm ?? order.providerPreviewDistanceKm,
-      order.providerAcceptedEtaSource || null
-    );
-    if (accepted) return accepted;
-
-    // معاينة فقط إذا الطلب ما زال مع مزود معيّن (نادر بدون accepted fields)
-    if (order.providerId) {
-      const preview = sanitizeArrival(
-        order.providerPreviewEtaMinutes,
-        order.providerPreviewDistanceKm,
-        order.providerPreviewEtaSource || 'preview'
-      );
-      if (preview) return preview;
-    }
-
-    if (!ACTIVE_ARRIVAL_STATUSES.includes(order.status) || !order.providerId) return null;
-
-    const lat = order?.coordinates?.latitude ?? order?.coordinates?.lat;
-    const lng = order?.coordinates?.longitude ?? order?.coordinates?.lng;
-    if (!lat || !lng) return null;
-
-    const pData = providersDict[order.providerId];
-    const loc = pData?.locationCoordinates || pData?.location || pData?.coordinates;
-    const pLat = loc?.latitude ?? loc?.lat;
-    const pLng = loc?.longitude ?? loc?.lng;
-    if (!pLat || !pLng) return null;
-
-    return estimateDrivingArrival(calculateDistanceKm(lat, lng, pLat, pLng));
+    return resolveProviderAppArrival(order, resolveDisplayStatus(order));
   };
 
-  const formatArrivalChip = (arrival) => {
-    if (!arrival?.durationMin) return null;
-    const { durationMin, distanceKm, source } = arrival;
-    const exceeded = durationMin > 15;
-    const isGoogle = source === 'google' || source === 'google_traffic';
-    return {
-      exceeded,
-      isGoogle,
-      label: `وصول متوقع: ${durationMin} د${distanceKm != null ? ` (${Number(distanceKm).toFixed(1)} km)` : ''}`,
-      title: isGoogle
-        ? 'من Google Maps (قيادة + ازدحام) وقت قبول المزود — مسافة الطريق قد تزيد عن حد البحث الخطي 19 كم'
-        : source === 'preview'
-          ? 'معاينة السيرفر وقت إشعار المزود (نفس تطبيق المزود)'
-          : 'تقدير تقريبي بنفس معادلة تطبيق المزود',
-    };
-  };
+  const formatArrivalChip = (arrival) => formatProviderAppArrivalLabel(arrival);
 
   const getRequestCreatedMs = (req) => {
     const createdAt = req?.createdAt;
@@ -954,10 +844,10 @@ export const Orders = () => {
     if (slaFilter !== 'all') {
       filtered = filtered.filter(req => {
         const arrival = resolveOrderArrival(req);
-        if (!arrival || arrival.durationMin == null) return false;
+        if (!arrival || arrival.duration == null) return false;
 
-        if (slaFilter === 'over_15') return arrival.durationMin > 15;
-        if (slaFilter === 'under_15') return arrival.durationMin <= 15;
+        if (slaFilter === 'over_15') return arrival.duration > 15;
+        if (slaFilter === 'under_15') return arrival.duration <= 15;
         return true;
       });
     }

@@ -10,6 +10,10 @@ import { db } from '../services/firebase';
 import { getAllCities } from '../services/adminService';
 import SAUDI_CITIES_FALLBACK from '../services/cities.json';
 import { formatOrderNumberLabel } from '../utils/orderNumber';
+import {
+  buildDistanceInfoFromRequest,
+  buildDistanceInfoFromAcceptedFields,
+} from '../utils/providerEtaDisplay';
 
 // ── مساعدات ──────────────────────────────────────────────────────────────────
 const calcDistanceKm = (lat1, lon1, lat2, lon2) => {
@@ -78,40 +82,18 @@ export const SLATracking = () => {
     return unsub;
   }, []);
 
-  // ── حساب مدة الاستجابة لكل طلب ──────────────────────────────────────────────
+  // ── حساب مدة الاستجابة لكل طلب — نفس buildDistanceInfoFromRequest في تطبيق المزود ──
   const withDuration = useMemo(() =>
     requests.map(req => {
-      let durationMin = req.providerAcceptedDurationMin ?? req.providerPreviewEtaMinutes ?? null;
-      let distanceKm  = req.providerAcceptedDistanceKm
-        ?? req.providerPreviewDistanceKm
-        ?? null;
-      let isEstimated = !(req.providerAcceptedEtaSource === 'google' || req.providerAcceptedEtaSource === 'google_traffic');
-
-      // تقدير حي فقط للطلبات النشطة بلا بيانات محفوظة — نفس معادلة التطبيق (×1.35 / 35)
-      if (durationMin == null && req.coordinates && req.providerId) {
-        const active = ['assigned', 'en_route', 'arrived', 'in_progress'].includes(req.status);
-        if (active) {
-          const pData = providersDict[req.providerId];
-          if (pData) {
-            const loc = pData.locationCoordinates || pData.location || pData.coordinates;
-            const lat = loc?.latitude ?? loc?.lat;
-            const lng = loc?.longitude ?? loc?.lng;
-            const cLat = req.coordinates.latitude ?? req.coordinates.lat;
-            const cLng = req.coordinates.longitude ?? req.coordinates.lng;
-            if (lat && lng && cLat && cLng) {
-              const straightKm = calcDistanceKm(cLat, cLng, lat, lng);
-              const roadKm = straightKm * 1.35;
-              distanceKm = parseFloat(roadKm.toFixed(2));
-              durationMin = Math.max(1, Math.ceil((roadKm / 35) * 60));
-              isEstimated = true;
-            }
-          }
-        }
-      }
+      const fromPreview = buildDistanceInfoFromRequest(req);
+      const fromAccepted = fromPreview || buildDistanceInfoFromAcceptedFields(req);
+      let durationMin = fromAccepted?.duration ?? null;
+      let distanceKm = fromAccepted?.distanceKm ?? null;
+      let isEstimated = !(fromAccepted?.source === 'google' || fromAccepted?.source === 'google_traffic');
 
       return { ...req, _durationMin: durationMin, _distanceKm: distanceKm, _isEstimated: isEstimated };
     }),
-  [requests, providersDict]);
+  [requests]);
 
   // ── فلترة ────────────────────────────────────────────────────────────────────
   const filtered = useMemo(() => {
