@@ -236,7 +236,8 @@ export const createManualProvider = async (providerData) => {
       status: 'approved',
       approvalStatus: 'approved',
       isActive: true,
-      isOnline: false,
+      isOnline: true,
+      availabilityStatus: 'available',
       registrationMethod: 'manual',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -1682,16 +1683,6 @@ export const cancelRequestAsCustomer = async (requestId, cancelReason = null) =>
     ],
   });
 
-  const freshSnap = await getDoc(orderRef);
-  const freshHistoryLen = Array.isArray(freshSnap.data()?.history)
-    ? freshSnap.data().history.length
-    : 0;
-  if (freshHistoryLen) {
-    await updateDoc(orderRef, {
-      [`history.${freshHistoryLen - 1}.timestamp`]: serverTimestamp(),
-    });
-  }
-
   return { success: true, status };
 };
 
@@ -2077,6 +2068,32 @@ export const getProviderWalletHistory = async (providerId) => {
     return { success: true, history };
   } catch (error) {
     console.error('Get provider wallet history error:', error);
+    throw error;
+  }
+};
+
+/**
+ * سجل جلسات دخول المزود (IP، الجهاز، الموقع)
+ */
+export const getProviderLoginSessions = async (providerId, maxResults = 50) => {
+  try {
+    const providerSnap = await getDoc(doc(db, 'providers', providerId));
+    const storageId = providerSnap.exists()
+      ? (providerSnap.data()?.uid || providerSnap.id)
+      : providerId;
+
+    const sessionsRef = collection(db, 'providers', storageId, 'loginSessions');
+    const q = query(sessionsRef, orderBy('loggedInAt', 'desc'), limit(maxResults));
+    const querySnapshot = await getDocs(q);
+
+    const sessions = [];
+    querySnapshot.forEach((docSnap) => {
+      sessions.push({ id: docSnap.id, ...docSnap.data() });
+    });
+
+    return { success: true, sessions };
+  } catch (error) {
+    console.error('Get provider login sessions error:', error);
     throw error;
   }
 };

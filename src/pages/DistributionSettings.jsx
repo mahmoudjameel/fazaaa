@@ -18,6 +18,7 @@ const DEFAULT_STAGES = [
 export const DistributionSettings = () => {
   const [stages, setStages] = useState(DEFAULT_STAGES);
   const [vipEnabled, setVipEnabled] = useState(false);
+  const [rejectBlockMinutes, setRejectBlockMinutes] = useState(60);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -39,6 +40,10 @@ export const DistributionSettings = () => {
           })));
         }
         if (typeof d.vipEnabled === 'boolean') setVipEnabled(d.vipEnabled);
+        if (d.rejectBlockMinutes === 0 || Number.isFinite(Number(d.rejectBlockMinutes))) {
+          const n = Number(d.rejectBlockMinutes);
+          setRejectBlockMinutes(Number.isFinite(n) && n >= 0 ? n : 60);
+        }
       }
     } catch (e) {
       console.error('Error fetching settings:', e);
@@ -57,6 +62,9 @@ export const DistributionSettings = () => {
       if (s.maxProviders < 1 || s.maxProviders > 20)
         return `المرحلة ${i + 1}: عدد المزودين يجب أن يكون بين 1 و20`;
     }
+    if (!Number.isFinite(Number(rejectBlockMinutes)) || rejectBlockMinutes < 0 || rejectBlockMinutes > 1440) {
+      return 'مدة حظر الرفض يجب أن تكون بين 0 و1440 دقيقة (0 = بدون حظر)';
+    }
     return '';
   };
 
@@ -69,6 +77,7 @@ export const DistributionSettings = () => {
       await setDoc(doc(db, 'settings', 'distribution'), {
         searchStages: stages,
         vipEnabled,
+        rejectBlockMinutes: Number(rejectBlockMinutes) || 0,
         updatedAt: new Date().toISOString(),
       }, { merge: true });
       setSaved(true);
@@ -268,6 +277,44 @@ export const DistributionSettings = () => {
           <span>أقصى نطاق: <strong className="text-gray-700">{maxRadius} كم</strong></span>
           <span>أقصى مزودين: <strong className="text-gray-700">{stages.reduce((s, r) => s + (r.maxProviders || 0), 0)}</strong></span>
         </div>
+      </div>
+
+      {/* Reject block duration */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div className="flex items-start gap-3 min-w-[220px]">
+            <div className="p-2 rounded-xl bg-orange-50">
+              <Clock size={22} className="text-orange-500" />
+            </div>
+            <div>
+              <h3 className="font-bold text-gray-800">حظر المزود بعد رفض الطلب</h3>
+              <p className="text-xs text-gray-500 mt-1 leading-relaxed max-w-xl">
+                إذا رفض المزود طلباً، لا تصله طلبات <strong>نفس العميل</strong> لمدة محددة.
+                لا يؤثر على عملاء آخرين. القيمة <strong>0</strong> تلغي الحظر بالكامل.
+                الطلب الحالي يستمر بالبحث عن مزودين آخرين حتى لو رُفض.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min={0}
+              max={1440}
+              value={rejectBlockMinutes}
+              onChange={(e) => setRejectBlockMinutes(Number(e.target.value))}
+              className="w-24 px-3 py-2 text-center border border-gray-200 rounded-xl text-sm font-bold focus:outline-none focus:border-amber-400"
+            />
+            <span className="text-sm text-gray-500 font-medium">دقيقة</span>
+          </div>
+        </div>
+        <p className="text-xs text-gray-400 mt-3">
+          الحالي: {Number(rejectBlockMinutes) === 0
+            ? 'الحظر معطّل'
+            : Number(rejectBlockMinutes) >= 60
+              ? `${rejectBlockMinutes} دقيقة (${(rejectBlockMinutes / 60).toFixed(rejectBlockMinutes % 60 === 0 ? 0 : 1)} ساعة)`
+              : `${rejectBlockMinutes} دقيقة`}
+          {' '}— الافتراضي السابق كان 60 دقيقة.
+        </p>
       </div>
 
       {/* VIP Setting */}

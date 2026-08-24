@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import {
   Search, CheckCircle, XCircle, Clock, Eye, Phone, Mail, Star, Power,
-  UserCheck, Users, Plus, Edit2, Trash2, Tag, X, FileText, ShieldBan, ShieldOff, ShieldCheck, Loader2
+  UserCheck, Users, Plus, Edit2, Trash2, Tag, X, FileText, ShieldBan, ShieldOff, ShieldCheck, Loader2,
+  MapPin, Globe, Smartphone,
 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -24,6 +25,7 @@ import {
   getProviderIdsWithCompletedOrders,
   toggleProviderVIP,
   getProviderWalletHistory,
+  getProviderLoginSessions,
   adjustProviderWallet,
   repairDuplicateProviders,
   repairApprovedProvidersPendingServices,
@@ -124,9 +126,11 @@ export const Providers = () => {
   const [isUploading, setIsUploading] = useState(false);
 
   // Provider Detail Modal State
-  const [activeTab, setActiveTab] = useState('info'); // 'info', 'wallet', 'orders'
+  const [activeTab, setActiveTab] = useState('info'); // 'info', 'wallet', 'orders', 'logins'
   const [walletHistory, setWalletHistory] = useState([]);
   const [loadingWallet, setLoadingWallet] = useState(false);
+  const [loginSessions, setLoginSessions] = useState([]);
+  const [loadingLoginSessions, setLoadingLoginSessions] = useState(false);
   const [orderStats, setOrderStats] = useState(null);
   const [loadingStats, setLoadingStats] = useState(false);
   const [ordersFilter, setOrdersFilter] = useState('all');
@@ -415,9 +419,11 @@ export const Providers = () => {
       fetchWalletData();
       fetchOrderStats();
       fetchProviderBlocks();
+      fetchLoginSessions();
       setActiveTab('info');
     } else {
       setProviderBlocks([]);
+      setLoginSessions([]);
     }
   }, [selectedProvider?.id]);
 
@@ -505,6 +511,27 @@ export const Providers = () => {
     } finally {
       setLoadingStats(false);
     }
+  };
+
+  const fetchLoginSessions = async () => {
+    if (!selectedProvider?.id) return;
+    setLoadingLoginSessions(true);
+    try {
+      const result = await getProviderLoginSessions(selectedProvider.id);
+      setLoginSessions(result.success ? result.sessions : []);
+    } catch (error) {
+      console.error('Error fetching login sessions:', error);
+      setLoginSessions([]);
+    } finally {
+      setLoadingLoginSessions(false);
+    }
+  };
+
+  const formatSessionDate = (ts) => {
+    if (!ts) return '—';
+    const d = ts?.toDate?.() || (ts?.seconds ? new Date(ts.seconds * 1000) : null);
+    if (!d || Number.isNaN(d.getTime())) return '—';
+    return format(d, 'dd MMM yyyy, HH:mm', { locale: ar });
   };
 
   const refreshSelectedProvider = async () => {
@@ -1923,6 +1950,18 @@ export const Providers = () => {
                         </span>
                       )}
                     </button>
+                    <button
+                      onClick={() => { setActiveTab('logins'); fetchLoginSessions(); }}
+                      className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg font-bold transition-all ${activeTab === 'logins' ? 'bg-white text-teal-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                    >
+                      <Smartphone size={18} />
+                      <span>سجل الدخول</span>
+                      {loginSessions.length > 0 && (
+                        <span className="bg-gray-200 text-gray-700 px-2 py-0.5 rounded-full text-xs">
+                          {loginSessions.length}
+                        </span>
+                      )}
+                    </button>
                   </div>
                 </div>
                 <div className="p-4 md:p-6 space-y-6">
@@ -2745,6 +2784,135 @@ export const Providers = () => {
                           </>
                         );
                       })()}
+                    </div>
+                  )}
+
+                  {activeTab === 'logins' && (
+                    <div className="space-y-6 animate-in fade-in duration-300">
+                      {(selectedProvider.lastLoginAt || selectedProvider.lastLoginIp) && (
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div className="bg-teal-50 border border-teal-100 rounded-2xl p-4">
+                            <p className="text-xs font-bold text-teal-700 mb-1">آخر دخول</p>
+                            <p className="font-bold text-gray-800">{formatSessionDate(selectedProvider.lastLoginAt)}</p>
+                          </div>
+                          <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4">
+                            <p className="text-xs font-bold text-blue-700 mb-1 flex items-center gap-1">
+                              <Globe size={14} /> آخر IP
+                            </p>
+                            <p className="font-mono font-bold text-gray-800">{selectedProvider.lastLoginIp || '—'}</p>
+                          </div>
+                          <div className="bg-purple-50 border border-purple-100 rounded-2xl p-4">
+                            <p className="text-xs font-bold text-purple-700 mb-1 flex items-center gap-1">
+                              <Smartphone size={14} /> معرّف الجهاز
+                            </p>
+                            <p className="font-mono text-sm text-gray-800 truncate" title={selectedProvider.lastLoginDeviceId || ''}>
+                              {selectedProvider.lastLoginDeviceId || '—'}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="bg-gray-50 border border-gray-200 rounded-2xl p-4 text-sm text-gray-600 leading-relaxed">
+                        هنا تلاقي آخر مرات ما دخل فيها المزود التطبيق، مع عنوان الشبكة ونوع الجهاز والموقع إذا سمح بمشاركته.
+                      </div>
+
+                      <div>
+                        <h4 className="font-bold text-gray-800 mb-4 flex items-center justify-between">
+                          <span className="flex items-center gap-2">
+                            <Clock size={18} className="text-gray-500" />
+                            سجل جلسات الدخول
+                          </span>
+                          <span className="text-sm font-normal text-gray-400">({loginSessions.length})</span>
+                        </h4>
+
+                        {loadingLoginSessions ? (
+                          <div className="flex items-center justify-center py-12 text-gray-400">
+                            <Loader2 className="animate-spin ml-2" size={20} />
+                            جاري التحميل...
+                          </div>
+                        ) : loginSessions.length === 0 ? (
+                          <div className="text-center py-12 text-gray-400 bg-white rounded-2xl border border-gray-200">
+                            ما في سجل دخول لهذا المزود لحد الآن
+                          </div>
+                        ) : (
+                          <div className="space-y-3">
+                            {loginSessions.map((session) => {
+                              const device = session.deviceInfo || {};
+                              const loc = session.location;
+                              const mapsUrl = loc?.latitude && loc?.longitude
+                                ? `https://www.google.com/maps?q=${loc.latitude},${loc.longitude}`
+                                : null;
+
+                              return (
+                                <div key={session.id} className="bg-white rounded-2xl border border-gray-200 p-4 md:p-5">
+                                  <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
+                                    <div>
+                                      <p className="font-bold text-gray-800">{formatSessionDate(session.loggedInAt)}</p>
+                                      <p className="text-xs text-gray-500 mt-1">
+                                        {session.platform === 'ios' ? 'iOS' : session.platform === 'android' ? 'Android' : session.platform || '—'}
+                                        {session.appVersion ? ` • v${session.appVersion}` : ''}
+                                      </p>
+                                    </div>
+                                    <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-sm font-mono">
+                                      <Globe size={14} />
+                                      {session.ip || '—'}
+                                    </span>
+                                  </div>
+
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                                    <div className="bg-gray-50 rounded-xl p-3">
+                                      <p className="text-xs font-bold text-gray-500 mb-1 flex items-center gap-1">
+                                        <Smartphone size={14} /> الجهاز
+                                      </p>
+                                      <p className="text-gray-800">
+                                        {[device.brand, device.modelName].filter(Boolean).join(' ') || '—'}
+                                      </p>
+                                      <p className="text-xs text-gray-500 mt-1">
+                                        {device.osName} {device.osVersion || ''}
+                                      </p>
+                                      {device.deviceId && (
+                                        <p className="text-xs font-mono text-gray-500 mt-1 truncate" title={device.deviceId}>
+                                          ID: {device.deviceId}
+                                        </p>
+                                      )}
+                                      {device.localIp && (
+                                        <p className="text-xs text-gray-400 mt-1">IP محلي: {device.localIp}</p>
+                                      )}
+                                    </div>
+
+                                    <div className="bg-gray-50 rounded-xl p-3">
+                                      <p className="text-xs font-bold text-gray-500 mb-1 flex items-center gap-1">
+                                        <MapPin size={14} /> الموقع
+                                      </p>
+                                      {loc?.latitude != null ? (
+                                        <>
+                                          {loc.address && <p className="text-gray-800">{loc.address}</p>}
+                                          <p className="text-xs font-mono text-gray-500 mt-1">
+                                            {loc.latitude.toFixed(5)}, {loc.longitude.toFixed(5)}
+                                            {loc.accuracy ? ` (±${Math.round(loc.accuracy)}m)` : ''}
+                                          </p>
+                                          {mapsUrl && (
+                                            <a
+                                              href={mapsUrl}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className="inline-block mt-2 text-teal-600 text-xs font-bold hover:underline"
+                                            >
+                                              فتح على الخريطة
+                                            </a>
+                                          )}
+                                        </>
+                                      ) : (
+                                        <p className="text-gray-400">لم يُمنح إذن الموقع</p>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
