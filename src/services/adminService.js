@@ -883,6 +883,79 @@ export const getCustomerBlockedProviders = async (customerId) => {
   }
 };
 
+function providerDisplayName(p) {
+  if (!p) return null;
+  return [p.firstName, p.lastName].filter(Boolean).join(' ') || p.fullName || p.name || null;
+}
+
+/**
+ * كل سجلات حظر الرفض بين مزود وعميل (نشط + منتهٍ).
+ * يُستخدم في إعدادات التوزيع لإدارة الحظر ورفعه.
+ */
+export const getAllRejectBlocks = async () => {
+  try {
+    let docs = [];
+    try {
+      const snapshot = await getDocs(collectionGroup(db, 'blocked_providers'));
+      docs = snapshot.docs;
+    } catch (groupErr) {
+      console.warn('collectionGroup blocked_providers failed, falling back:', groupErr?.message);
+      const customersSnap = await getDocs(collection(db, 'customers'));
+      const nested = await Promise.all(
+        customersSnap.docs.map(async (cDoc) => {
+          const nestedSnap = await getDocs(collection(db, 'customers', cDoc.id, 'blocked_providers'));
+          return nestedSnap.docs;
+        })
+      );
+      docs = nested.flat();
+    }
+
+    let blocks = docs.map((docSnap) => normalizeBlockDoc(docSnap));
+
+    const customerIds = [...new Set(blocks.map((b) => b.customerId).filter(Boolean))];
+    const providerIds = [...new Set(blocks.map((b) => b.providerId).filter(Boolean))];
+    const customerMap = {};
+    const providerMap = {};
+
+    await Promise.all([
+      ...customerIds.map(async (cid) => {
+        try {
+          const snap = await getDoc(doc(db, 'customers', cid));
+          if (snap.exists()) customerMap[cid] = snap.data();
+        } catch (_) { /* ignore */ }
+      }),
+      ...providerIds.map(async (pid) => {
+        try {
+          const snap = await getDoc(doc(db, 'providers', pid));
+          if (snap.exists()) providerMap[pid] = snap.data();
+        } catch (_) { /* ignore */ }
+      }),
+    ]);
+
+    blocks = blocks.map((b) => {
+      const c = customerMap[b.customerId];
+      const p = providerMap[b.providerId];
+      return {
+        ...b,
+        customerName: c?.name || c?.fullName || null,
+        customerPhone: c?.phone || null,
+        providerName: providerDisplayName(p),
+        providerPhone: p?.phone || null,
+      };
+    });
+
+    blocks.sort((a, b) => {
+      if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;
+      return (b.blockedUntilMs || 0) - (a.blockedUntilMs || 0);
+    });
+
+    return { success: true, blocks };
+  } catch (error) {
+    console.error('Get all reject blocks error:', error);
+    return { success: false, error: error.message, blocks: [] };
+  }
+};
+
 /**
  * رفع الحظر عن مزود لعميل معين
  * @param {string} customerId

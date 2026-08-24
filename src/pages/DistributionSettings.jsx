@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Settings, MapPin, Clock, Users, Save, AlertTriangle, CheckCircle, Plus, Trash2, Star } from 'lucide-react';
+import { Settings, MapPin, Clock, Users, Save, AlertTriangle, CheckCircle, Plus, Trash2, Star, ShieldOff, Loader2, RefreshCw } from 'lucide-react';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
+import { getAllRejectBlocks, unblockProviderForCustomer, BLOCK_REASON_LABELS } from '../services/adminService';
 
 // المرحلة 1: أقرب 3 متاحين في 4كم — ثم توسيع تدريجي حتى 25كم
 const DEFAULT_STAGES = [
@@ -23,8 +24,12 @@ export const DistributionSettings = () => {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
+  const [blocks, setBlocks] = useState([]);
+  const [loadingBlocks, setLoadingBlocks] = useState(false);
+  const [unblockingKey, setUnblockingKey] = useState(null);
+  const [showExpiredBlocks, setShowExpiredBlocks] = useState(false);
 
-  useEffect(() => { fetchSettings(); }, []);
+  useEffect(() => { fetchSettings(); fetchBlocks(); }, []);
 
   const fetchSettings = async () => {
     try {
@@ -49,6 +54,40 @@ export const DistributionSettings = () => {
       console.error('Error fetching settings:', e);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchBlocks = async () => {
+    setLoadingBlocks(true);
+    try {
+      const result = await getAllRejectBlocks();
+      setBlocks(result.success ? (result.blocks || []) : []);
+    } catch (e) {
+      console.error('Error fetching reject blocks:', e);
+      setBlocks([]);
+    } finally {
+      setLoadingBlocks(false);
+    }
+  };
+
+  const formatBlockUntil = (block) => {
+    if (!block?.blockedUntilMs) return '—';
+    const d = new Date(block.blockedUntilMs);
+    if (Number.isNaN(d.getTime())) return '—';
+    return d.toLocaleString('ar-SA', { dateStyle: 'medium', timeStyle: 'short' });
+  };
+
+  const handleUnblock = async (customerId, providerId) => {
+    const key = `${customerId}:${providerId}`;
+    if (!window.confirm('رفع الحظر؟ سيصل هذا المزود طلبات هذا العميل فوراً.')) return;
+    setUnblockingKey(key);
+    try {
+      await unblockProviderForCustomer(customerId, providerId);
+      setBlocks((prev) => prev.filter((b) => !(b.customerId === customerId && b.providerId === providerId)));
+    } catch (e) {
+      alert(e?.message || 'فشل رفع الحظر');
+    } finally {
+      setUnblockingKey(null);
     }
   };
 
@@ -315,6 +354,107 @@ export const DistributionSettings = () => {
               : `${rejectBlockMinutes} دقيقة`}
           {' '}— الافتراضي السابق كان 60 دقيقة.
         </p>
+      </div>
+
+      {/* Active reject blocks */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+        <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
+          <div>
+            <h3 className="font-bold text-gray-800">المزودون المحظورون بعد الرفض</h3>
+            <p className="text-xs text-gray-500 mt-1">
+              قائمة من رُفض طلبهم فحُجبوا عن نفس العميل. رفع الحظر يعيد وصول الطلبات فوراً.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="bg-amber-100 text-amber-800 px-2.5 py-1 rounded-full text-xs font-semibold">
+              {blocks.filter((b) => b.isActive).length} نشط
+            </span>
+            <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={showExpiredBlocks}
+                onChange={(e) => setShowExpiredBlocks(e.target.checked)}
+              />
+              إظهار المنتهي
+            </label>
+            <button
+              type="button"
+              onClick={fetchBlocks}
+              disabled={loadingBlocks}
+              className="p-2 rounded-lg text-gray-500 hover:bg-gray-50 disabled:opacity-50"
+              title="تحديث"
+            >
+              <RefreshCw size={16} className={loadingBlocks ? 'animate-spin' : ''} />
+            </button>
+          </div>
+        </div>
+
+        {loadingBlocks ? (
+          <div className="flex items-center gap-2 text-gray-500 py-6">
+            <Loader2 size={18} className="animate-spin" />
+            <span className="text-sm">جاري تحميل المحظورين...</span>
+          </div>
+        ) : (showExpiredBlocks ? blocks : blocks.filter((b) => b.isActive)).length === 0 ? (
+          <p className="text-sm text-gray-500 bg-gray-50 rounded-xl p-4">
+            {showExpiredBlocks ? 'لا يوجد أي سجل حظر.' : 'لا يوجد حظر نشط حالياً.'}
+          </p>
+        ) : (
+          <div className="space-y-3 max-h-[420px] overflow-y-auto">
+            {(showExpiredBlocks ? blocks : blocks.filter((b) => b.isActive)).map((block) => {
+              const key = `${block.customerId}:${block.providerId}`;
+              return (
+                <div
+                  key={key}
+                  className={`rounded-xl border p-4 ${block.isActive ? 'border-amber-200 bg-amber-50' : 'border-gray-200 bg-gray-50'}`}
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold text-gray-800 text-sm">
+                        المزود: {block.providerName || 'غير معروف'}
+                        {block.providerPhone && (
+                          <span className="text-gray-500 font-normal mr-2" dir="ltr">
+                            ({block.providerPhone})
+                          </span>
+                        )}
+                      </p>
+                      <p className="text-sm text-gray-700 mt-1">
+                        العميل: {block.customerName || 'غير معروف'}
+                        {block.customerPhone && (
+                          <span className="text-gray-500 mr-2" dir="ltr">
+                            ({block.customerPhone})
+                          </span>
+                        )}
+                      </p>
+                      <p className="text-xs text-gray-600 mt-2">
+                        السبب: {BLOCK_REASON_LABELS[block.reason] || block.reason || '—'}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        ينتهي: {formatBlockUntil(block)}
+                        {!block.isActive && <span className="mr-2 text-gray-400">(منتهٍ)</span>}
+                      </p>
+                    </div>
+                    <div className="flex flex-col items-end gap-2">
+                      <span
+                        className={`px-2 py-1 rounded-full text-xs font-semibold ${block.isActive ? 'bg-amber-200 text-amber-900' : 'bg-gray-200 text-gray-600'}`}
+                      >
+                        {block.isActive ? 'نشط' : 'منتهٍ'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleUnblock(block.customerId, block.providerId)}
+                        disabled={unblockingKey === key}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-teal-600 text-white text-xs font-semibold rounded-lg hover:bg-teal-700 disabled:opacity-50"
+                      >
+                        {unblockingKey === key ? <Loader2 size={14} className="animate-spin" /> : <ShieldOff size={14} />}
+                        فك الحظر
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* VIP Setting */}
