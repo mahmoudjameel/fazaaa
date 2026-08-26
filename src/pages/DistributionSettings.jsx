@@ -4,16 +4,15 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { getAllRejectBlocks, unblockProviderForCustomer, BLOCK_REASON_LABELS } from '../services/adminService';
 
-// المرحلة 1: أقرب 3 متاحين في 4كم — ثم توسيع تدريجي حتى 25كم
+// القيم الافتراضية فقط عند غياب إعدادات Firestore — السيناريو الفعلي من لوحة التحكم
 const DEFAULT_STAGES = [
-  { maxRadius: 4,  waitTime: 60, maxProviders: 3, vipOnly: false },
-  { maxRadius: 7,  waitTime: 20, maxProviders: 3, vipOnly: false },
-  { maxRadius: 10, waitTime: 20, maxProviders: 3, vipOnly: false },
+  { maxRadius: 5,  waitTime: 20, maxProviders: 8, vipOnly: false },
+  { maxRadius: 7,  waitTime: 20, maxProviders: 5, vipOnly: false },
+  { maxRadius: 10, waitTime: 20, maxProviders: 4, vipOnly: false },
   { maxRadius: 13, waitTime: 20, maxProviders: 3, vipOnly: false },
   { maxRadius: 16, waitTime: 20, maxProviders: 3, vipOnly: false },
-  { maxRadius: 19, waitTime: 20, maxProviders: 3, vipOnly: false },
-  { maxRadius: 22, waitTime: 20, maxProviders: 3, vipOnly: false },
-  { maxRadius: 25, waitTime: 20, maxProviders: 3, vipOnly: false },
+  { maxRadius: 19, waitTime: 40, maxProviders: 3, vipOnly: false },
+  { maxRadius: 19, waitTime: 40, maxProviders: 3, vipOnly: false },
 ];
 
 export const DistributionSettings = () => {
@@ -113,10 +112,13 @@ export const DistributionSettings = () => {
     setError('');
     setSaving(true);
     try {
+      const stageMax = Math.max(...stages.map((s) => Number(s.maxRadius) || 0), 0);
       await setDoc(doc(db, 'settings', 'distribution'), {
         searchStages: stages,
         vipEnabled,
         rejectBlockMinutes: Number(rejectBlockMinutes) || 0,
+        // سقف التوزيع = أعلى مرحلة في السيناريو (تتغير إذا زِدت مراحل من اللوحة)
+        maxSearchRadiusKm: stageMax,
         updatedAt: new Date().toISOString(),
       }, { merge: true });
       setSaved(true);
@@ -136,7 +138,7 @@ export const DistributionSettings = () => {
   const addStage = () => {
     const last = stages[stages.length - 1];
     setStages(prev => [...prev, {
-      maxRadius:    (last?.maxRadius ?? 15) + 5,
+      maxRadius:    Math.min((last?.maxRadius ?? 15) + 3, 100),
       waitTime:     last?.waitTime     ?? 20,
       maxProviders: last?.maxProviders ?? 3,
       vipOnly:      false,
@@ -313,7 +315,7 @@ export const DistributionSettings = () => {
         {/* Summary Row */}
         <div className="mt-4 pt-4 border-t border-gray-100 flex items-center gap-6 text-sm text-gray-500">
           <span>إجمالي: <strong className="text-gray-700">{totalSeconds}ث ({totalMinutes} دقيقة)</strong></span>
-          <span>أقصى نطاق: <strong className="text-gray-700">{maxRadius} كم</strong></span>
+          <span>أقصى نطاق: <strong className="text-gray-700">{maxRadius} كم</strong> <span className="text-xs text-gray-400">(من أعلى مرحلة — المزودون الأبعد لا يُشعَرون)</span></span>
           <span>أقصى مزودين: <strong className="text-gray-700">{stages.reduce((s, r) => s + (r.maxProviders || 0), 0)}</strong></span>
         </div>
       </div>
