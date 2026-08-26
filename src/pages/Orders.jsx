@@ -235,6 +235,8 @@ export const Orders = () => {
   const [providersDict, setProvidersDict] = useState({});
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [copiedRequestId, setCopiedRequestId] = useState(false);
+  const [copiedProviderPhone, setCopiedProviderPhone] = useState(false);
+  const [copiedCustomerPhone, setCopiedCustomerPhone] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState(null);
   const [loadingProvider, setLoadingProvider] = useState(false);
@@ -668,11 +670,76 @@ export const Orders = () => {
 
     // بدون searchEndsAt: مهلة من آخر تحديث (آمن للبحث البديل) ثم الإنشاء
     if (!endsMs) {
-      const startMs = toFirestoreMs(order.updatedAt) || toFirestoreMs(order.createdAt) || getRequestCreatedMs(order);
+      const startMs = toMillisMs(order.updatedAt) || toMillisMs(order.createdAt) || getRequestCreatedMs(order);
       if (startMs > 0 && now - startMs >= SEARCH_WINDOW_MS) return 'timed_out';
     }
 
     return raw;
+  };
+
+  /** تقييم الطلب الحقيقي (1–5) أو null إن لم يُقيَّم */
+  const getOrderRating = (order) => {
+    if (!order) return null;
+    const value = Number(order.rating);
+    if (!Number.isFinite(value)) return null;
+    const stars = Math.round(value);
+    if (stars < 1 || stars > 5) return null;
+    // نعرض فقط تقييمات محفوظة فعلياً (rated أو ratedAt أو تعليق أو قيمة ضمن المدى)
+    if (order.rated === true || order.ratedAt || (order.ratingComment != null && String(order.ratingComment).length > 0) || order.rating != null) {
+      return stars;
+    }
+    return null;
+  };
+
+  /** طلبات بتقييم 3 نجوم أو أقل (قيم حقيقية فقط) */
+  const isLowRatedOrder = (order) => {
+    const rating = getOrderRating(order);
+    return rating != null && rating <= 3;
+  };
+
+  /** أرقام سعودية للعرض: 00966xxxxxxxxx */
+  const formatPhoneWith00 = (phone) => {
+    const digits = String(phone || '').replace(/\D/g, '');
+    if (!digits) return null;
+
+    let intl = digits;
+    if (digits.startsWith('00')) intl = digits.slice(2);
+    else if (digits.startsWith('966')) intl = digits;
+    else if (digits.startsWith('0') && digits.length >= 9) intl = `966${digits.slice(1)}`;
+    else if (digits.startsWith('5') && digits.length === 9) intl = `966${digits}`;
+
+    if (!intl.startsWith('966')) return `00${intl}`;
+    return `00${intl}`;
+  };
+
+  /** رقم واتساب بدون 00 (صيغة wa.me) */
+  const phoneForWhatsApp = (phone) => {
+    const with00 = formatPhoneWith00(phone);
+    return with00 ? with00.replace(/^00/, '') : null;
+  };
+
+  const copyProviderPhone = async (phone) => {
+    const display = formatPhoneWith00(phone);
+    if (!display) return;
+    try {
+      await navigator.clipboard.writeText(display);
+      setCopiedProviderPhone(true);
+      setTimeout(() => setCopiedProviderPhone(false), 2000);
+    } catch {
+      alert('تعذر النسخ — انسخ الرقم يدوياً');
+    }
+  };
+
+  const copyCustomerPhone = async (phone) => {
+    const display = formatPhoneWith00(phone);
+    if (!display) return;
+    try {
+      await navigator.clipboard.writeText(display);
+      setCopiedCustomerPhone(true);
+      setTimeout(() => setCopiedCustomerPhone(false), 2000);
+    } catch {
+      alert('تعذر النسخ — انسخ الرقم يدوياً');
+    }
   };
 
   /** سعر الخدمة الفعلي — price أو servicePrice أو آخر تعديل معتمد */
@@ -835,6 +902,8 @@ export const Orders = () => {
         filtered = filtered.filter((r) => resolveDisplayStatus(r) === 'searching');
       } else if (statusFilter === 'timed_out') {
         filtered = filtered.filter((r) => resolveDisplayStatus(r) === 'timed_out' || r.status === 'timed_out');
+      } else if (statusFilter === 'low_rating') {
+        filtered = filtered.filter((r) => isLowRatedOrder(r));
       } else {
         filtered = filtered.filter((r) => r.status === statusFilter);
       }
@@ -914,8 +983,15 @@ export const Orders = () => {
       );
     }
 
-    // الأحدث أولاً دائماً بعد الفلترة
-    filtered = [...filtered].sort((a, b) => getRequestCreatedMs(b) - getRequestCreatedMs(a));
+    // ترتيب: التقييم المنخفض من الأسوأ للأفضل، وإلا الأحدث أولاً
+    filtered = [...filtered].sort((a, b) => {
+      if (statusFilter === 'low_rating') {
+        const ra = getOrderRating(a) ?? 99;
+        const rb = getOrderRating(b) ?? 99;
+        if (ra !== rb) return ra - rb;
+      }
+      return getRequestCreatedMs(b) - getRequestCreatedMs(a);
+    });
 
     setFilteredRequests(filtered);
   };
@@ -1477,7 +1553,7 @@ export const Orders = () => {
       </div>
 
       {/* ── بطاقات الإحصاء — قابلة للنقر كفلتر ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3 mb-6">
         {[
           {
             key: 'active',
@@ -1534,6 +1610,15 @@ export const Orders = () => {
             dot: 'bg-green-500',
             active: 'bg-green-600 border-green-600 text-white',
             inactive: 'bg-white border-gray-200 hover:border-green-300 text-gray-800',
+          },
+          {
+            key: 'low_rating',
+            label: 'تقييم ٣★ أو أقل',
+            icon: Star,
+            value: requests.filter((o) => isLowRatedOrder(o)).length,
+            dot: 'bg-orange-500',
+            active: 'bg-orange-500 border-orange-500 text-white',
+            inactive: 'bg-white border-gray-200 hover:border-orange-300 text-gray-800',
           },
           {
             key: 'all',
@@ -1932,13 +2017,18 @@ export const Orders = () => {
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full appearance-none pr-3 pl-7 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-700 focus:outline-none focus:border-teal-400 cursor-pointer"
+              className={`w-full appearance-none pr-3 pl-7 py-2 border rounded-xl text-sm font-semibold focus:outline-none cursor-pointer transition-colors ${
+                statusFilter === 'low_rating'
+                  ? 'bg-orange-50 border-orange-300 text-orange-800 focus:border-orange-400'
+                  : 'bg-gray-50 border-gray-200 text-gray-700 focus:border-teal-400'
+              }`}
             >
               <option value="all">كل الحالات</option>
               <option value="active">قيد التنفيذ</option>
               <option value="pending_client_confirmation">بانتظار التأكيد</option>
               <option value="pending_review">قيد المراجعة</option>
               <option value="completed">مكتملة</option>
+              <option value="low_rating">تقييم ٣ نجوم أو أقل</option>
               <option value="cancelled">ملغاة (الكل)</option>
               <option value="no_providers_timeout">فشل العثور على مزود</option>
             </select>
@@ -2021,6 +2111,23 @@ export const Orders = () => {
       <div className="flex items-center justify-between mb-3 px-1">
         <span className="text-sm text-gray-500 font-medium">
           يعرض <strong className="text-gray-800">{filteredRequests.length}</strong> طلب
+          {statusFilter === 'low_rating' && (
+            <span className="mr-2 text-orange-600 font-bold">
+              · تقييم ٣ نجوم أو أقل
+              {filteredRequests.length > 0 && (() => {
+                const counts = { 1: 0, 2: 0, 3: 0 };
+                filteredRequests.forEach((o) => {
+                  const r = getOrderRating(o);
+                  if (r === 1 || r === 2 || r === 3) counts[r] += 1;
+                });
+                return (
+                  <span className="text-orange-500/90 font-semibold mr-1">
+                    (★1: {counts[1]} · ★2: {counts[2]} · ★3: {counts[3]})
+                  </span>
+                );
+              })()}
+            </span>
+          )}
         </span>
         {searchTerm && (
           <button onClick={() => setSearchTerm('')} className="text-xs text-teal-600 font-bold hover:underline">
@@ -2087,14 +2194,42 @@ export const Orders = () => {
                         <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${statusBadge.color}`}>
                           {statusBadge.text}
                         </span>
-                        {order.status === 'completed' && (
-                          <span className="flex items-center gap-0.5">
-                            <Star size={13} className={order.rated ? 'fill-amber-500 text-amber-500' : 'text-gray-300'} />
-                            <span className="text-xs font-semibold text-gray-600">
-                              {order.rated ? `${order.rating ?? '—'}/5` : 'لم يُقيّم'}
+                        {(() => {
+                          const rating = getOrderRating(order);
+                          if (rating == null && order.status !== 'completed') return null;
+                          const isLow = rating != null && rating <= 3;
+                          return (
+                            <span
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold border ${
+                                rating == null
+                                  ? 'bg-gray-50 text-gray-500 border-gray-100'
+                                  : isLow
+                                    ? 'bg-orange-50 text-orange-700 border-orange-200'
+                                    : 'bg-amber-50 text-amber-700 border-amber-200'
+                              }`}
+                              title={rating != null ? `تقييم العميل: ${rating} من 5` : 'لم يُقيَّم بعد'}
+                            >
+                              <span className="inline-flex items-center gap-0.5" dir="ltr">
+                                {[1, 2, 3, 4, 5].map((star) => (
+                                  <Star
+                                    key={star}
+                                    size={11}
+                                    className={
+                                      rating != null && star <= rating
+                                        ? isLow
+                                          ? 'fill-orange-500 text-orange-500'
+                                          : 'fill-amber-500 text-amber-500'
+                                        : 'text-gray-300'
+                                    }
+                                  />
+                                ))}
+                              </span>
+                              <span>
+                                {rating != null ? `${rating}/5` : 'لم يُقيّم'}
+                              </span>
                             </span>
-                          </span>
-                        )}
+                          );
+                        })()}
                       </div>
 
                       {/* شريط المعلومات: مدينة + موقع + تاريخ + مزود */}
@@ -2334,7 +2469,42 @@ export const Orders = () => {
                             <Phone className="w-4 h-4 text-gray-600" />
                             <h4 className="font-semibold text-xs sm:text-sm text-gray-700">رقم الجوال</h4>
                           </div>
-                          <p className="text-sm text-gray-800">{selectedCustomer.phone}</p>
+                          {(() => {
+                            const rawPhone = selectedCustomer.phone || selectedCustomer.phoneNumber || '';
+                            const displayPhone = formatPhoneWith00(rawPhone);
+                            const waPhone = phoneForWhatsApp(rawPhone);
+                            if (!displayPhone) {
+                              return <p className="text-sm text-gray-800">غير محدد</p>;
+                            }
+                            return (
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="text-sm text-gray-800 font-semibold tracking-wide" dir="ltr">
+                                  {displayPhone}
+                                </p>
+                                <button
+                                  type="button"
+                                  onClick={() => copyCustomerPhone(rawPhone)}
+                                  title="نسخ الرقم"
+                                  className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-gray-100 text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition-colors"
+                                >
+                                  {copiedCustomerPhone ? <Check size={15} className="text-teal-600" /> : <Copy size={15} />}
+                                </button>
+                                {waPhone && (
+                                  <a
+                                    href={`https://wa.me/${waPhone}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    title="فتح واتساب"
+                                    className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-[#25D366]/10 text-[#25D366] hover:bg-[#25D366]/20 transition-colors"
+                                  >
+                                    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true">
+                                      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.435 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
+                                    </svg>
+                                  </a>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </div>
                       )}
                       {selectedCustomer.email && (
@@ -3360,7 +3530,42 @@ export const Orders = () => {
                           <Phone className="w-5 h-5 text-gray-600" />
                           <h4 className="font-semibold text-sm sm:text-base text-gray-700">رقم الجوال</h4>
                         </div>
-                        <p className="text-sm sm:text-base text-gray-800">{selectedProvider.phone || 'غير محدد'}</p>
+                        {(() => {
+                          const rawPhone = selectedProvider.phone || selectedProvider.phoneNumber || '';
+                          const displayPhone = formatPhoneWith00(rawPhone);
+                          const waPhone = phoneForWhatsApp(rawPhone);
+                          if (!displayPhone) {
+                            return <p className="text-sm sm:text-base text-gray-800">غير محدد</p>;
+                          }
+                          return (
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="text-sm sm:text-base text-gray-800 font-semibold tracking-wide" dir="ltr">
+                                {displayPhone}
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => copyProviderPhone(rawPhone)}
+                                title="نسخ الرقم"
+                                className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-gray-100 text-gray-700 hover:bg-teal-50 hover:text-teal-700 transition-colors"
+                              >
+                                {copiedProviderPhone ? <Check size={16} className="text-teal-600" /> : <Copy size={16} />}
+                              </button>
+                              {waPhone && (
+                                <a
+                                  href={`https://wa.me/${waPhone}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  title="فتح واتساب"
+                                  className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-[#25D366]/10 text-[#25D366] hover:bg-[#25D366]/20 transition-colors"
+                                >
+                                  <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
+                                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.435 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
+                                  </svg>
+                                </a>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </div>
 
                       {selectedProvider.email && (
