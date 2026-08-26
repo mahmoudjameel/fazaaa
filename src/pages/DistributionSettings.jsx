@@ -19,6 +19,7 @@ export const DistributionSettings = () => {
   const [stages, setStages] = useState(DEFAULT_STAGES);
   const [vipEnabled, setVipEnabled] = useState(false);
   const [rejectBlockMinutes, setRejectBlockMinutes] = useState(60);
+  const [customerMapRefreshSeconds, setCustomerMapRefreshSeconds] = useState(60);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -47,6 +48,10 @@ export const DistributionSettings = () => {
         if (d.rejectBlockMinutes === 0 || Number.isFinite(Number(d.rejectBlockMinutes))) {
           const n = Number(d.rejectBlockMinutes);
           setRejectBlockMinutes(Number.isFinite(n) && n >= 0 ? n : 60);
+        }
+        if (Number.isFinite(Number(d.customerMapRefreshSeconds))) {
+          const n = Math.round(Number(d.customerMapRefreshSeconds));
+          setCustomerMapRefreshSeconds(n >= 15 && n <= 600 ? n : 60);
         }
       }
     } catch (e) {
@@ -103,6 +108,13 @@ export const DistributionSettings = () => {
     if (!Number.isFinite(Number(rejectBlockMinutes)) || rejectBlockMinutes < 0 || rejectBlockMinutes > 1440) {
       return 'مدة حظر الرفض يجب أن تكون بين 0 و1440 دقيقة (0 = بدون حظر)';
     }
+    if (
+      !Number.isFinite(Number(customerMapRefreshSeconds)) ||
+      customerMapRefreshSeconds < 15 ||
+      customerMapRefreshSeconds > 600
+    ) {
+      return 'مدة تحديث خريطة العميل يجب أن تكون بين 15 و600 ثانية';
+    }
     return '';
   };
 
@@ -119,6 +131,7 @@ export const DistributionSettings = () => {
         rejectBlockMinutes: Number(rejectBlockMinutes) || 0,
         // سقف التوزيع = أعلى مرحلة في السيناريو (تتغير إذا زِدت مراحل من اللوحة)
         maxSearchRadiusKm: stageMax,
+        customerMapRefreshSeconds: Number(customerMapRefreshSeconds) || 60,
         updatedAt: new Date().toISOString(),
       }, { merge: true });
       setSaved(true);
@@ -355,6 +368,42 @@ export const DistributionSettings = () => {
               ? `${rejectBlockMinutes} دقيقة (${(rejectBlockMinutes / 60).toFixed(rejectBlockMinutes % 60 === 0 ? 0 : 1)} ساعة)`
               : `${rejectBlockMinutes} دقيقة`}
           {' '}— الافتراضي السابق كان 60 دقيقة.
+        </p>
+      </div>
+
+      {/* Customer map refresh */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div className="flex items-start gap-3 min-w-[220px]">
+            <div className="p-2 rounded-xl bg-blue-50">
+              <MapPin size={22} className="text-blue-500" />
+            </div>
+            <div>
+              <h3 className="font-bold text-gray-800">تحديث موقع المزود على خريطة العميل</h3>
+              <p className="text-xs text-gray-500 mt-1 leading-relaxed max-w-xl">
+                كم مرة يتحدث موقع المزود عند العميل أثناء الطريق والتنفيذ.
+                القيمة الأقل = تتبع أوضح، مع استهلاك أعلى قليلاً للبيانات.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min={15}
+              max={600}
+              value={customerMapRefreshSeconds}
+              onChange={(e) => setCustomerMapRefreshSeconds(Number(e.target.value))}
+              className="w-24 px-3 py-2 text-center border border-gray-200 rounded-xl text-sm font-bold focus:outline-none focus:border-amber-400"
+            />
+            <span className="text-sm text-gray-500 font-medium">ثانية</span>
+          </div>
+        </div>
+        <p className="text-xs text-gray-400 mt-3">
+          الحالي: كل {customerMapRefreshSeconds} ثانية
+          {Number(customerMapRefreshSeconds) === 60 ? ' (دقيقة واحدة)' : Number(customerMapRefreshSeconds) >= 60
+            ? ` (${(customerMapRefreshSeconds / 60).toFixed(1)} دقيقة)`
+            : ''}
+          {' '}— المسموح من 15 إلى 600 ثانية.
         </p>
       </div>
 
