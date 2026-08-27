@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   Search, CheckCircle, XCircle, Clock, Eye, Phone, Mail, Star, Power,
   UserCheck, Users, Plus, Edit2, Trash2, Tag, X, FileText, ShieldBan, ShieldOff, ShieldCheck, Loader2,
-  MapPin, Globe, Smartphone,
+  MapPin, Globe, Smartphone, RefreshCw, ExternalLink, Navigation,
 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -44,7 +44,7 @@ import {
   listDocumentsForDisplay,
   getDocumentLabel,
 } from '../utils/documentUtils';
-import { doc, updateDoc, collection, getDocs } from 'firebase/firestore';
+import { doc, updateDoc, collection, getDocs, onSnapshot } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../services/firebase';
 import { format } from 'date-fns';
@@ -155,6 +155,7 @@ export const Providers = () => {
   const [providerBlocks, setProviderBlocks] = useState([]);
   const [loadingProviderBlocks, setLoadingProviderBlocks] = useState(false);
   const [unblockingBlockKey, setUnblockingBlockKey] = useState(null);
+  const [locationClock, setLocationClock] = useState(Date.now());
   const isSuperAdmin = typeof window !== 'undefined' && localStorage.getItem('admin_role') === 'super_admin';
 
   useEffect(() => {
@@ -163,6 +164,46 @@ export const Providers = () => {
       setAddDocFile(null);
       setAddDocType(DOCUMENT_TYPE_OPTIONS[0].key);
     }
+  }, [selectedProvider?.id]);
+
+  // تحديث تسميات «قبل X دقيقة» أثناء فتح التفاصيل
+  useEffect(() => {
+    if (!selectedProvider?.id) return undefined;
+    const id = setInterval(() => setLocationClock(Date.now()), 15000);
+    return () => clearInterval(id);
+  }, [selectedProvider?.id]);
+
+  // تحديث مباشر لآخر موقع / نبضة القلب أثناء فتح تفاصيل المزود
+  useEffect(() => {
+    if (!selectedProvider?.id) return undefined;
+    const providerId = selectedProvider.id;
+    const unsubscribe = onSnapshot(
+      doc(db, 'providers', providerId),
+      (snap) => {
+        if (!snap.exists()) return;
+        const data = snap.data() || {};
+        setSelectedProvider((prev) => {
+          if (!prev || prev.id !== providerId) return prev;
+          return {
+            ...prev,
+            location: data.location ?? prev.location,
+            locationCoordinates: data.locationCoordinates ?? prev.locationCoordinates,
+            coordinates: data.coordinates ?? prev.coordinates,
+            locationUpdatedAt: data.locationUpdatedAt ?? prev.locationUpdatedAt,
+            lastHeartbeat: data.lastHeartbeat ?? prev.lastHeartbeat,
+            heartbeatSource: data.heartbeatSource ?? prev.heartbeatSource,
+            clientAppState: data.clientAppState ?? prev.clientAppState,
+            clientAppStateAt: data.clientAppStateAt ?? prev.clientAppStateAt,
+            isOnline: data.isOnline ?? prev.isOnline,
+            availabilityStatus: data.availabilityStatus ?? prev.availabilityStatus,
+            isBusy: data.isBusy ?? prev.isBusy,
+            activeRequestId: data.activeRequestId ?? prev.activeRequestId,
+          };
+        });
+      },
+      (err) => console.warn('provider location live watch:', err?.message || err)
+    );
+    return () => unsubscribe();
   }, [selectedProvider?.id]);
 
   useEffect(() => {
@@ -532,6 +573,57 @@ export const Providers = () => {
     const d = ts?.toDate?.() || (ts?.seconds ? new Date(ts.seconds * 1000) : null);
     if (!d || Number.isNaN(d.getTime())) return '—';
     return format(d, 'dd MMM yyyy, HH:mm', { locale: ar });
+  };
+
+  const pickProviderCoords = (provider) => {
+    if (!provider) return null;
+    const candidates = [
+      provider.location,
+      provider.locationCoordinates,
+      provider.coordinates,
+      provider.lastKnownLocation,
+    ];
+    for (const c of candidates) {
+      const lat = Number(c?.latitude ?? c?.lat);
+      const lng = Number(c?.longitude ?? c?.lng ?? c?.lon);
+      if (Number.isFinite(lat) && Number.isFinite(lng)) {
+        return { latitude: lat, longitude: lng };
+      }
+    }
+    return null;
+  };
+
+  const timestampToDate = (ts) => {
+    if (!ts) return null;
+    if (ts?.toDate) return ts.toDate();
+    if (typeof ts?.seconds === 'number') return new Date(ts.seconds * 1000);
+    if (typeof ts === 'string' || typeof ts === 'number') {
+      const d = new Date(ts);
+      return Number.isNaN(d.getTime()) ? null : d;
+    }
+    return null;
+  };
+
+  const formatRelativeAgo = (ts) => {
+    const d = timestampToDate(ts);
+    if (!d) return null;
+    const diffSec = Math.max(0, Math.floor((Date.now() - d.getTime()) / 1000));
+    if (diffSec < 60) return `قبل ${diffSec} ثانية`;
+    if (diffSec < 3600) return `قبل ${Math.floor(diffSec / 60)} دقيقة`;
+    if (diffSec < 86400) return `قبل ${Math.floor(diffSec / 3600)} ساعة`;
+    return `قبل ${Math.floor(diffSec / 86400)} يوم`;
+  };
+
+  const heartbeatSourceLabel = (source) => {
+    const map = {
+      background: 'خلفية',
+      foreground: 'واجهة',
+      start: 'بدء',
+      'bg-simulator': 'محاكي',
+      location_update: 'تحديث موقع',
+      live_tracking_start: 'تتبع حي',
+    };
+    return map[source] || source || '—';
   };
 
   const refreshSelectedProvider = async () => {
@@ -2132,6 +2224,157 @@ export const Providers = () => {
                               )}
                             </div>
                           </div>
+
+                          {(() => {
+                            const coords = pickProviderCoords(selectedProvider);
+                            const locationAt = selectedProvider.locationUpdatedAt || selectedProvider.location?.timestamp;
+                            const heartbeatAt = selectedProvider.lastHeartbeat;
+                            const freshestAt = (() => {
+                              const a = timestampToDate(locationAt);
+                              const b = timestampToDate(heartbeatAt);
+                              if (a && b) return a.getTime() >= b.getTime() ? locationAt : heartbeatAt;
+                              return locationAt || heartbeatAt;
+                            })();
+                            const ageLabel = formatRelativeAgo(freshestAt);
+                            const ageMs = (() => {
+                              void locationClock;
+                              const d = timestampToDate(freshestAt);
+                              return d ? Date.now() - d.getTime() : null;
+                            })();
+                            const freshness =
+                              ageMs == null ? 'unknown'
+                                : ageMs <= 2 * 60 * 1000 ? 'fresh'
+                                  : ageMs <= 15 * 60 * 1000 ? 'ok'
+                                    : 'stale';
+                            const freshnessUi = {
+                              fresh: { label: 'حديث', className: 'bg-green-100 text-green-700 border-green-200' },
+                              ok: { label: 'مقبول', className: 'bg-amber-100 text-amber-800 border-amber-200' },
+                              stale: { label: 'قديم', className: 'bg-red-100 text-red-700 border-red-200' },
+                              unknown: { label: 'غير معروف', className: 'bg-gray-100 text-gray-600 border-gray-200' },
+                            }[freshness];
+                            const mapsUrl = coords
+                              ? `https://www.google.com/maps?q=${coords.latitude},${coords.longitude}`
+                              : null;
+                            const embedUrl = coords
+                              ? `https://maps.google.com/maps?q=${coords.latitude},${coords.longitude}&z=15&output=embed`
+                              : null;
+
+                            return (
+                              <div className="md:col-span-2 rounded-xl border border-sky-100 bg-sky-50 p-4">
+                                <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                                  <h3 className="font-bold text-sky-900 flex items-center gap-2">
+                                    <Navigation size={18} />
+                                    آخر موقع حي
+                                  </h3>
+                                  <div className="flex items-center gap-2">
+                                    <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-bold border ${freshnessUi.className}`}>
+                                      {freshnessUi.label}
+                                      {ageLabel ? ` · ${ageLabel}` : ''}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={refreshSelectedProvider}
+                                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white text-sky-700 border border-sky-200 hover:bg-sky-100 text-xs font-bold"
+                                      title="تحديث يدوي"
+                                    >
+                                      <RefreshCw size={14} />
+                                      تحديث
+                                    </button>
+                                  </div>
+                                </div>
+
+                                {coords ? (
+                                  <>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                                      <div className="bg-white rounded-lg border border-sky-100 p-3">
+                                        <p className="text-xs font-semibold text-gray-500 mb-1">الإحداثيات</p>
+                                        <p className="font-mono text-sm text-gray-900" dir="ltr">
+                                          {coords.latitude.toFixed(6)}, {coords.longitude.toFixed(6)}
+                                        </p>
+                                      </div>
+                                      <div className="bg-white rounded-lg border border-sky-100 p-3">
+                                        <p className="text-xs font-semibold text-gray-500 mb-1">آخر تحديث موقع</p>
+                                        <p className="text-sm text-gray-900">
+                                          {formatSessionDate(locationAt)}
+                                          {formatRelativeAgo(locationAt) ? (
+                                            <span className="text-gray-500"> · {formatRelativeAgo(locationAt)}</span>
+                                          ) : null}
+                                        </p>
+                                      </div>
+                                      <div className="bg-white rounded-lg border border-sky-100 p-3">
+                                        <p className="text-xs font-semibold text-gray-500 mb-1">آخر نبضة (Heartbeat)</p>
+                                        <p className="text-sm text-gray-900">
+                                          {formatSessionDate(heartbeatAt)}
+                                          {formatRelativeAgo(heartbeatAt) ? (
+                                            <span className="text-gray-500"> · {formatRelativeAgo(heartbeatAt)}</span>
+                                          ) : null}
+                                        </p>
+                                      </div>
+                                      <div className="bg-white rounded-lg border border-sky-100 p-3">
+                                        <p className="text-xs font-semibold text-gray-500 mb-1">مصدر التحديث / حالة التطبيق</p>
+                                        <p className="text-sm text-gray-900">
+                                          {heartbeatSourceLabel(selectedProvider.heartbeatSource)}
+                                          {' · '}
+                                          {selectedProvider.clientAppState === 'background'
+                                            ? 'خلفية'
+                                            : selectedProvider.clientAppState === 'active'
+                                              ? 'واجهة'
+                                              : (selectedProvider.clientAppState || '—')}
+                                          {' · '}
+                                          {selectedProvider.isOnline
+                                            ? (selectedProvider.availabilityStatus === 'available' ? 'متاح' : 'متصل')
+                                            : 'غير متصل'}
+                                        </p>
+                                      </div>
+                                    </div>
+
+                                    <div className="rounded-xl overflow-hidden border border-sky-200 mb-3 bg-white">
+                                      <iframe
+                                        title="موقع المزود"
+                                        src={embedUrl}
+                                        className="w-full h-48 border-0"
+                                        loading="lazy"
+                                        referrerPolicy="no-referrer-when-downgrade"
+                                      />
+                                    </div>
+
+                                    <div className="flex flex-wrap gap-2">
+                                      <a
+                                        href={mapsUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 font-semibold text-sm"
+                                      >
+                                        <ExternalLink size={16} />
+                                        فتح على Google Maps
+                                      </a>
+                                      <a
+                                        href={`https://www.google.com/maps/dir/?api=1&destination=${coords.latitude},${coords.longitude}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-2 px-4 py-2 bg-white text-teal-700 border border-teal-200 rounded-lg hover:bg-teal-50 font-semibold text-sm"
+                                      >
+                                        <MapPin size={16} />
+                                        اتجاهات
+                                      </a>
+                                    </div>
+                                    <p className="text-xs text-sky-800/70 mt-2">
+                                      التحديث مباشر من Firestore — حرّك جهاز المزود وراقب تغيّر الإحداثيات هنا.
+                                    </p>
+                                  </>
+                                ) : (
+                                  <div className="bg-white rounded-lg border border-dashed border-sky-200 p-4 text-center">
+                                    <MapPin size={22} className="mx-auto text-sky-400 mb-2" />
+                                    <p className="text-sm font-semibold text-gray-700">لا يوجد موقع محفوظ لهذا المزود</p>
+                                    <p className="text-xs text-gray-500 mt-1">
+                                      اطلب منه تفعيل «متاح» مع صلاحية الموقع دائماً، ثم حدّث الصفحة.
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
+
                           <div>
                             <h3 className="font-semibold text-gray-700 mb-2">
                               {selectedProvider.providerType === 'non_saudi' ? 'اسم المفوض' : 'الاسم'}
