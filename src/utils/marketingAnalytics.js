@@ -115,12 +115,17 @@ function buildMarketingPayload(extra = {}) {
 async function sendMarketingEvent(payload) {
   try {
     const record = httpsCallable(functions, 'recordMarketingPageView');
-    await record(payload);
+    const res = await record(payload);
     if (!sessionStorage.getItem('fazaa_mkt_landing') && payload.pagePath) {
       sessionStorage.setItem('fazaa_mkt_landing', payload.pagePath);
     }
+    if (import.meta.env.DEV) {
+      console.info('[marketing] tracked:', payload.eventType || 'page_view', res?.data?.id);
+    }
+    return res?.data;
   } catch (e) {
-    console.warn('[marketing] track failed:', e?.message || e);
+    console.warn('[marketing] track failed:', e?.code, e?.message || e);
+    throw e;
   }
 }
 
@@ -138,7 +143,7 @@ export function inferStoreFromHref(href, fallback = 'google') {
  * @param {string} section - موقع الزر في الصفحة
  */
 export function trackDownloadClick({ appRole, store, section, href, pagePath } = {}) {
-  if (typeof window === 'undefined') return;
+  if (typeof window === 'undefined') return Promise.resolve();
 
   const resolvedStore = store || inferStoreFromHref(href);
   const resolvedRole = appRole === 'provider' ? 'provider' : 'customer';
@@ -151,7 +156,7 @@ export function trackDownloadClick({ appRole, store, section, href, pagePath } =
     link_url: href || null,
   });
 
-  void sendMarketingEvent(buildMarketingPayload({
+  return sendMarketingEvent(buildMarketingPayload({
     pagePath: pagePath || `${window.location.pathname}${window.location.search}`,
     pageTitle: document.title || 'فزاعين',
     eventType: 'download_click',
@@ -162,9 +167,15 @@ export function trackDownloadClick({ appRole, store, section, href, pagePath } =
   }));
 }
 
-/** معالج onClick لروابط التحميل */
+/** @deprecated استخدم useLandingDownloadTracking — يُبقي للتوافق */
 export function onDownloadClick(props) {
-  return () => trackDownloadClick(props);
+  return (e) => {
+    e.preventDefault();
+    const href = props.href || e.currentTarget?.getAttribute('href');
+    trackDownloadClick({ ...props, href }).finally(() => {
+      if (href) window.open(href, '_blank', 'noopener,noreferrer');
+    });
+  };
 }
 
 /**
@@ -187,14 +198,10 @@ export async function trackMarketingPageView({ pagePath, pageTitle } = {}) {
 
   sendGaPageView(path, title);
 
-  try {
-    await sendMarketingEvent(buildMarketingPayload({
-      pagePath: path,
-      pageTitle: title,
-      eventType: 'page_view',
-      ...utm,
-    }));
-  } catch (e) {
-    console.warn('[marketing] track failed:', e?.message || e);
-  }
+  await sendMarketingEvent(buildMarketingPayload({
+    pagePath: path,
+    pageTitle: title,
+    eventType: 'page_view',
+    ...utm,
+  }));
 }

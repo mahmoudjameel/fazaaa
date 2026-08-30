@@ -15,7 +15,7 @@ import { SeoHead } from '../components/SeoHead';
 import { buildHomeJsonLd, PAGE_SEO } from '../seo/config';
 import { db } from '../services/firebase';
 import { useMarketingPageView } from '../hooks/useMarketingPageView';
-import { onDownloadClick, inferStoreFromHref } from '../utils/marketingAnalytics';
+import { useLandingDownloadTracking } from '../hooks/useLandingDownloadTracking';
 
 const SCROLL_LINKS = [
   { label: 'الرئيسية', href: '#hero' },
@@ -190,14 +190,15 @@ const getStoreHrefForDevice = (appleHref, googleHref) => {
 };
 
 const StoreBadge = ({ type, href, appRole = 'customer', section = 'hero_store_badge' }) => {
-  const clickHandler = onDownloadClick({ appRole, store: type, section, href, pagePath: '/' });
   if (type === 'apple') {
     return (
       <a
         href={href}
         target="_blank"
         rel="noopener noreferrer"
-        onClick={clickHandler}
+        data-download-section={section}
+        data-download-app={appRole}
+        data-download-store="apple"
         className="inline-flex items-center gap-2.5 bg-black text-white rounded-xl px-4 py-2.5 border border-white/20 hover:bg-neutral-900 transition-colors shadow-lg"
         aria-label="App Store"
       >
@@ -216,7 +217,9 @@ const StoreBadge = ({ type, href, appRole = 'customer', section = 'hero_store_ba
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      onClick={clickHandler}
+      data-download-section={section}
+      data-download-app={appRole}
+      data-download-store="google"
       className="inline-flex items-center gap-2.5 bg-black text-white rounded-xl px-4 py-2.5 border border-white/20 hover:bg-neutral-900 transition-colors shadow-lg"
       aria-label="Google Play"
     >
@@ -231,6 +234,7 @@ const StoreBadge = ({ type, href, appRole = 'customer', section = 'hero_store_ba
 
 export const Landing = () => {
   useMarketingPageView('/', PAGE_SEO.home?.title || 'فزاعين');
+  useLandingDownloadTracking();
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [customLanding, setCustomLanding] = useState(null);
@@ -421,7 +425,7 @@ export const Landing = () => {
       <div dir="rtl">
         <SeoHead {...PAGE_SEO.home} jsonLd={buildHomeJsonLd()} />
         <LandingSplash logoUrl={logoUrl} siteName={siteName} />
-        <div dangerouslySetInnerHTML={{ __html: customLanding }} />
+        <div data-custom-landing-root dangerouslySetInnerHTML={{ __html: customLanding }} />
         <WhatsAppFloat />
       </div>
     );
@@ -487,13 +491,8 @@ export const Landing = () => {
                 href={providerStoreHref}
                 target="_blank"
                 rel="noopener noreferrer"
-                onClick={onDownloadClick({
-                  appRole: 'provider',
-                  store: inferStoreFromHref(providerStoreHref),
-                  section: 'header_provider',
-                  href: providerStoreHref,
-                  pagePath: '/',
-                })}
+                data-download-section="header_provider"
+                data-download-app="provider"
                 className="px-4 py-2 rounded-xl text-sm font-bold bg-white hover:bg-gray-50 transition-colors border-2"
                 style={{ borderColor: theme.primary, color: theme.primary }}
               >
@@ -548,13 +547,8 @@ export const Landing = () => {
                 href={providerStoreHref}
                 target="_blank"
                 rel="noopener noreferrer"
-                onClick={onDownloadClick({
-                  appRole: 'provider',
-                  store: inferStoreFromHref(providerStoreHref),
-                  section: 'menu_provider',
-                  href: providerStoreHref,
-                  pagePath: '/',
-                })}
+                data-download-section="menu_provider"
+                data-download-app="provider"
                 className="font-bold py-3 text-right border-b border-white/5"
                 style={{ color: theme.primary }}
               >
@@ -564,13 +558,8 @@ export const Landing = () => {
                 href={downloadHref}
                 target="_blank"
                 rel="noopener noreferrer"
-                onClick={onDownloadClick({
-                  appRole: 'customer',
-                  store: inferStoreFromHref(downloadHref),
-                  section: 'menu_cta',
-                  href: downloadHref,
-                  pagePath: '/',
-                })}
+                data-download-section="menu_cta"
+                data-download-app="customer"
                 className="mt-3 text-center text-white font-black py-3.5 rounded-xl"
                 style={{ backgroundColor: theme.primary }}
               >
@@ -644,13 +633,8 @@ export const Landing = () => {
               href={downloadHref}
               target="_blank"
               rel="noopener noreferrer"
-              onClick={onDownloadClick({
-                appRole: 'customer',
-                store: inferStoreFromHref(downloadHref),
-                section: 'hero_primary',
-                href: downloadHref,
-                pagePath: '/',
-              })}
+              data-download-section="hero_primary"
+              data-download-app="customer"
               className="group inline-flex items-center justify-center gap-2.5 min-w-[260px] sm:min-w-[320px] px-8 py-4 sm:py-5 rounded-2xl text-lg sm:text-xl font-black text-white shadow-[0_12px_40px_rgba(220,38,38,0.45)] hover:brightness-110 hover:scale-[1.02] active:scale-[0.99] transition-all duration-300"
               style={{ backgroundColor: theme.primary }}
             >
@@ -936,13 +920,9 @@ export const Landing = () => {
                 {/* على الموبايل: زر المتجر المناسب للجهاز. على سطح المكتب: الشارتان */}
                 <div className="flex flex-col sm:flex-row gap-3">
                   <a href={preferredHref} target="_blank" rel="noopener noreferrer"
-                    onClick={onDownloadClick({
-                      appRole,
-                      store: preferredIsApple ? 'apple' : 'google',
-                      section: 'apps_card_mobile',
-                      href: preferredHref,
-                      pagePath: '/',
-                    })}
+                    data-download-section="apps_card_mobile"
+                    data-download-app={appRole}
+                    data-download-store={preferredIsApple ? 'apple' : 'google'}
                     className="sm:hidden flex items-center justify-center gap-3 bg-white text-gray-900 font-bold px-4 py-3 rounded-xl hover:bg-gray-100 transition-all hover:shadow-lg group flex-1">
                     {preferredIsApple ? (
                       <svg viewBox="0 0 24 24" className="w-5 h-5 flex-shrink-0 group-hover:scale-110 transition-transform" fill="currentColor" aria-hidden>
@@ -963,13 +943,9 @@ export const Landing = () => {
                     </div>
                   </a>
                   <a href={app.appleHref} target="_blank" rel="noopener noreferrer"
-                    onClick={onDownloadClick({
-                      appRole,
-                      store: 'apple',
-                      section: 'apps_card_apple',
-                      href: app.appleHref,
-                      pagePath: '/',
-                    })}
+                    data-download-section="apps_card_apple"
+                    data-download-app={appRole}
+                    data-download-store="apple"
                     className="hidden sm:flex items-center justify-center gap-3 bg-white text-gray-900 font-bold px-4 py-3 rounded-xl hover:bg-gray-100 transition-all hover:shadow-lg group flex-1">
                     <svg viewBox="0 0 24 24" className="w-5 h-5 flex-shrink-0 group-hover:scale-110 transition-transform" fill="currentColor" aria-hidden>
                       <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z" />
@@ -980,13 +956,9 @@ export const Landing = () => {
                     </div>
                   </a>
                   <a href={app.googleHref} target="_blank" rel="noopener noreferrer"
-                    onClick={onDownloadClick({
-                      appRole,
-                      store: 'google',
-                      section: 'apps_card_google',
-                      href: app.googleHref,
-                      pagePath: '/',
-                    })}
+                    data-download-section="apps_card_google"
+                    data-download-app={appRole}
+                    data-download-store="google"
                     className="hidden sm:flex items-center justify-center gap-3 bg-white text-gray-900 font-bold px-4 py-3 rounded-xl hover:bg-gray-100 transition-all hover:shadow-lg group flex-1">
                     <span className="group-hover:scale-110 transition-transform inline-flex">
                       <GooglePlayIcon className="w-5 h-5" />
@@ -1218,7 +1190,9 @@ export const Landing = () => {
               {/* App badges */}
               <div className="flex flex-row gap-2.5 mt-1">
                 <a href={appleHref} target="_blank" rel="noopener noreferrer"
-                  onClick={onDownloadClick({ appRole: 'customer', store: 'apple', section: 'footer', href: appleHref, pagePath: '/' })}
+                  data-download-section="footer"
+                  data-download-app="customer"
+                  data-download-store="apple"
                   className="flex items-center gap-2 bg-white/6 border border-white/10 hover:bg-white/10 hover:border-white/20 transition-all rounded-xl px-3 py-2.5 flex-1">
                   <svg viewBox="0 0 24 24" className="w-4 h-4 text-white/70 flex-shrink-0" fill="currentColor" aria-hidden>
                     <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z" />
@@ -1229,7 +1203,9 @@ export const Landing = () => {
                   </div>
                 </a>
                 <a href={googleHref} target="_blank" rel="noopener noreferrer"
-                  onClick={onDownloadClick({ appRole: 'customer', store: 'google', section: 'footer', href: googleHref, pagePath: '/' })}
+                  data-download-section="footer"
+                  data-download-app="customer"
+                  data-download-store="google"
                   className="flex items-center gap-2 bg-white/6 border border-white/10 hover:bg-white/10 hover:border-white/20 transition-all rounded-xl px-3 py-2.5 flex-1">
                   <GooglePlayIcon className="w-4 h-4" />
                   <div>
