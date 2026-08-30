@@ -4,6 +4,7 @@ import { functions } from '../services/firebase';
 const GA_ID = import.meta.env.VITE_GA_MEASUREMENT_ID || 'G-229FL5SZVW';
 const SESSION_KEY = 'fazaa_mkt_session';
 const DEDUP_PREFIX = 'fazaa_mkt_dedup_';
+const DOWNLOAD_DEDUP_PREFIX = 'fazaa_mkt_dl_';
 const DEDUP_MS = 30 * 60 * 1000;
 
 let gaInitialized = false;
@@ -61,6 +62,26 @@ function shouldSkipDedup(pagePath) {
   } catch {
     return false;
   }
+}
+
+/** مفتاح منع تكرار ضغطة التحميل — جلسة + نوع التطبيق */
+function downloadDedupKey(appRole) {
+  return `${DOWNLOAD_DEDUP_PREFIX}${appRole}`;
+}
+
+/** ضغطة تحميل واحدة لكل تطبيق (عميل/مزود) خلال الجلسة */
+function shouldSkipDownloadDedup(appRole) {
+  try {
+    return sessionStorage.getItem(downloadDedupKey(appRole)) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function markDownloadDedup(appRole) {
+  try {
+    sessionStorage.setItem(downloadDedupKey(appRole), '1');
+  } catch { /* ignore */ }
 }
 
 /** تهيئة Google Analytics 4 */
@@ -148,6 +169,15 @@ export function trackDownloadClick({ appRole, store, section, href, pagePath } =
   const resolvedStore = store || inferStoreFromHref(href);
   const resolvedRole = appRole === 'provider' ? 'provider' : 'customer';
   const resolvedSection = String(section || 'unknown').slice(0, 80);
+
+  if (shouldSkipDownloadDedup(resolvedRole)) {
+    if (import.meta.env.DEV) {
+      console.info('[marketing] download deduped:', resolvedRole);
+    }
+    return Promise.resolve({ deduped: true });
+  }
+
+  markDownloadDedup(resolvedRole);
 
   sendGaEvent('download_click', {
     app_role: resolvedRole,
