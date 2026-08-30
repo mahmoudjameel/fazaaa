@@ -6,6 +6,7 @@ import { doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { UserX, ArrowRight, Loader2, CheckCircle2 } from 'lucide-react';
 import { auth, db, functions } from '../services/firebase';
 import { WhatsAppFloat } from '../components/WhatsAppFloat';
+import { MarketingPageTracker } from '../components/MarketingPageTracker';
 import { SeoHead } from '../components/SeoHead';
 import { PAGE_SEO } from '../seo/config';
 
@@ -144,6 +145,7 @@ export const DeleteAccount = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 relative" dir="rtl">
+      <MarketingPageTracker pagePath="/delete-account" pageTitle={PAGE_SEO.deleteAccount?.title} />
       <SeoHead {...PAGE_SEO.deleteAccount} />
       <WhatsAppFloat />
 

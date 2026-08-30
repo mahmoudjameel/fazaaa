@@ -9,6 +9,7 @@ import {
   getSeoHashtags,
   normalizeHashtag,
 } from '../services/articlesService';
+import { useMarketingPageView } from '../hooks/useMarketingPageView';
 
 function formatDate(value) {
   try {
@@ -23,6 +24,7 @@ function formatDate(value) {
 }
 
 export const Blog = () => {
+  useMarketingPageView('/blog', PAGE_SEO.blog?.title || 'مقالات فزاعين');
   const [searchParams, setSearchParams] = useSearchParams();
   const tagParam = normalizeHashtag(searchParams.get('tag') || '');
   const [articles, setArticles] = useState([]);

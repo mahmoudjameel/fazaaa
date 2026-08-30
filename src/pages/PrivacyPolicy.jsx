@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { Shield, ChevronRight } from 'lucide-react';
 import { LegalDocumentPage } from '../components/LegalDocumentPage';
+import { MarketingPageTracker } from '../components/MarketingPageTracker';
 import { SeoHead } from '../components/SeoHead';
 import { PAGE_SEO } from '../seo/config';
 
@@ -185,6 +186,7 @@ const FallbackPrivacy = () => (
 
 export const PrivacyPolicy = () => (
   <>
+    <MarketingPageTracker pagePath="/privacy" pageTitle={PAGE_SEO.privacy?.title} />
     <SeoHead {...PAGE_SEO.privacy} />
     <LegalDocumentPage
       docId="privacyPolicy"

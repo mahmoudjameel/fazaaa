@@ -4,7 +4,7 @@ import {
   MessageSquare, MessageCircle, UserCheck, Sliders, MapPin,
   UserCog, CreditCard, Banknote, AlertCircle, Shield,
   ChevronLeft, UserPlus, Bell, ImageIcon, Ticket, Timer,
-  PanelRight, PanelLeft,   Route, Globe, AlertTriangle, Stethoscope, FlaskConical, Ban, FileText
+  PanelRight, PanelLeft,   Route, Globe, AlertTriangle, Stethoscope, FlaskConical, Ban, FileText, BarChart3
 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
@@ -159,6 +159,7 @@ export const Layout = () => {
     { id: 'notifications',           path: '/admin/notifications',            icon: Bell,            label: 'الإشعارات',                category: 'management' },
     { id: 'support_tickets',         path: '/admin/support-tickets',          icon: Ticket,          label: 'تذاكر الدعم',              category: 'management' },
     { id: 'complaints',              path: '/admin/complaints',               icon: MessageSquare,   label: 'الشكاوي',                  category: 'management' },
+    { id: 'marketing_insights',      path: '/admin/marketing-insights',       icon: BarChart3,       label: 'تحليلات التسويق',          category: 'management' },
     { id: 'chats',                   path: '/admin/chats',                    icon: MessageCircle,   label: 'المحادثات',                category: 'management' },
     { id: 'withdrawal_requests',     path: '/admin/withdrawal-requests',      icon: Banknote,        label: 'طلبات السحب',              category: 'financial' },
     { id: 'cities',                  path: '/admin/cities',                   icon: MapPin,          label: 'المدن',                    category: 'settings' },

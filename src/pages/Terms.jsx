@@ -1,5 +1,6 @@
 import { FileText, ChevronRight } from 'lucide-react';
 import { LegalDocumentPage } from '../components/LegalDocumentPage';
+import { MarketingPageTracker } from '../components/MarketingPageTracker';
 import { SeoHead } from '../components/SeoHead';
 import { PAGE_SEO } from '../seo/config';
 
@@ -196,6 +197,7 @@ const FallbackTerms = () => (
 
 export const Terms = () => (
   <>
+    <MarketingPageTracker pagePath="/terms" pageTitle={PAGE_SEO.terms?.title} />
     <SeoHead {...PAGE_SEO.terms} />
     <LegalDocumentPage
       docId="termsAndConditions"

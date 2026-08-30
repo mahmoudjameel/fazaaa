@@ -40,6 +40,7 @@ import { Blog } from './pages/Blog';
 import { ArticleDetail } from './pages/ArticleDetail';
 import { DeleteAccount } from './pages/DeleteAccount';
 import BlockedPhones from './pages/BlockedPhones';
+import MarketingInsights from './pages/MarketingInsights';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -125,6 +126,7 @@ function App() {
           <Route path="articles" element={<Articles />} />
           <Route path="support-tickets" element={<SupportTickets />} />
           <Route path="admins" element={<Admins />} />
+          <Route path="marketing-insights" element={<MarketingInsights />} />
         </Route>
 
         {/* Catch-all redirect */}

@@ -5,6 +5,7 @@ import { WhatsAppFloat } from '../components/WhatsAppFloat';
 import { SeoHead } from '../components/SeoHead';
 import { SITE_NAME, absoluteUrl, DEFAULT_OG_IMAGE } from '../seo/config';
 import { getArticleBySlug, getPublishedArticles } from '../services/articlesService';
+import { useMarketingPageView } from '../hooks/useMarketingPageView';
 
 function formatDate(value) {
   try {
@@ -27,6 +28,7 @@ function renderParagraphs(content) {
 
 export const ArticleDetail = () => {
   const { slug } = useParams();
+  useMarketingPageView(slug ? `/blog/${slug}` : '/blog', 'مقال | فزاعين');
   const [article, setArticle] = useState(null);
   const [related, setRelated] = useState([]);
   const [loading, setLoading] = useState(true);

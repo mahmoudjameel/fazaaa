@@ -11,6 +11,7 @@ import {
   ChevronLeft,
 } from 'lucide-react';
 import { WhatsAppFloat } from '../components/WhatsAppFloat';
+import { MarketingPageTracker } from '../components/MarketingPageTracker';
 import { SeoHead } from '../components/SeoHead';
 import { PAGE_SEO } from '../seo/config';
 import { db } from '../services/firebase';
@@ -74,6 +75,7 @@ export const Support = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 relative" dir="rtl" style={{ fontFamily: "'Cairo', system-ui, sans-serif" }}>
+      <MarketingPageTracker pagePath="/support" pageTitle={PAGE_SEO.support?.title} />
       <SeoHead {...PAGE_SEO.support} />
       <WhatsAppFloat />
 

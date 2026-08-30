@@ -32,6 +32,7 @@ export const ADMIN_PERMISSION_DEFS = [
   { id: 'banners', path: '/admin/banners', category: 'settings', label: 'البانرات' },
   { id: 'landing_settings', path: '/admin/landing-settings', category: 'settings', label: 'الاندنق بيج' },
   { id: 'articles', path: '/admin/articles', category: 'settings', label: 'مقالات SEO' },
+  { id: 'marketing_insights', path: '/admin/marketing-insights', category: 'management', label: 'تحليلات التسويق' },
   { id: 'admins', path: '/admin/admins', category: 'settings', label: 'المديرون والصلاحيات', restricted: true },
 ];
 
