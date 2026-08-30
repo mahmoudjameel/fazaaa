@@ -8,6 +8,8 @@ import {
   refreshMarketingInsights,
   formatCoverageStatus,
   channelLabel,
+  sourceLabel,
+  mediumLabel,
   downloadSectionLabel,
   DOWNLOAD_MATRIX_ROWS,
 } from '../services/marketingInsightsService';
@@ -117,6 +119,12 @@ export default function MarketingInsights() {
     const max = entries[0]?.[1] || 1;
     return { entries, max };
   }, [traffic.byChannel]);
+
+  const topMediums = useMemo(() => {
+    const entries = Object.entries(traffic.byMedium || {}).sort((a, b) => b[1] - a[1]);
+    const max = entries[0]?.[1] || 1;
+    return { entries, max };
+  }, [traffic.byMedium]);
 
   const topPages = useMemo(() => {
     const entries = Object.entries(traffic.byPage || {}).sort((a, b) => b[1] - a[1]);
@@ -390,25 +398,85 @@ export default function MarketingInsights() {
           )}
 
           {tab === 'sources' && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4">
-                <h3 className="font-black text-gray-900">حسب المصدر (utm / referrer)</h3>
-                {topSources.entries.map(([src, val]) => (
-                  <BarRow key={src} label={src} value={val} max={topSources.max} />
-                ))}
-              </div>
-              <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4">
-                <h3 className="font-black text-gray-900">حملات UTM</h3>
-                {Object.keys(traffic.byCampaign || {}).length === 0 ? (
-                  <p className="text-sm text-gray-400">أضف معاملات utm_campaign في روابط الإعلانات لتتبع الحملات.</p>
-                ) : (
-                  Object.entries(traffic.byCampaign)
-                    .sort((a, b) => b[1] - a[1])
-                    .map(([camp, val]) => (
-                      <BarRow key={camp} label={camp} value={val} max={topSources.max} />
+            <div className="space-y-6">
+              {(topSources.entries.length === 0 && topChannels.entries.length === 0) && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 text-amber-900 text-sm px-4 py-3">
+                  <p className="font-bold">لا توجد مصادر زيارات بعد</p>
+                  <p className="text-xs mt-1 leading-relaxed">
+                    استخدم روابط UTM في الإعلانات، مثل:{' '}
+                    <code className="bg-white/80 px-1 rounded text-[11px]">
+                      ?utm_source=instagram&utm_medium=social&utm_campaign=ramadan
+                    </code>
+                    ثم افتح اللاندينق واضغط «تحديث البيانات».
+                  </p>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4">
+                  <h3 className="font-black text-gray-900">حسب المصدر (utm / referrer)</h3>
+                  {topSources.entries.length === 0 ? (
+                    <p className="text-sm text-gray-400">لا توجد بيانات — تشمل زيارات الصفحة وضغطات التحميل</p>
+                  ) : (
+                    topSources.entries.map(([src, val]) => (
+                      <BarRow key={src} label={sourceLabel(src)} value={val} max={topSources.max} extra={src} />
                     ))
-                )}
+                  )}
+                </div>
+                <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4">
+                  <h3 className="font-black text-gray-900">حسب القناة</h3>
+                  {topChannels.entries.length === 0 ? (
+                    <p className="text-sm text-gray-400">لا توجد بيانات</p>
+                  ) : (
+                    topChannels.entries.map(([ch, val]) => (
+                      <BarRow key={ch} label={channelLabel(ch)} value={val} max={topChannels.max} />
+                    ))
+                  )}
+                </div>
               </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4">
+                  <h3 className="font-black text-gray-900">حسب الوسيط (medium)</h3>
+                  {topMediums.entries.length === 0 ? (
+                    <p className="text-sm text-gray-400">لا توجد بيانات</p>
+                  ) : (
+                    topMediums.entries.map(([med, val]) => (
+                      <BarRow key={med} label={mediumLabel(med)} value={val} max={topMediums.max} extra={med} />
+                    ))
+                  )}
+                </div>
+                <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4">
+                  <h3 className="font-black text-gray-900">حملات UTM</h3>
+                  {Object.keys(traffic.byCampaign || {}).length === 0 ? (
+                    <p className="text-sm text-gray-400">أضف <code className="text-xs bg-gray-100 px-1 rounded">utm_campaign</code> في روابط الإعلانات لتتبع الحملات.</p>
+                  ) : (
+                    Object.entries(traffic.byCampaign)
+                      .sort((a, b) => b[1] - a[1])
+                      .map(([camp, val]) => (
+                        <BarRow key={camp} label={camp} value={val} max={topSources.max} />
+                      ))
+                  )}
+                </div>
+              </div>
+
+              {downloadSources.entries.length > 0 && (
+                <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4">
+                  <h3 className="font-black text-gray-900">مصادر ضغطات التحميل</h3>
+                  {downloadSources.entries.map(([src, val]) => (
+                    <BarRow key={src} label={sourceLabel(src)} value={val} max={downloadSources.max} extra={src} />
+                  ))}
+                </div>
+              )}
+
+              {topPages.entries.length > 0 && (
+                <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4">
+                  <h3 className="font-black text-gray-900">أكثر الصفحات زيارة</h3>
+                  {topPages.entries.map(([page, val]) => (
+                    <BarRow key={page} label={page} value={val} max={topPages.max} />
+                  ))}
+                </div>
+              )}
             </div>
           )}
 

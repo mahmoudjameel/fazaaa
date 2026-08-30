@@ -157,7 +157,7 @@ export function trackDownloadClick({ appRole, store, section, href, pagePath } =
   });
 
   return sendMarketingEvent(buildMarketingPayload({
-    pagePath: pagePath || `${window.location.pathname}${window.location.search}`,
+    pagePath: resolveMarketingPagePath(pagePath),
     pageTitle: document.title || 'فزاعين',
     eventType: 'download_click',
     downloadApp: resolvedRole,
@@ -178,13 +178,23 @@ export function onDownloadClick(props) {
   };
 }
 
+/** مسار كامل يشمل UTM لالتقاط مصادر الحملات */
+export function resolveMarketingPagePath(pagePath) {
+  if (typeof window === 'undefined') return pagePath || '/';
+  const base = pagePath || `${window.location.pathname}${window.location.search}`;
+  if (base === '/' || base === window.location.pathname) {
+    return `${window.location.pathname}${window.location.search}`;
+  }
+  return base;
+}
+
 /**
  * تسجيل زيارة صفحة عامة — GA4 + Cloud Function
  */
 export async function trackMarketingPageView({ pagePath, pageTitle } = {}) {
   if (typeof window === 'undefined') return;
 
-  const path = pagePath || `${window.location.pathname}${window.location.search}`;
+  const path = resolveMarketingPagePath(pagePath);
   const title = pageTitle || document.title || 'فزاعين';
 
   if (shouldSkipDedup(path)) {

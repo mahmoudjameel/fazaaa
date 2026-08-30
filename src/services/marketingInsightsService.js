@@ -51,6 +51,37 @@ export function channelLabel(channel) {
   return map[channel] || channel;
 }
 
+export function sourceLabel(source) {
+  const map = {
+    direct: 'مباشر (بدون referrer)',
+    google: 'Google',
+    facebook: 'Facebook',
+    instagram: 'Instagram',
+    tiktok: 'TikTok',
+    twitter: 'Twitter / X',
+    snapchat: 'Snapchat',
+    linkedin: 'LinkedIn',
+    youtube: 'YouTube',
+    internal: 'داخلي (نفس الموقع)',
+    referral: 'إحالة عامة',
+  };
+  return map[source] || source;
+}
+
+export function mediumLabel(medium) {
+  const map = {
+    none: 'بدون وسيط',
+    organic: 'عضوي',
+    social: 'سوشيال',
+    cpc: 'إعلانات (CPC)',
+    paid: 'مدفوع',
+    email: 'بريد',
+    referral: 'إحالة',
+    utm: 'UTM',
+  };
+  return map[medium] || medium;
+}
+
 export function downloadSectionLabel(section) {
   const map = {
     hero_primary: 'زر التحميل الرئيسي (Hero)',
