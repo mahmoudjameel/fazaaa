@@ -398,7 +398,13 @@ export const Landing = () => {
     appleHrefRaw === 'https://apps.apple.com/'
       ? DEFAULT_LANDING_CONTENT.apps.appleHref
       : appleHrefRaw;
-  const googleHref = landingContent.apps?.googleHref || DEFAULT_LANDING_CONTENT.apps.googleHref;
+  const googleHrefRaw = landingContent.apps?.googleHref || DEFAULT_LANDING_CONTENT.apps.googleHref;
+  const googleHref =
+    !googleHrefRaw ||
+    googleHrefRaw === 'https://play.google.com' ||
+    googleHrefRaw === 'https://play.google.com/'
+      ? DEFAULT_LANDING_CONTENT.apps.googleHref
+      : googleHrefRaw;
   const providerAppleHrefRaw =
     landingContent.apps?.providerAppleHref || DEFAULT_LANDING_CONTENT.apps.providerAppleHref;
   const providerAppleHref =

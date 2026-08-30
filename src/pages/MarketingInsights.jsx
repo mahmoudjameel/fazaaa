@@ -194,6 +194,23 @@ export default function MarketingInsights() {
         </div>
       )}
 
+      {snapshot && totals.pageViews === 0 && totals.downloadClicks === 0 && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 text-amber-900 text-sm px-4 py-3 space-y-1">
+          <p className="font-bold">لا توجد زيارات أو ضغطات مسجّلة في هذه الفترة</p>
+          <p className="text-xs leading-relaxed">
+            تأكد أنك تختبر من موقع React (مثل <strong>fazaaa.vercel.app</strong>) وليس من GoDaddy.
+            افتح اللاندينق `/` → اضغط تحميل → ارجع واضغط «تحديث البيانات».
+            {totals.rawEventsLoaded != null && (
+              <> · أحداث محمّلة: {totals.rawEventsLoaded}
+                {totals.sampleEventsAllTime > 0 && totals.rawEventsLoaded === 0
+                  ? ` (يوجد ${totals.sampleEventsAllTime}+ أحداث خارج نطاق ${snapshot.periodDays} يوم)`
+                  : ''}
+              </>
+            )}
+          </p>
+        </div>
+      )}
+
       {!snapshot && (
         <div className="rounded-2xl border border-dashed border-gray-200 bg-white p-8 text-center">
           <TrendingUp className="w-12 h-12 text-gray-300 mx-auto mb-3" />
