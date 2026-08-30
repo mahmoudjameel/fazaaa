@@ -403,11 +403,11 @@ export default function MarketingInsights() {
                 <div className="rounded-xl border border-amber-200 bg-amber-50 text-amber-900 text-sm px-4 py-3">
                   <p className="font-bold">لا توجد مصادر زيارات بعد</p>
                   <p className="text-xs mt-1 leading-relaxed">
-                    استخدم روابط UTM في الإعلانات، مثل:{' '}
+                    <strong>سناب شات</strong> لا يرسل referrer غالباً — ضع UTM في رابط البايو:{' '}
                     <code className="bg-white/80 px-1 rounded text-[11px]">
-                      ?utm_source=instagram&utm_medium=social&utm_campaign=ramadan
+                      ?utm_source=snapchat&utm_medium=social&utm_campaign=bio
                     </code>
-                    ثم افتح اللاندينق واضغط «تحديث البيانات».
+                    {' '}بدون UTM تُسجَّل الزيارة «مباشر» وليس فيسبوك.
                   </p>
                 </div>
               )}

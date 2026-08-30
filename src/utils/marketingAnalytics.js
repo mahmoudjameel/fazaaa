@@ -24,13 +24,32 @@ function getOrCreateSessionId() {
 
 function parseUtmFromUrl(search = window.location.search) {
   const params = new URLSearchParams(search);
+  const rawSource = params.get('utm_source');
   return {
-    utmSource: params.get('utm_source') || null,
+    utmSource: normalizeUtmSourceClient(rawSource) || rawSource || null,
     utmMedium: params.get('utm_medium') || null,
     utmCampaign: params.get('utm_campaign') || null,
     utmContent: params.get('utm_content') || null,
     utmTerm: params.get('utm_term') || null,
   };
+}
+
+function normalizeUtmSourceClient(raw) {
+  const s = String(raw || '').trim().toLowerCase();
+  if (!s) {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.has('fbclid')) return 'facebook';
+    } catch { /* ignore */ }
+    return null;
+  }
+  const map = {
+    snap: 'snapchat', sc: 'snapchat', snapchat: 'snapchat',
+    fb: 'facebook', meta: 'facebook', facebook: 'facebook',
+    ig: 'instagram', insta: 'instagram',
+    tt: 'tiktok', tiktok: 'tiktok',
+  };
+  return map[s] || s;
 }
 
 function persistUtm(utm) {
