@@ -44,7 +44,7 @@ import {
   createManualOrder,
   updateOrderDetails,
   updateRequestRating,
-  cancelCompletedOrderByAdmin,
+  cancelOrderByAdmin,
   getProviderIdsWithCompletedOrders,
   getAllCities,
   phonesMatchForSearch,
@@ -1140,8 +1140,19 @@ export const Orders = () => {
 
   const handleUpdateOrder = async () => {
     if (!editingOrder?.id) return;
+    if (editOrderData.status === 'canceled_by_admin' && !editOrderData.cancelReason?.trim()) {
+      alert('سبب الإلغاء مطلوب للإلغاء الإداري');
+      return;
+    }
     setSavingEditOrder(true);
     try {
+      if (editOrderData.status === 'canceled_by_admin') {
+        await cancelOrderByAdmin(editingOrder.id, { reason: editOrderData.cancelReason });
+        alert('تم إلغاء الطلب إدارياً');
+        setShowEditServiceConfirm(false);
+        setIsEditModalOpen(false);
+        return;
+      }
       const newPrice = Number(editOrderData.price);
       const oldName = editingOrder.serviceName || '';
       const oldPrice = Number(editingOrder.price ?? editingOrder.servicePrice ?? 0);
@@ -1218,20 +1229,23 @@ export const Orders = () => {
     }
   };
 
-  const handleCancelCompletedOrder = async () => {
-    if (!selectedRequest?.id || selectedRequest.status !== 'completed') return;
+  const handleCancelOrderByAdmin = async () => {
+    if (!selectedRequest?.id) return;
+    const reason = cancelCompletedReason.trim();
+    if (!reason) {
+      alert('سبب الإلغاء مطلوب');
+      return;
+    }
     setCancellingCompleted(true);
     try {
-      const result = await cancelCompletedOrderByAdmin(selectedRequest.id, {
-        reason: cancelCompletedReason,
-      });
+      const result = await cancelOrderByAdmin(selectedRequest.id, { reason });
       const updated = {
         ...selectedRequest,
         status: 'canceled_by_admin',
-        cancelReason: cancelCompletedReason.trim() || 'إلغاء من لوحة التحكم',
+        cancelReason: reason,
         cancelledBy: 'admin',
-        adminCancelledCompleted: true,
-        commissionRefunded: result.refunded || selectedRequest.commissionDeducted || false,
+        adminCancelledCompleted: result.wasCompleted || false,
+        commissionRefunded: result.refunded || false,
         commissionRefundAmount: result.refundAmount || 0,
       };
       setSelectedRequest(updated);
@@ -1241,7 +1255,7 @@ export const Orders = () => {
       if (result.refunded) {
         alert(`تم إلغاء الطلب واسترجاع ${result.refundAmount} ر.س للمزود (طلب ${result.orderLabel})`);
       } else {
-        alert('تم إلغاء الطلب. لم تُسترجع عمولة لأن الخصم لم يكن مسجلاً على الطلب.');
+        alert('تم إلغاء الطلب إدارياً');
       }
     } catch (error) {
       alert(error?.message || 'فشل إلغاء الطلب');
@@ -2602,17 +2616,18 @@ export const Orders = () => {
                     {getStatusBadge(resolveDisplayStatus(selectedRequest)).text}
                   </span>
 
-                  {selectedRequest.status === 'completed' && (
+                  {['searching', 'assigned', 'en_route', 'arrived', 'in_progress', 'pending_client_confirmation', 'pending_review', 'pending_legal_docs', 'completed'].includes(selectedRequest.status) && (
                     <div className="mt-4 p-4 rounded-xl border border-rose-200 bg-rose-50">
                       <div className="flex items-start gap-3">
                         <AlertTriangle className="text-rose-600 flex-shrink-0 mt-0.5" size={18} />
                         <div className="flex-1 min-w-0">
-                          <p className="font-bold text-rose-800 text-sm">إلغاء طلب مكتمل</p>
+                          <p className="font-bold text-rose-800 text-sm">إلغاء إداري</p>
                           <p className="text-xs text-rose-700 mt-1 leading-relaxed">
-                            سيتم إلغاء الطلب
-                            {selectedRequest.commissionDeducted
-                              ? ` واسترجاع ${(selectedRequest.commission || 5)} ر.س تلقائياً لمحفظة المزود مع إشعار ورقم الطلب.`
-                              : ' بدون استرجاع عمولة (لم يُسجَّل خصم عمولة على هذا الطلب).'}
+                            {selectedRequest.status === 'completed'
+                              ? selectedRequest.commissionDeducted
+                                ? `سيتم إلغاء الطلب واسترجاع ${(selectedRequest.commission || 5)} ر.س تلقائياً لمحفظة المزود.`
+                                : 'سيتم إلغاء الطلب بدون استرجاع عمولة (لم يُسجَّل خصم عمولة).'
+                              : 'سيتم إلغاء الطلب وإشعار العميل والمزود (إن وُجد) مع ذكر السبب.'}
                           </p>
 
                           {!showCancelCompletedConfirm ? (
@@ -2622,7 +2637,7 @@ export const Orders = () => {
                               className="mt-3 inline-flex items-center gap-2 px-4 py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700 font-semibold text-sm"
                             >
                               <XCircle size={16} />
-                              إلغاء الطلب
+                              إلغاء إداري
                             </button>
                           ) : (
                             <div className="mt-3 space-y-3">
@@ -2630,14 +2645,15 @@ export const Orders = () => {
                                 value={cancelCompletedReason}
                                 onChange={(e) => setCancelCompletedReason(e.target.value)}
                                 rows={2}
-                                placeholder="سبب الإلغاء (اختياري)"
+                                placeholder="سبب الإلغاء (مطلوب)"
+                                required
                                 className="w-full px-3 py-2 border border-rose-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-rose-300"
                               />
                               <div className="flex flex-wrap gap-2">
                                 <button
                                   type="button"
                                   disabled={cancellingCompleted}
-                                  onClick={handleCancelCompletedOrder}
+                                  onClick={handleCancelOrderByAdmin}
                                   className="inline-flex items-center gap-2 px-4 py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700 disabled:opacity-50 font-semibold text-sm"
                                 >
                                   {cancellingCompleted ? (
@@ -2646,7 +2662,7 @@ export const Orders = () => {
                                       جاري الإلغاء...
                                     </>
                                   ) : (
-                                    'تأكيد الإلغاء واسترجاع العمولة'
+                                    selectedRequest.status === 'completed' ? 'تأكيد الإلغاء واسترجاع العمولة' : 'تأكيد الإلغاء الإداري'
                                   )}
                                 </button>
                                 <button
@@ -4273,6 +4289,7 @@ export const Orders = () => {
                     <option value="canceled_by_client">ملغي من العميل</option>
                     <option value="canceled_by_provider">ملغي من المزود</option>
                     <option value="canceled_by_provider_with_reason">ملغي من المزود (بسبب)</option>
+                    <option value="canceled_by_admin">ملغي من الإدارة</option>
                   </select>
                 </div>
 

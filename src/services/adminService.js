@@ -2008,26 +2008,57 @@ export const updateRequestRating = async (requestId, { rating, comment = '' } = 
   return { success: true, rating: ratingNum, comment: commentText };
 };
 
+const ADMIN_CANCELABLE_STATUSES = [
+  'searching',
+  'assigned',
+  'en_route',
+  'arrived',
+  'in_progress',
+  'pending_client_confirmation',
+  'pending_review',
+  'pending_legal_docs',
+  'completed',
+];
+
+const ALREADY_TERMINAL_STATUSES = [
+  'canceled_by_client',
+  'canceled_by_client_with_reason',
+  'canceled_by_provider',
+  'canceled_by_provider_with_reason',
+  'canceled_by_admin',
+  'timed_out',
+  'escalated_to_city_manager',
+];
+
 /**
- * إلغاء طلب مكتمل من لوحة التحكم مع استرجاع عمولة المزود تلقائياً
+ * إلغاء طلب (نشط أو مكتمل) من الإدارة مع سبب إلزامي
  * @param {string} requestId
  * @param {{ reason?: string }} [options]
  */
-export const cancelCompletedOrderByAdmin = async (requestId, { reason = '' } = {}) => {
+export const cancelOrderByAdmin = async (requestId, { reason = '' } = {}) => {
   if (!requestId) throw new Error('معرف الطلب مطلوب');
 
+  const cancelReason = String(reason || '').trim();
+  if (!cancelReason) throw new Error('سبب الإلغاء مطلوب');
+
   const requestRef = doc(db, 'requests', requestId);
-  const cancelReason = String(reason || '').trim() || 'إلغاء من لوحة التحكم';
 
   const result = await runTransaction(db, async (transaction) => {
     const snap = await transaction.get(requestRef);
     if (!snap.exists()) throw new Error('الطلب غير موجود');
 
     const data = snap.data() || {};
-    if (data.status !== 'completed') {
-      throw new Error('يمكن إلغاء الطلبات المكتملة فقط');
+    const currentStatus = data.status;
+
+    if (ALREADY_TERMINAL_STATUSES.includes(currentStatus)) {
+      throw new Error('الطلب ملغى أو منتهٍ مسبقاً');
     }
-    if (data.commissionRefunded === true) {
+    if (!ADMIN_CANCELABLE_STATUSES.includes(currentStatus)) {
+      throw new Error(`لا يمكن إلغاء الطلب في حالة «${currentStatus}»`);
+    }
+
+    const isCompleted = currentStatus === 'completed';
+    if (isCompleted && data.commissionRefunded === true) {
       throw new Error('تم استرجاع عمولة هذا الطلب مسبقاً');
     }
 
@@ -2038,7 +2069,7 @@ export const cancelCompletedOrderByAdmin = async (requestId, { reason = '' } = {
         ? `#${String(orderNumber).padStart(9, '0')}`
         : requestId.slice(-6).toUpperCase();
 
-    const shouldRefund = data.commissionDeducted === true && !!providerId;
+    const shouldRefund = isCompleted && data.commissionDeducted === true && !!providerId;
     const refundAmount = shouldRefund
       ? Number(data.commission) > 0
         ? Number(data.commission)
@@ -2081,13 +2112,14 @@ export const cancelCompletedOrderByAdmin = async (requestId, { reason = '' } = {
     const history = Array.isArray(data.history) ? [...data.history] : [];
     history.push({
       status: 'canceled_by_admin',
-      action: 'admin_cancel_completed',
-      message: shouldRefund
+      action: isCompleted ? 'admin_cancel_completed' : 'admin_cancel',
+      message: isCompleted && shouldRefund
         ? `تم إلغاء الطلب المكتمل من الإدارة واسترجاع ${refundAmount} ر.س للمزود. السبب: ${cancelReason}`
-        : `تم إلغاء الطلب المكتمل من الإدارة. السبب: ${cancelReason}`,
+        : `تم إلغاء الطلب من الإدارة. السبب: ${cancelReason}`,
       timestamp: new Date().toISOString(),
       updatedBy: 'admin',
       cancelReason,
+      previousStatus: currentStatus,
       refundAmount: shouldRefund ? refundAmount : 0,
       providerId: providerId || null,
     });
@@ -2097,15 +2129,18 @@ export const cancelCompletedOrderByAdmin = async (requestId, { reason = '' } = {
       cancelReason,
       cancelledBy: 'admin',
       cancelledAt: serverTimestamp(),
-      adminCancelledCompleted: true,
       updatedAt: serverTimestamp(),
       history,
+      providerIdsToNotify: deleteField(),
     };
 
-    if (shouldRefund) {
-      requestUpdate.commissionRefunded = true;
-      requestUpdate.commissionRefundedAt = serverTimestamp();
-      requestUpdate.commissionRefundAmount = refundAmount;
+    if (isCompleted) {
+      requestUpdate.adminCancelledCompleted = true;
+      if (shouldRefund) {
+        requestUpdate.commissionRefunded = true;
+        requestUpdate.commissionRefundedAt = serverTimestamp();
+        requestUpdate.commissionRefundAmount = refundAmount;
+      }
     }
 
     transaction.update(requestRef, requestUpdate);
@@ -2116,11 +2151,38 @@ export const cancelCompletedOrderByAdmin = async (requestId, { reason = '' } = {
       refunded: shouldRefund,
       refundAmount,
       newBalance,
+      wasCompleted: isCompleted,
     };
   });
 
+  if (result.providerId) {
+    await releaseProviderBusy(result.providerId).catch((e) =>
+      console.warn('releaseProviderBusy on admin cancel:', e?.message)
+    );
+  }
+
+  try {
+    const stuckQ = query(collection(db, 'providers'), where('activeRequestId', '==', requestId));
+    const stuckSnap = await getDocs(stuckQ);
+    for (const pDoc of stuckSnap.docs) {
+      if (pDoc.id !== result.providerId) {
+        await releaseProviderBusy(pDoc.id).catch(() => {});
+      }
+    }
+  } catch (stuckErr) {
+    console.warn('releaseProviderBusy stuck lookup on admin cancel:', stuckErr?.message);
+  }
+
   return { success: true, ...result };
 };
+
+/**
+ * إلغاء طلب مكتمل من لوحة التحكم — alias لـ cancelOrderByAdmin
+ * @param {string} requestId
+ * @param {{ reason?: string }} [options]
+ */
+export const cancelCompletedOrderByAdmin = async (requestId, { reason = '' } = {}) =>
+  cancelOrderByAdmin(requestId, { reason });
 
 /**
  * الحصول على سجل محفظة المزود
