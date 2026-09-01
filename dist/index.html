@@ -76,6 +76,21 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
       html, body, #root { font-family: 'Cairo', system-ui, sans-serif; }
+      @keyframes pm-pulse {
+        0%, 100% { transform: scale(1); opacity: 1; }
+        50% { transform: scale(1.25); opacity: 0.85; }
+      }
+      .provider-map-popup .leaflet-popup-content-wrapper {
+        border-radius: 14px;
+        box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18);
+        padding: 2px;
+      }
+      .provider-map-popup .leaflet-popup-content {
+        margin: 12px 14px;
+      }
+      .provider-map-popup .leaflet-popup-tip {
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+      }
     </style>
 
     <script type="application/ld+json">
@@ -90,8 +105,8 @@
         "areaServed": { "@type": "Country", "name": "Saudi Arabia" }
       }
     </script>
-    <script type="module" crossorigin src="/assets/index-DsvaAFqN.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-t2RM7K_C.css">
+    <script type="module" crossorigin src="/assets/index-DFoKqKUV.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-D1dcoYWZ.css">
   </head>
   <body>
     <!-- Google Tag Manager (noscript) -->
