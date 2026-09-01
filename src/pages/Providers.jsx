@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   Search, CheckCircle, XCircle, Clock, Eye, Phone, Mail, Star, Power,
   UserCheck, Users, Plus, Edit2, Trash2, Tag, X, FileText, ShieldBan, ShieldOff, ShieldCheck, Loader2,
-  MapPin, Globe, Smartphone, RefreshCw, ExternalLink, Navigation,
+  MapPin, Globe, Smartphone, RefreshCw, ExternalLink, Navigation, ShieldAlert,
 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -44,7 +44,7 @@ import {
   listDocumentsForDisplay,
   getDocumentLabel,
 } from '../utils/documentUtils';
-import { doc, updateDoc, collection, getDocs, onSnapshot } from 'firebase/firestore';
+import { doc, updateDoc, collection, getDocs, getDoc, onSnapshot } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../services/firebase';
 import { format } from 'date-fns';
@@ -53,8 +53,12 @@ import {
   resolveProviderWalletBalance,
   withNormalizedProviderWallet,
   isLowWalletBalance,
-  LOW_BALANCE_THRESHOLD,
+  countProviderRemainingServices,
+  LOW_BALANCE_SERVICE_THRESHOLD,
 } from '../utils/providerWallet';
+import { hasLocationTrackingIssue, inferLocationTrackingIssue } from '../utils/providerLocation';
+import { PhoneWithActions } from '../components/PhoneWithActions';
+import { normalizePricing, validateTopUpAmount, DEFAULT_PRICING } from '../utils/providerPricing';
 import SAUDI_CITIES_RAW from '../services/cities.json';
 
 export const NATIONALITIES = [
@@ -103,6 +107,7 @@ export const Providers = () => {
   const [selectedProvidersForGroup, setSelectedProvidersForGroup] = useState([]);
   const [lowBalanceFilter, setLowBalanceFilter] = useState(false);
   const [executedOrdersFilter, setExecutedOrdersFilter] = useState(false);
+  const [locationIssueFilter, setLocationIssueFilter] = useState(false);
   const [providerIdsWithCompletedOrders, setProviderIdsWithCompletedOrders] = useState(null);
   const [executedOrdersCounts, setExecutedOrdersCounts] = useState({});
   const [loadingExecutedOrdersFilter, setLoadingExecutedOrdersFilter] = useState(false);
@@ -136,6 +141,7 @@ export const Providers = () => {
   const [ordersFilter, setOrdersFilter] = useState('all');
   const [walletAdjustment, setWalletAdjustment] = useState({ amount: '', type: 'addition', reason: '' });
   const [walletAmountError, setWalletAmountError] = useState('');
+  const [pricingSettings, setPricingSettings] = useState({ ...DEFAULT_PRICING });
   const [isAdjustingWallet, setIsAdjustingWallet] = useState(false);
   const [updatingServiceId, setUpdatingServiceId] = useState(null);
   const [editProviderForm, setEditProviderForm] = useState(null);
@@ -210,6 +216,11 @@ export const Providers = () => {
     fetchProviders();
     fetchGroups();
     fetchMainServices();
+    getDoc(doc(db, 'settings', 'distribution')).then((snap) => {
+      if (snap.exists()) {
+        setPricingSettings(normalizePricing(snap.data()?.pricing));
+      }
+    }).catch(() => {});
 
     // التحقق من الصلاحيات
     const role = localStorage.getItem('admin_role');
@@ -234,7 +245,20 @@ export const Providers = () => {
     } else if (status) {
       setStatusFilter(status);
     }
+    if (params.get('locationIssue') === '1') {
+      setLocationIssueFilter(true);
+      setStatusFilter('approved');
+    }
+    const searchQ = params.get('search');
+    if (searchQ) setSearchTerm(searchQ);
   }, [location.search]);
+
+  useEffect(() => {
+    const highlightId = new URLSearchParams(location.search).get('highlight');
+    if (!highlightId || providers.length === 0) return;
+    const provider = providers.find((p) => p.id === highlightId);
+    if (provider) setSelectedProvider(provider);
+  }, [providers, location.search]);
 
   // جلب الخدمات الرئيسية من emergency-services
   const fetchMainServices = async () => {
@@ -260,7 +284,7 @@ export const Providers = () => {
 
   useEffect(() => {
     filterProviders();
-  }, [providers, mainServices, searchTerm, statusFilter, typeFilter, groupFilter, serviceFilter, cityFilter, nationalityFilter, lowBalanceFilter, executedOrdersFilter, providerIdsWithCompletedOrders, executedOrdersCounts]);
+  }, [providers, mainServices, searchTerm, statusFilter, typeFilter, groupFilter, serviceFilter, cityFilter, nationalityFilter, lowBalanceFilter, executedOrdersFilter, locationIssueFilter, providerIdsWithCompletedOrders, executedOrdersCounts]);
 
   // تحميل قائمة من نفّذوا طلبات — للإحصائيات وللفلتر
   useEffect(() => {
@@ -750,7 +774,7 @@ export const Providers = () => {
     e.preventDefault();
     const rawAmount = Number(walletAdjustment.amount);
 
-    // التحقق من صحة المبلغ: مطلوب، أكبر من صفر، ومضاعفات ٥ ريال
+    // التحقق من صحة المبلغ: مطلوب، أكبر من صفر، ومضاعفات سعر الخدمة الحالي
     if (!walletAdjustment.amount || isNaN(rawAmount)) {
       setWalletAmountError('يرجى إدخال المبلغ');
       return;
@@ -760,8 +784,9 @@ export const Providers = () => {
       return;
     }
     if (walletAdjustment.type === 'addition' || walletAdjustment.type === 'compensation') {
-      if (rawAmount % 5 !== 0) {
-        setWalletAmountError('المبلغ يجب أن يكون من مضاعفات ٥ ر.س (٥، ١٠، ١٥، ٢٠ ...)');
+      const validation = validateTopUpAmount(rawAmount, pricingSettings);
+      if (!validation.ok) {
+        setWalletAmountError(validation.error);
         return;
       }
     }
@@ -789,6 +814,10 @@ export const Providers = () => {
         const updatedProvider = { ...selectedProvider };
         if (!updatedProvider.wallet) updatedProvider.wallet = {};
         updatedProvider.wallet.balance = result.newBalance;
+        if (result.serviceCreditsAdded > 0) {
+          updatedProvider.wallet.serviceCredits =
+            (updatedProvider.wallet.serviceCredits || 0) + result.serviceCreditsAdded;
+        }
         setSelectedProvider(updatedProvider);
         setProviders(prev => prev.map(p => p.id === updatedProvider.id ? updatedProvider : p));
         fetchWalletData();
@@ -822,7 +851,7 @@ export const Providers = () => {
       );
     }
 
-    // فلتر الرصيد المنخفض: 25 ريال فأقل — للمزودين المفعّلين فقط (معتمدين)
+    // فلتر الرصيد المنخفض: 3 خدمات أو أقل — للمزودين المفعّلين فقط (معتمدين)
     // الحسابات الجديدة/قيد المراجعة غالباً رصيدها 0 ولا تُحسب هنا
     if (lowBalanceFilter) {
       filtered = filtered.filter((p) => {
@@ -847,6 +876,14 @@ export const Providers = () => {
               (executedOrdersCounts[String(b.id)] || 0) - (executedOrdersCounts[String(a.id)] || 0)
           );
       }
+    }
+
+    if (locationIssueFilter) {
+      filtered = filtered.filter((p) => {
+        const approvalStatus = p.approvalStatus || p.status;
+        if (approvalStatus !== 'approved') return false;
+        return hasLocationTrackingIssue(p);
+      });
     }
 
     if (statusFilter !== 'all') {
@@ -1246,7 +1283,14 @@ export const Providers = () => {
           <h1 className="text-3xl font-black text-gray-800 mb-2">إدارة المزودين</h1>
           <p className="text-gray-600">عرض وإدارة جميع مزودي الخدمة</p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
+          <button
+            onClick={() => navigate('/admin/providers-map')}
+            className="flex items-center gap-2 px-6 py-3 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-all font-semibold shadow-md"
+          >
+            <MapPin size={20} />
+            خريطة المزودين
+          </button>
           {hasAddPermission && (
             <button
               onClick={() => navigate('/admin/add-provider')}
@@ -1510,7 +1554,7 @@ export const Providers = () => {
                     className="w-4 h-4 flex-shrink-0 text-red-600 rounded focus:ring-red-500 cursor-pointer"
                   />
                   <label htmlFor="lowBalance" className="text-sm font-bold text-red-700 cursor-pointer truncate">
-                    رصيد منخفض — مفعّلين ({LOW_BALANCE_THRESHOLD} فأقل)
+                    رصيد منخفض — مفعّلين ({LOW_BALANCE_SERVICE_THRESHOLD} خدمات أو أقل)
                   </label>
                   {lowBalanceFilter && (
                     <span className="text-xs font-semibold text-red-600 bg-white px-2 py-0.5 rounded-full border border-red-100 flex-shrink-0">
@@ -1534,6 +1578,23 @@ export const Providers = () => {
                   )}
                   {executedOrdersFilter && !loadingExecutedOrdersFilter && (
                     <span className="text-xs font-semibold text-teal-700 bg-white px-2 py-0.5 rounded-full border border-teal-100 flex-shrink-0">
+                      {filteredProviders.length}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 px-4 py-3 bg-orange-50 rounded-lg border border-orange-100 sm:col-span-2 lg:col-span-1 xl:col-span-2 min-w-0">
+                  <input
+                    type="checkbox"
+                    id="locationIssue"
+                    checked={locationIssueFilter}
+                    onChange={(e) => setLocationIssueFilter(e.target.checked)}
+                    className="w-4 h-4 flex-shrink-0 text-orange-600 rounded focus:ring-orange-500 cursor-pointer"
+                  />
+                  <label htmlFor="locationIssue" className="text-sm font-bold text-orange-800 cursor-pointer truncate">
+                    مشكلة تتبع الموقع — بدون «دائماً» أو موقع قديم
+                  </label>
+                  {locationIssueFilter && (
+                    <span className="text-xs font-semibold text-orange-700 bg-white px-2 py-0.5 rounded-full border border-orange-100 flex-shrink-0">
                       {filteredProviders.length}
                     </span>
                   )}
@@ -1569,8 +1630,10 @@ export const Providers = () => {
                           : executedOrdersFilter
                             ? 'لا يوجد مزودون نفّذوا طلباً فعلياً'
                             : lowBalanceFilter
-                              ? `لا يوجد مزودون مفعّلون برصيد ${LOW_BALANCE_THRESHOLD} ريال أو أقل`
-                              : 'لا توجد نتائج'}
+                              ? `لا يوجد مزودون مفعّلون بـ ${LOW_BALANCE_SERVICE_THRESHOLD} خدمات متبقية أو أقل`
+                              : locationIssueFilter
+                                ? 'لا يوجد مزودون معتمدون بمشكلة في تتبع الموقع'
+                                : 'لا توجد نتائج'}
                       </td>
                     </tr>
                   ) : (
@@ -1585,6 +1648,7 @@ export const Providers = () => {
                       const walletBalance = resolveProviderWalletBalance(provider);
                       const isLowBalance = isLowWalletBalance(provider);
                       const executedOrdersCount = executedOrdersCounts[String(provider.id)] || 0;
+                      const locationIssue = inferLocationTrackingIssue(provider);
                       return (
                         <tr key={provider.id} className="hover:bg-gray-50">
                           <td className="px-4 py-4 text-center">
@@ -1607,6 +1671,15 @@ export const Providers = () => {
                                 {executedOrdersCount > 0 && (
                                   <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-teal-100 text-teal-800">
                                     نفّذ {executedOrdersCount} طلب
+                                  </span>
+                                )}
+                                {locationIssue && (
+                                  <span
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold bg-orange-100 text-orange-800"
+                                    title={locationIssue.hint}
+                                  >
+                                    <ShieldAlert size={10} />
+                                    {locationIssue.label}
                                   </span>
                                 )}
                               </div>
@@ -2385,7 +2458,7 @@ export const Providers = () => {
                           </div>
                           <div>
                             <h3 className="font-semibold text-gray-700 mb-2">رقم الهاتف</h3>
-                            <p className="text-gray-800 font-medium">{selectedProvider.phone}</p>
+                            <PhoneWithActions phone={selectedProvider.phone} />
                           </div>
                           <div>
                             <h3 className="font-semibold text-gray-700 mb-2">البريد الإلكتروني</h3>
@@ -2774,12 +2847,21 @@ export const Providers = () => {
                   {activeTab === 'wallet' && (
                     <div className="space-y-6 animate-in fade-in duration-300">
                       {/* Stats Cards */}
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                         <div className="bg-gradient-to-br from-teal-500 to-teal-600 p-5 rounded-2xl text-white shadow-lg">
                           <p className="text-teal-100 text-sm font-semibold mb-1">الرصيد الحالي</p>
                           <h4 className="text-3xl font-black">
                             {resolveProviderWalletBalance(selectedProvider, walletHistory).toFixed(2)} ر.س
                           </h4>
+                        </div>
+                        <div className="bg-white p-5 rounded-2xl border-2 border-teal-100 shadow-sm">
+                          <p className="text-gray-500 text-sm font-semibold mb-1">خدمات متبقية</p>
+                          <h4 className="text-3xl font-black text-teal-700">
+                            {countProviderRemainingServices(selectedProvider, pricingSettings)}
+                          </h4>
+                          <p className="text-xs text-gray-400 mt-1">
+                            شحن جديد: {pricingSettings.providerCommissionPerOrder} ر.س/خدمة
+                          </p>
                         </div>
                         <div className="bg-white p-5 rounded-2xl border-2 border-gray-100 shadow-sm">
                           <p className="text-gray-500 text-sm font-semibold mb-1">إجمالي الإيداعات</p>
@@ -2802,6 +2884,9 @@ export const Providers = () => {
                             <Edit2 size={18} className="text-teal-600" />
                             تعديل الرصيد يدوياً
                           </h4>
+                          <p className="text-xs text-gray-500 mb-3">
+                            الشحن والتعويض: مضاعفات {pricingSettings.providerCommissionPerOrder} ر.س
+                          </p>
                           <form onSubmit={handleAdjustWallet} className="space-y-4">
                             <div className="grid grid-cols-2 gap-3">
                               <button

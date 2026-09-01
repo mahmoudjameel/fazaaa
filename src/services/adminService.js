@@ -21,6 +21,7 @@ import { auth, db, functions } from './firebase';
 import { httpsCallable } from 'firebase/functions';
 import { normalizeDocumentsForStorage } from '../utils/documentUtils';
 import { withNormalizedProviderWallet } from '../utils/providerWallet';
+import { normalizePricing, validateTopUpAmount, ensureWalletCreditsShape } from '../utils/providerPricing';
 import { diagnoseProviderForRequest, evaluateProviderEligibility } from '../utils/dispatchDiagnostics';
 
 // Providers Management
@@ -2243,7 +2244,19 @@ export const getProviderLoginSessions = async (providerId, maxResults = 50) => {
  */
 export const adjustProviderWallet = async (providerId, amount, type, reason) => {
   try {
+    const pricingSnap = await getDoc(doc(db, 'settings', 'distribution'));
+    const pricing = normalizePricing(pricingSnap.exists() ? pricingSnap.data()?.pricing : null);
+
+    if (type === 'addition' || type === 'compensation') {
+      const validation = validateTopUpAmount(Number(amount), pricing);
+      if (!validation.ok) {
+        throw new Error(validation.error);
+      }
+    }
+
     const providerRef = doc(db, 'providers', providerId);
+    let serviceCreditsAdded = 0;
+    let unitValue = pricing.providerCommissionPerOrder;
 
     const result = await runTransaction(db, async (transaction) => {
       const providerDoc = await transaction.get(providerRef);
@@ -2251,38 +2264,55 @@ export const adjustProviderWallet = async (providerId, amount, type, reason) => 
         throw new Error('المزود غير موجود');
       }
 
-            const providerData = providerDoc.data();
-            const currentBalance = providerData.wallet?.balance ?? providerData.walletBalance ?? 0;
-            let newBalance = Number(currentBalance) || 0;
+      const providerData = providerDoc.data();
+      const wallet = providerData.wallet || {};
+      const currentBalance = wallet.balance ?? providerData.walletBalance ?? 0;
+      let newBalance = Number(currentBalance) || 0;
+      const walletUpdate = {
+        'wallet.lastUpdated': serverTimestamp(),
+        walletBalance: deleteField(),
+      };
 
-            if (type === 'addition' || type === 'compensation') {
-              newBalance += Number(amount);
-            } else if (type === 'deduction') {
-              newBalance -= Number(amount);
-            }
+      if (type === 'addition' || type === 'compensation') {
+        const validation = validateTopUpAmount(Number(amount), pricing);
+        serviceCreditsAdded = validation.serviceCredits;
+        unitValue = validation.unitValue;
+        newBalance += Number(amount);
+        const w = ensureWalletCreditsShape({ ...wallet, balance: newBalance });
+        walletUpdate['wallet.balance'] = newBalance;
+        walletUpdate['wallet.serviceCredits'] = (typeof wallet.serviceCredits === 'number' ? wallet.serviceCredits : w.serviceCredits) + serviceCreditsAdded;
+        if (typeof wallet.legacyServiceCredits === 'number') {
+          walletUpdate['wallet.legacyServiceCredits'] = wallet.legacyServiceCredits;
+        } else if (w.legacyServiceCredits > 0) {
+          walletUpdate['wallet.legacyServiceCredits'] = w.legacyServiceCredits;
+        }
+      } else if (type === 'deduction') {
+        newBalance -= Number(amount);
+        walletUpdate['wallet.balance'] = newBalance;
+      }
 
-            transaction.update(providerRef, {
-              'wallet.balance': newBalance,
-              'wallet.lastUpdated': serverTimestamp(),
-              walletBalance: deleteField(),
-            });
+      transaction.update(providerRef, walletUpdate);
 
       return { newBalance };
     });
 
-    // إضافة سجل المعاملة
     const transactionsRef = collection(db, 'providers', providerId, 'transactions');
-    await addDoc(transactionsRef, {
+    const txPayload = {
       type,
       amount: Number(amount),
       balance: result.newBalance,
       reason,
       timestamp: serverTimestamp(),
       createdAt: new Date().toISOString(),
-      source: 'admin_panel'
-    });
+      source: 'admin_panel',
+    };
+    if (serviceCreditsAdded > 0) {
+      txPayload.serviceCreditsAdded = serviceCreditsAdded;
+      txPayload.unitValue = unitValue;
+    }
+    await addDoc(transactionsRef, txPayload);
 
-    return { success: true, newBalance: result.newBalance };
+    return { success: true, newBalance: result.newBalance, serviceCreditsAdded };
   } catch (error) {
     console.error('Adjust provider wallet error:', error);
     throw error;

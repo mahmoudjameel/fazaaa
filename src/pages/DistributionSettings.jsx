@@ -3,6 +3,7 @@ import { Settings, MapPin, Clock, Users, Save, AlertTriangle, CheckCircle, Plus,
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { getAllRejectBlocks, unblockProviderForCustomer, BLOCK_REASON_LABELS } from '../services/adminService';
+import { DEFAULT_PRICING, normalizePricing } from '../utils/providerPricing';
 
 // القيم الافتراضية فقط عند غياب إعدادات Firestore — السيناريو الفعلي من لوحة التحكم
 const DEFAULT_STAGES = [
@@ -20,6 +21,7 @@ export const DistributionSettings = () => {
   const [vipEnabled, setVipEnabled] = useState(false);
   const [rejectBlockMinutes, setRejectBlockMinutes] = useState(60);
   const [customerMapRefreshSeconds, setCustomerMapRefreshSeconds] = useState(60);
+  const [pricing, setPricing] = useState({ ...DEFAULT_PRICING });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -52,6 +54,9 @@ export const DistributionSettings = () => {
         if (Number.isFinite(Number(d.customerMapRefreshSeconds))) {
           const n = Math.round(Number(d.customerMapRefreshSeconds));
           setCustomerMapRefreshSeconds(n >= 15 && n <= 600 ? n : 60);
+        }
+        if (d.pricing) {
+          setPricing(normalizePricing(d.pricing));
         }
       }
     } catch (e) {
@@ -115,6 +120,19 @@ export const DistributionSettings = () => {
     ) {
       return 'مدة تحديث خريطة العميل يجب أن تكون بين 15 و600 ثانية';
     }
+    if (
+      !Number.isFinite(Number(pricing.providerCommissionPerOrder)) ||
+      pricing.providerCommissionPerOrder < 1 ||
+      pricing.providerCommissionPerOrder > 100
+    ) {
+      return 'تكلفة الخدمة الجديدة يجب أن تكون بين 1 و100 ر.س';
+    }
+    if (
+      !Number.isFinite(Number(pricing.minBalanceForRequest)) ||
+      pricing.minBalanceForRequest < 1
+    ) {
+      return 'الحد الأدنى للرصيد غير صالح';
+    }
     return '';
   };
 
@@ -132,6 +150,11 @@ export const DistributionSettings = () => {
         // سقف التوزيع = أعلى مرحلة في السيناريو (تتغير إذا زِدت مراحل من اللوحة)
         maxSearchRadiusKm: stageMax,
         customerMapRefreshSeconds: Number(customerMapRefreshSeconds) || 60,
+        pricing: {
+          providerCommissionPerOrder: Number(pricing.providerCommissionPerOrder) || DEFAULT_PRICING.providerCommissionPerOrder,
+          legacyProviderCommissionPerOrder: DEFAULT_PRICING.legacyProviderCommissionPerOrder,
+          minBalanceForRequest: Number(pricing.minBalanceForRequest) || DEFAULT_PRICING.minBalanceForRequest,
+        },
         updatedAt: new Date().toISOString(),
       }, { merge: true });
       setSaved(true);
@@ -216,6 +239,43 @@ export const DistributionSettings = () => {
           <div className="text-3xl font-black text-purple-600 mb-1">{maxRadius} كم</div>
           <div className="text-sm text-gray-500">أقصى نطاق للبحث</div>
         </div>
+      </div>
+
+      {/* Pricing */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+        <div className="flex items-center gap-2 mb-4">
+          <Settings size={20} className="text-teal-600" />
+          <h3 className="font-bold text-gray-800">تسعير محفظة المزود</h3>
+        </div>
+        <p className="text-sm text-gray-500 mb-4">
+          الشحن الجديد والخصم على الطلبات المكتملة بالسعر الجديد. رصيد الشحن القديم (5 ر.س/خدمة) يُستهلك أولاً دون تغيير عدد الخدمات المتبقية.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <label className="block">
+            <span className="text-sm font-semibold text-gray-700 mb-1 block">تكلفة الخدمة للشحن الجديد (ر.س)</span>
+            <input
+              type="number"
+              min={1}
+              max={100}
+              value={pricing.providerCommissionPerOrder}
+              onChange={(e) => setPricing((p) => ({ ...p, providerCommissionPerOrder: Number(e.target.value) }))}
+              className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-teal-400 focus:outline-none font-bold"
+            />
+          </label>
+          <label className="block">
+            <span className="text-sm font-semibold text-gray-700 mb-1 block">الحد الأدنى للرصيد لاستقبال الطلبات (ر.س)</span>
+            <input
+              type="number"
+              min={1}
+              value={pricing.minBalanceForRequest}
+              onChange={(e) => setPricing((p) => ({ ...p, minBalanceForRequest: Number(e.target.value) }))}
+              className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-teal-400 focus:outline-none font-bold"
+            />
+          </label>
+        </div>
+        <p className="text-xs text-gray-400 mt-3">
+          الشحن القديم: {pricing.legacyProviderCommissionPerOrder} ر.س/خدمة (ثابت — للحفاظ على رصيد المزودين الحاليين)
+        </p>
       </div>
 
       {/* Stages Editor */}

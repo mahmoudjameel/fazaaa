@@ -1,3 +1,8 @@
+import {
+  countRemainingServices,
+  DEFAULT_PRICING,
+} from './providerPricing';
+
 const toFiniteBalance = (value) => {
   if (value == null || value === '') return null;
   const num = typeof value === 'number' ? value : Number(String(value).replace(/,/g, '').trim());
@@ -33,11 +38,16 @@ export function resolveProviderWalletBalance(providerData, transactionHistory = 
   return 0;
 }
 
-/** رصيد منخفض: 25 ريال فأقل */
-export const LOW_BALANCE_THRESHOLD = 25;
+/** عدد الخدمات المتبقية — يحترم رصيد الشحن القديم (5 ر.س) والجديد (10 ر.س) */
+export function countProviderRemainingServices(providerData, pricing = DEFAULT_PRICING) {
+  return countRemainingServices(providerData?.wallet || {}, pricing);
+}
 
-export function isLowWalletBalance(providerData, threshold = LOW_BALANCE_THRESHOLD) {
-  return resolveProviderWalletBalance(providerData) <= threshold;
+/** رصيد منخفض: 3 خدمات أو أقل */
+export const LOW_BALANCE_SERVICE_THRESHOLD = 3;
+
+export function isLowWalletBalance(providerData, threshold = LOW_BALANCE_SERVICE_THRESHOLD) {
+  return countProviderRemainingServices(providerData) <= threshold;
 }
 
 export function withNormalizedProviderWallet(provider, transactionHistory = []) {

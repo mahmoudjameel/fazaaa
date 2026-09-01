@@ -150,6 +150,7 @@ export const Layout = () => {
     { id: 'dashboard',               path: '/admin',                          icon: LayoutDashboard, label: 'لوحة التحكم',             category: 'main' },
     { id: 'emergency_services',      path: '/admin/emergency-services',       icon: AlertCircle,     label: 'خدمات الطوارئ',           category: 'services' },
     { id: 'providers',               path: '/admin/providers',                icon: Users,           label: 'المزودون',                 category: 'management' },
+    { id: 'providers_map',           path: '/admin/providers-map',            icon: MapPin,          label: 'خريطة المزودين',           category: 'management' },
     { id: 'add_provider',            path: '/admin/add-provider',             icon: UserPlus,        label: 'إضافة مزود',              category: 'management' },
     { id: 'orders',                  path: '/admin/orders',                   icon: ShoppingBag,     label: 'الطلبات',                  category: 'management' },
     { id: 'sla_tracking',            path: '/admin/sla-tracking',             icon: Timer,           label: 'متابعة SLA',               category: 'management' },

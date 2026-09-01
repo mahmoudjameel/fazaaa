@@ -8,6 +8,7 @@ export const ADMIN_PERMISSION_DEFS = [
   { id: 'emergency_services', path: '/admin/emergency-services', category: 'services', label: 'خدمات الطوارئ' },
   { id: 'services', path: '/admin/services', category: 'services', label: 'الخدمات' },
   { id: 'providers', path: '/admin/providers', category: 'management', label: 'المزودون' },
+  { id: 'providers_map', path: '/admin/providers-map', category: 'management', label: 'خريطة المزودين' },
   { id: 'add_provider', path: '/admin/add-provider', category: 'management', label: 'إضافة مزود' },
   { id: 'provider_profile_requests', path: '/admin/provider-profile-requests', category: 'management', label: 'طلبات تعديل المزودين' },
   { id: 'orders', path: '/admin/orders', category: 'management', label: 'الطلبات' },

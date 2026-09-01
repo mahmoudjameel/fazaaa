@@ -11,6 +11,7 @@ import { Dashboard } from './pages/Dashboard';
 import { Services } from './pages/Services';
 import { EmergencyServices } from './pages/EmergencyServices';
 import { Providers } from './pages/Providers';
+import { ProvidersMap } from './pages/ProvidersMap';
 import { Cities } from './pages/Cities';
 import { Orders } from './pages/Orders';
 import { DistributionSettings } from './pages/DistributionSettings';
@@ -101,6 +102,7 @@ function App() {
           <Route path="services" element={<Services />} />
           <Route path="emergency-services" element={<EmergencyServices />} />
           <Route path="providers" element={<Providers />} />
+          <Route path="providers-map" element={<ProvidersMap />} />
           <Route path="add-provider" element={<AddProvider />} />
           <Route path="cities" element={<Cities />} />
           <Route path="orders" element={<Orders />} />
