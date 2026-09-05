@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <!-- Google Tag Manager -->
+    <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+    new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+    j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+    'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+    })(window,document,'script','dataLayer','GTM-TQ645V72');</script>
+    <!-- End Google Tag Manager -->
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>فزاعين | مساعدة الطريق وبنشر متنقل وبطارية وفتح سيارة في السعودية</title>
+    <meta
+      name="description"
+      content="فزاعين منصة مساعدة الطريق في السعودية: بنشر متنقل، اشتراك وتبديل بطارية، وفتح سيارات مقفلة. اطلب من التطبيق ووصلك أقرب مزود معتمد مع تتبع مباشر."
+    />
+    <meta
+      name="keywords"
+      content="فزاعين, مساعدة الطريق, بنشر متنقل, بنشر إطارات, اشتراك بطارية, تبديل بطارية, فتح سيارة, فتح سيارات مقفلة, كراج متنقل, طوارئ سيارات السعودية, بنشر متنقل الرياض, بنشر متنقل جدة, مساعدة الطريق الدمام"
+    />
+    <meta name="author" content="فزاعين" />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
+    <meta name="googlebot" content="index, follow, max-image-preview:large" />
+    <meta name="language" content="Arabic" />
+    <meta name="geo.region" content="SA" />
+    <meta name="geo.placename" content="Saudi Arabia" />
+    <meta name="theme-color" content="#DC2626" />
+
+    <link rel="canonical" href="https://fzaeen.com/" />
+    <link rel="alternate" hrefLang="ar-SA" href="https://fzaeen.com/" />
+    <link rel="alternate" hrefLang="ar" href="https://fzaeen.com/" />
+
+    <!-- Favicon — تبويب المتصفح + نتائج بحث جوجل -->
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="48x48" href="/favicon-48x48.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/favicon-192x192.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <meta name="msapplication-TileImage" content="/favicon-192x192.png" />
+    <meta name="msapplication-TileColor" content="#DC2626" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="فزاعين" />
+    <meta property="og:locale" content="ar_SA" />
+    <meta property="og:title" content="فزاعين | مساعدة الطريق في السعودية" />
+    <meta
+      property="og:description"
+      content="بنشر متنقل، بطارية، وفتح سيارة — اطلب المساعدة على الطريق من تطبيق فزاعين في أنحاء المملكة."
+    />
+    <meta property="og:url" content="https://fzaeen.com/" />
+    <meta property="og:image" content="https://fzaeen.com/landing-hero.jpg" />
+    <meta property="og:image:alt" content="فزاعين — مساعدة الطريق في السعودية" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="فزاعين | مساعدة الطريق في السعودية" />
+    <meta
+      name="twitter:description"
+      content="بنشر متنقل، بطارية، وفتح سيارة عبر تطبيق فزاعين في السعودية."
+    />
+    <meta name="twitter:image" content="https://fzaeen.com/landing-hero.jpg" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@500;600;700;800;900&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-229FL5SZVW"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-229FL5SZVW', { send_page_view: false });
+    </script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+      html, body, #root { font-family: 'Cairo', system-ui, sans-serif; }
+      @keyframes pm-pulse {
+        0%, 100% { transform: scale(1); opacity: 1; }
+        50% { transform: scale(1.25); opacity: 0.85; }
+      }
+      .leaflet-div-icon.provider-map-marker {
+        background: transparent !important;
+        border: none !important;
+      }
+      .pm-marker-wrap {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-end;
+        pointer-events: none;
+      }
+      .pm-label {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 2px;
+        background: rgba(255,255,255,0.96);
+        border: 1.5px solid #E5E7EB;
+        border-radius: 10px;
+        padding: 3px 8px 4px;
+        box-shadow: 0 4px 14px rgba(0,0,0,0.14);
+        margin-bottom: 4px;
+        max-width: 140px;
+        direction: rtl;
+        text-align: center;
+        line-height: 1.2;
+      }
+      .pm-label-provider { border-color: #99F6E4; }
+      .pm-label-customer { border-color: #DDD6FE; }
+      .pm-badge {
+        font-size: 9px;
+        font-weight: 900;
+        letter-spacing: 0.02em;
+        padding: 1px 6px;
+        border-radius: 999px;
+      }
+      .pm-badge-provider { background: #CCFBF1; color: #0F766E; }
+      .pm-badge-customer { background: #EDE9FE; color: #6D28D9; }
+      .pm-name {
+        font-size: 11px;
+        font-weight: 800;
+        color: #111827;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 124px;
+      }
+      .pm-dot {
+        border-radius: 50%;
+        border: 2px solid #fff;
+        flex-shrink: 0;
+      }
+      .pm-dot-customer {
+        background: #7C3AED;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.35);
+        border-radius: 4px; /* مربع مميز عن دائرة المزود */
+      }
+      .provider-map-popup .leaflet-popup-content-wrapper {
+        border-radius: 14px;
+        background: #ffffff !important;
+        opacity: 1 !important;
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.22);
+        padding: 2px;
+        border: 1px solid #E5E7EB;
+      }
+      .provider-map-popup .leaflet-popup-content {
+        margin: 12px 14px;
+      }
+      .provider-map-popup .leaflet-popup-tip {
+        background: #ffffff !important;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+      }
+    </style>
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "Organization",
+        "name": "فزاعين",
+        "alternateName": ["Fzaeen", "فزّاعين"],
+        "url": "https://fzaeen.com/",
+        "logo": "https://fzaeen.com/favicon-192x192.png",
+        "email": "fzaeen@fzaeen.com",
+        "areaServed": { "@type": "Country", "name": "Saudi Arabia" }
+      }
+    </script>
+    <script type="module" crossorigin src="/assets/index-CKEFk3Wk.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-DRy9lhUC.css">
+  </head>
+  <body>
+    <!-- Google Tag Manager (noscript) -->
+    <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-TQ645V72"
+    height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+    <!-- End Google Tag Manager (noscript) -->
+    <div id="root"></div>
+  </body>
+</html>
