@@ -21,7 +21,7 @@ import { auth, db, functions } from './firebase';
 import { httpsCallable } from 'firebase/functions';
 import { normalizeDocumentsForStorage } from '../utils/documentUtils';
 import { withNormalizedProviderWallet } from '../utils/providerWallet';
-import { normalizePricing, validateTopUpAmount, ensureWalletCreditsShape } from '../utils/providerPricing';
+import { normalizePricing, validateTopUpAmount, applyTopUpCredits, ensureWalletCreditsShape } from '../utils/providerPricing';
 import { diagnoseProviderForRequest, evaluateProviderEligibility } from '../utils/dispatchDiagnostics';
 
 // Providers Management
@@ -1492,6 +1492,76 @@ export const listenToAllProviders = (callback) => {
   }
 };
 
+/**
+ * إرسال تنبيه Push لمزودين محددين عبر admin_notifications (Cloud Function).
+ * @param {{ title: string, message: string, providerIds: string[], templateId?: string }} params
+ */
+export const sendAdminPushToProviders = async ({ title, message, providerIds, templateId = null }) => {
+  const ids = Array.isArray(providerIds)
+    ? [...new Set(providerIds.map((id) => String(id || '').trim()).filter(Boolean))]
+    : [];
+  if (!title?.trim() || !message?.trim()) {
+    throw new Error('العنوان والرسالة مطلوبان');
+  }
+  if (ids.length === 0) {
+    throw new Error('لا يوجد مزودون محددون للإرسال');
+  }
+
+  const docRef = await addDoc(collection(db, 'admin_notifications'), {
+    title: title.trim(),
+    message: message.trim(),
+    target: 'provider',
+    providerIds: ids,
+    providerCities: [],
+    providerCityNames: [],
+    templateId: templateId || null,
+    source: 'providers_map',
+    createdAt: serverTimestamp(),
+    type: 'admin_broadcast',
+  });
+
+  return { success: true, id: docRef.id, count: ids.length };
+};
+
+/**
+ * طلبات نشطة على الخريطة (مواقع العملاء) — حالة البحث + التتبع الحي
+ */
+export const listenToActiveMapRequests = (callback) => {
+  const ACTIVE_STATUSES = [
+    'searching',
+    'assigned',
+    'en_route',
+    'arrived',
+    'in_progress',
+    'pending_client_confirmation',
+    'pending_review',
+    'pending_legal_docs',
+  ];
+
+  try {
+    const requestsRef = collection(db, 'requests');
+    // Firestore `in` يدعم حتى 10 قيم
+    const q = query(requestsRef, where('status', 'in', ACTIVE_STATUSES));
+
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const requests = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+        callback(requests);
+      },
+      (error) => {
+        console.error('Error listening to active map requests:', error);
+        callback([]);
+      }
+    );
+
+    return unsubscribe;
+  } catch (error) {
+    console.error('Setup active map requests listener error:', error);
+    return () => {};
+  }
+};
+
 
 
 /**
@@ -2257,6 +2327,7 @@ export const adjustProviderWallet = async (providerId, amount, type, reason) => 
     const providerRef = doc(db, 'providers', providerId);
     let serviceCreditsAdded = 0;
     let unitValue = pricing.providerCommissionPerOrder;
+    let walletAfter = null;
 
     const result = await runTransaction(db, async (transaction) => {
       const providerDoc = await transaction.get(providerRef);
@@ -2274,26 +2345,55 @@ export const adjustProviderWallet = async (providerId, amount, type, reason) => 
       };
 
       if (type === 'addition' || type === 'compensation') {
-        const validation = validateTopUpAmount(Number(amount), pricing);
-        serviceCreditsAdded = validation.serviceCredits;
-        unitValue = validation.unitValue;
-        newBalance += Number(amount);
-        const w = ensureWalletCreditsShape({ ...wallet, balance: newBalance });
+        const applied = applyTopUpCredits(
+          { ...wallet, balance: Number(currentBalance) || 0 },
+          Number(amount),
+          pricing
+        );
+        if (!applied.ok) throw new Error(applied.error);
+        serviceCreditsAdded = applied.serviceCreditsAdded;
+        unitValue = applied.unitValue;
+        newBalance = applied.newBalance;
         walletUpdate['wallet.balance'] = newBalance;
-        walletUpdate['wallet.serviceCredits'] = (typeof wallet.serviceCredits === 'number' ? wallet.serviceCredits : w.serviceCredits) + serviceCreditsAdded;
-        if (typeof wallet.legacyServiceCredits === 'number') {
-          walletUpdate['wallet.legacyServiceCredits'] = wallet.legacyServiceCredits;
-        } else if (w.legacyServiceCredits > 0) {
-          walletUpdate['wallet.legacyServiceCredits'] = w.legacyServiceCredits;
-        }
+        walletUpdate['wallet.legacyServiceCredits'] = applied.legacyServiceCredits;
+        walletUpdate['wallet.serviceCredits'] = applied.serviceCredits;
+        walletAfter = {
+          balance: newBalance,
+          legacyServiceCredits: applied.legacyServiceCredits,
+          serviceCredits: applied.serviceCredits,
+        };
       } else if (type === 'deduction') {
-        newBalance -= Number(amount);
+        const deductAmount = Number(amount);
+        if (!Number.isFinite(deductAmount) || deductAmount <= 0) {
+          throw new Error('المبلغ يجب أن يكون أكبر من صفر');
+        }
+        // خصم يدوي بمضاعفات سعر الخدمة → يُنقص عدد الخدمات أيضاً
+        const unit = pricing.providerCommissionPerOrder;
+        newBalance = Math.max(0, (Number(currentBalance) || 0) - deductAmount);
         walletUpdate['wallet.balance'] = newBalance;
+
+        const shaped = ensureWalletCreditsShape({ ...wallet, balance: Number(currentBalance) || 0 });
+        let legacy = shaped.legacyServiceCredits;
+        let neu = shaped.serviceCredits;
+        if (deductAmount % unit === 0) {
+          let toConsume = deductAmount / unit;
+          while (toConsume > 0 && legacy > 0) {
+            legacy -= 1;
+            toConsume -= 1;
+          }
+          while (toConsume > 0 && neu > 0) {
+            neu -= 1;
+            toConsume -= 1;
+          }
+        }
+        walletUpdate['wallet.legacyServiceCredits'] = legacy;
+        walletUpdate['wallet.serviceCredits'] = neu;
+        walletAfter = { balance: newBalance, legacyServiceCredits: legacy, serviceCredits: neu };
       }
 
       transaction.update(providerRef, walletUpdate);
 
-      return { newBalance };
+      return { newBalance, walletAfter };
     });
 
     const transactionsRef = collection(db, 'providers', providerId, 'transactions');
@@ -2312,7 +2412,12 @@ export const adjustProviderWallet = async (providerId, amount, type, reason) => 
     }
     await addDoc(transactionsRef, txPayload);
 
-    return { success: true, newBalance: result.newBalance, serviceCreditsAdded };
+    return {
+      success: true,
+      newBalance: result.newBalance,
+      serviceCreditsAdded,
+      wallet: result.walletAfter || walletAfter,
+    };
   } catch (error) {
     console.error('Adjust provider wallet error:', error);
     throw error;

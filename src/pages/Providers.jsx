@@ -58,7 +58,7 @@ import {
 } from '../utils/providerWallet';
 import { hasLocationTrackingIssue, inferLocationTrackingIssue } from '../utils/providerLocation';
 import { PhoneWithActions } from '../components/PhoneWithActions';
-import { normalizePricing, validateTopUpAmount, DEFAULT_PRICING } from '../utils/providerPricing';
+import { normalizePricing, validateTopUpAmount, DEFAULT_PRICING, resolveNextDeductionAmount } from '../utils/providerPricing';
 import SAUDI_CITIES_RAW from '../services/cities.json';
 
 export const NATIONALITIES = [
@@ -808,13 +808,19 @@ export const Providers = () => {
       );
 
       if (result.success) {
-        alert('تم تحديث الرصيد بنجاح');
+        alert(
+          result.serviceCreditsAdded > 0
+            ? `تم الشحن بنجاح — أُضيفت ${result.serviceCreditsAdded} خدمة`
+            : 'تم تحديث الرصيد بنجاح'
+        );
         setWalletAdjustment({ amount: '', type: 'addition', reason: '' });
-        // Update local state
         const updatedProvider = { ...selectedProvider };
         if (!updatedProvider.wallet) updatedProvider.wallet = {};
         updatedProvider.wallet.balance = result.newBalance;
-        if (result.serviceCreditsAdded > 0) {
+        if (result.wallet) {
+          updatedProvider.wallet.legacyServiceCredits = result.wallet.legacyServiceCredits;
+          updatedProvider.wallet.serviceCredits = result.wallet.serviceCredits;
+        } else if (result.serviceCreditsAdded > 0) {
           updatedProvider.wallet.serviceCredits =
             (updatedProvider.wallet.serviceCredits || 0) + result.serviceCreditsAdded;
         }
@@ -2859,9 +2865,31 @@ export const Providers = () => {
                           <h4 className="text-3xl font-black text-teal-700">
                             {countProviderRemainingServices(selectedProvider, pricingSettings)}
                           </h4>
-                          <p className="text-xs text-gray-400 mt-1">
+                          <p className="text-xs text-gray-500 mt-1">
                             شحن جديد: {pricingSettings.providerCommissionPerOrder} ر.س/خدمة
+                            {' · '}
+                            قديم: {pricingSettings.legacyProviderCommissionPerOrder || 5} ر.س/خدمة
                           </p>
+                          <p className="text-xs font-bold text-teal-700 mt-1">
+                            الخصم التالي عند إكمال طلب:{' '}
+                            {resolveNextDeductionAmount(selectedProvider?.wallet || {}, pricingSettings)} ر.س
+                            {resolveNextDeductionAmount(selectedProvider?.wallet || {}, pricingSettings) === (pricingSettings.legacyProviderCommissionPerOrder || 5)
+                              ? ' (من رصيد الشحن القديم)'
+                              : ' (سعر الشحن الجديد)'}
+                          </p>
+                          {(() => {
+                            const w = selectedProvider?.wallet || {};
+                            const legacy = typeof w.legacyServiceCredits === 'number' ? w.legacyServiceCredits : null;
+                            const neu = typeof w.serviceCredits === 'number' ? w.serviceCredits : null;
+                            if (legacy == null && neu == null) return null;
+                            return (
+                              <p className="text-xs text-gray-400 mt-0.5">
+                                {legacy != null ? `قديم: ${legacy}` : null}
+                                {legacy != null && neu != null ? ' + ' : null}
+                                {neu != null ? `جديد: ${neu}` : null}
+                              </p>
+                            );
+                          })()}
                         </div>
                         <div className="bg-white p-5 rounded-2xl border-2 border-gray-100 shadow-sm">
                           <p className="text-gray-500 text-sm font-semibold mb-1">إجمالي الإيداعات</p>
@@ -2885,7 +2913,8 @@ export const Providers = () => {
                             تعديل الرصيد يدوياً
                           </h4>
                           <p className="text-xs text-gray-500 mb-3">
-                            الشحن والتعويض: مضاعفات {pricingSettings.providerCommissionPerOrder} ر.س
+                            الشحن والتعويض: مضاعفات {pricingSettings.providerCommissionPerOrder} ر.س فقط
+                            (مثال: {pricingSettings.providerCommissionPerOrder}، {pricingSettings.providerCommissionPerOrder * 2}، {pricingSettings.providerCommissionPerOrder * 10})
                           </p>
                           <form onSubmit={handleAdjustWallet} className="space-y-4">
                             <div className="grid grid-cols-2 gap-3">
@@ -2914,7 +2943,9 @@ export const Providers = () => {
                               </button>
                               <input
                                 type="number"
-                                placeholder="المبلغ"
+                                step={pricingSettings.providerCommissionPerOrder}
+                                min={pricingSettings.providerCommissionPerOrder}
+                                placeholder={`مضاعف ${pricingSettings.providerCommissionPerOrder}`}
                                 value={walletAdjustment.amount}
                                 onChange={(e) => {
                                   setWalletAmountError('');
@@ -2926,6 +2957,19 @@ export const Providers = () => {
                                   }`}
                               />
                             </div>
+                            {(walletAdjustment.type === 'addition' || walletAdjustment.type === 'compensation') && (() => {
+                              const raw = Number(walletAdjustment.amount);
+                              if (!Number.isFinite(raw) || raw <= 0) return null;
+                              const v = validateTopUpAmount(raw, pricingSettings);
+                              if (!v.ok) {
+                                return <p className="text-sm text-amber-700 font-semibold">{v.error}</p>;
+                              }
+                              return (
+                                <p className="text-sm text-teal-700 font-bold bg-teal-50 border border-teal-100 rounded-xl px-3 py-2">
+                                  سيُضاف {v.serviceCredits} خدمة ({raw} ÷ {v.unitValue})
+                                </p>
+                              );
+                            })()}
                             {walletAmountError && (
                               <p className="text-sm text-red-500 font-semibold">
                                 {walletAmountError}

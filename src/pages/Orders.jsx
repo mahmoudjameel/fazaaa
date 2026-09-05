@@ -56,6 +56,20 @@ import { db } from '../services/firebase';
 import SAUDI_CITIES_FALLBACK from '../services/cities.json';
 import { formatOrderNumberLabel } from '../utils/orderNumber';
 
+/** تحويل أكواد الإلغاء القديمة (إنجليزي) لنص عربي — النص الحر يُعرض كما هو */
+const CANCEL_REASON_LABELS_AR = {
+  price_high: 'السعر مرتفع جداً',
+  problem_resolved: 'تم حل المشكلة',
+  wrong_service: 'اخترت نوع خدمة خاطئ',
+  provider_behavior: 'سلوك مزود الخدمة',
+  other: 'سبب آخر',
+};
+
+function formatCancelReasonLabel(reason) {
+  if (!reason || typeof reason !== 'string') return reason || '';
+  return CANCEL_REASON_LABELS_AR[reason] || reason;
+}
+
 const MapPickerWidget = ({ coordinates, onLocationSelect }) => {
   const mapContainerRef = useRef(null);
   const mapInstanceRef = useRef(null);
@@ -1486,7 +1500,7 @@ export const Orders = () => {
       order.status === 'canceled_by_provider' ||
       order.status === 'canceled_by_provider_with_reason'
     ) {
-      const r = providerReason || order.cancelReason;
+      const r = formatCancelReasonLabel(providerReason || order.cancelReason);
       return {
         reason: r ? `المزود ألغى — ${r}` : 'المزود ألغى الطلب',
         tone: 'red',
@@ -1497,9 +1511,10 @@ export const Orders = () => {
       order.status === 'canceled_by_client' ||
       order.status === 'canceled_by_client_with_reason'
     ) {
+      const clientReason = formatCancelReasonLabel(order.cancelReason);
       return {
-        reason: order.cancelReason
-          ? `العميل ألغى — ${order.cancelReason}`
+        reason: clientReason
+          ? `العميل ألغى — ${clientReason}`
           : 'العميل ألغى الطلب',
         tone: 'orange',
       };
@@ -2625,7 +2640,7 @@ export const Orders = () => {
                           <p className="text-xs text-rose-700 mt-1 leading-relaxed">
                             {selectedRequest.status === 'completed'
                               ? selectedRequest.commissionDeducted
-                                ? `سيتم إلغاء الطلب واسترجاع ${(selectedRequest.commission || 5)} ر.س تلقائياً لمحفظة المزود.`
+                                ? `سيتم إلغاء الطلب واسترجاع ${(selectedRequest.commission || selectedRequest.commissionRefundAmount || 10)} ر.س تلقائياً لمحفظة المزود.`
                                 : 'سيتم إلغاء الطلب بدون استرجاع عمولة (لم يُسجَّل خصم عمولة).'
                               : 'سيتم إلغاء الطلب وإشعار العميل والمزود (إن وُجد) مع ذكر السبب.'}
                           </p>
@@ -2692,7 +2707,7 @@ export const Orders = () => {
                       )}
                       {selectedRequest.commissionRefunded && (
                         <p className="mt-1 font-semibold">
-                          تم استرجاع {selectedRequest.commissionRefundAmount || selectedRequest.commission || 5} ر.س للمزود
+                          تم استرجاع {selectedRequest.commissionRefundAmount || selectedRequest.commission || 10} ر.س للمزود
                         </p>
                       )}
                     </div>
@@ -2847,7 +2862,9 @@ export const Orders = () => {
                       const cancelEvent = Array.isArray(selectedRequest.history)
                         ? selectedRequest.history.find(h => h.status === 'canceled_by_client' || h.status === 'canceled_by_client_with_reason')
                         : null;
-                      const reason = selectedRequest.cancelReason || cancelEvent?.cancelReason;
+                      const reason = formatCancelReasonLabel(
+                        selectedRequest.cancelReason || cancelEvent?.cancelReason
+                      );
                       const wasAccepted = selectedRequest.assignedAt || (Array.isArray(selectedRequest.history) && selectedRequest.history.some(h => h.status === 'assigned'));
 
                       // 1) إذا كانت أسباب timeout/لا يوجد مزودين => استخدم بلوك الـ timeout الحالي
@@ -2961,7 +2978,7 @@ export const Orders = () => {
                     <div>
                       <h3 className="font-semibold text-sm sm:text-base text-gray-700 mb-1 sm:mb-2">عمولة الإدارة</h3>
                       <p className="text-xl sm:text-2xl font-black text-red-500">
-                        {selectedRequest.commission || 5} ر.س
+                        {selectedRequest.commission || 10} ر.س
                       </p>
                     </div>
                   )}
@@ -2970,7 +2987,7 @@ export const Orders = () => {
                   <div className="bg-green-50 rounded-xl p-4 border border-green-100">
                     <h3 className="font-semibold text-sm text-green-800 mb-1">صافي ربح المزود</h3>
                     <p className="text-2xl font-black text-green-700">
-                      {resolveOrderPrice(selectedRequest) - (selectedRequest.commission || 5)} ر.س
+                      {resolveOrderPrice(selectedRequest) - (selectedRequest.commission || 10)} ر.س
                     </p>
                   </div>
                 )}

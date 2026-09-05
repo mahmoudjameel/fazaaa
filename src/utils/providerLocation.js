@@ -215,3 +215,85 @@ export function heartbeatSourceLabel(source) {
   };
   return map[source] || source || '—';
 }
+
+const BACKGROUND_HEARTBEAT_SOURCES = new Set([
+  'background',
+  'bg-simulator',
+  'location_update',
+  'live_tracking_start',
+]);
+
+/** نبض حديث بما يكفي لاعتبار التطبيق ما زال يعمل */
+export const BACKGROUND_ALIVE_MS = 10 * 60 * 1000;
+
+/**
+ * حالة تشغيل تطبيق المزود (استنتاج من Firestore — ليست ضمانة 100%).
+ * - foreground: التطبيق مفتوح أمام المستخدم
+ * - background_ok: يعمل بالخلفية مع نبض حديث
+ * - not_running: لا يوجد نبض حديث → غالباً مغلق أو أوقف الخلفية
+ * - unknown: لا بيانات كافية
+ */
+export function getProviderAppRuntimeStatus(provider, nowMs = Date.now()) {
+  if (!provider) return { id: 'unknown', label: 'غير معروف', hint: 'لا بيانات', healthy: false };
+
+  const ageMs = getFreshnessAgeMs(provider, nowMs);
+  const appState = String(provider.clientAppState || '').toLowerCase();
+  const source = String(provider.heartbeatSource || '').toLowerCase();
+  const hasRecentPulse = ageMs != null && ageMs <= BACKGROUND_ALIVE_MS;
+
+  if (hasRecentPulse && appState === 'active') {
+    return {
+      id: 'foreground',
+      label: 'مفتوح الآن',
+      hint: 'التطبيق في الواجهة (أمام المستخدم).',
+      healthy: true,
+    };
+  }
+
+  if (hasRecentPulse && (appState === 'background' || BACKGROUND_HEARTBEAT_SOURCES.has(source))) {
+    return {
+      id: 'background_ok',
+      label: 'يعمل بالخلفية',
+      hint: 'نبض حديث من الخلفية — التتبع فعّال.',
+      healthy: true,
+    };
+  }
+
+  if (hasRecentPulse) {
+    return {
+      id: 'foreground',
+      label: 'مفتوح / نبض حديث',
+      hint: 'يوجد نبض حديث لكن مصدر الخلفية غير مؤكد.',
+      healthy: true,
+    };
+  }
+
+  if (ageMs == null) {
+    return {
+      id: 'unknown',
+      label: 'غير معروف',
+      hint: 'لا يوجد lastHeartbeat أو موقع — اطلب فتح التطبيق.',
+      healthy: false,
+    };
+  }
+
+  return {
+    id: 'not_running',
+    label: 'بدون خلفية / مغلق',
+    hint: 'لا يوجد نبض منذ أكثر من 10 دقائق — التطبيق غالباً مغلق أو أوقف الموقع في الخلفية.',
+    healthy: false,
+  };
+}
+
+/** مزودون يحتاجون تنبيه: ليسوا يعملون بالخلفية بشكل سليم */
+export function isProviderMissingBackground(provider, nowMs = Date.now()) {
+  const status = getProviderAppRuntimeStatus(provider, nowMs);
+  return status.id === 'not_running' || status.id === 'unknown';
+}
+
+export function clientAppStateLabel(state) {
+  const s = String(state || '').toLowerCase();
+  if (s === 'active') return 'واجهة (مفتوح)';
+  if (s === 'background') return 'خلفية';
+  return state || '—';
+}

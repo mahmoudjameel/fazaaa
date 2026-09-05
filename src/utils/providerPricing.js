@@ -37,6 +37,8 @@ export function normalizePricing(raw) {
 /**
  * تهيئة كسولية: رصيد قديم بـ 5 ر.س/خدمة → legacyServiceCredits
  * (لا يغيّر الرصيد بالريال — يحافظ على عدد الخدمات)
+ *
+ * مهم: لا تُحسب legacy من رصيد يتضمن شحن جديد لم يُسجَّل بعد في serviceCredits.
  */
 export function ensureWalletCreditsShape(wallet = {}) {
   const balance = Number(wallet.balance) || 0;
@@ -46,7 +48,13 @@ export function ensureWalletCreditsShape(wallet = {}) {
   let serviceCredits = hasNewField ? wallet.serviceCredits : 0;
 
   if (!hasLegacyField && !hasNewField && balance > 0) {
+    // محفظة قديمة بالكامل قبل نظام الرصيد المزدوج → كلها خدمات بـ 5 ر.س
     legacyServiceCredits = Math.floor(balance / LEGACY_COMMISSION_PER_ORDER);
+  } else if (!hasLegacyField && hasNewField && balance > 0) {
+    // وُجد serviceCredits فقط: ما تبقى بعد حجز الشحن الجديد يُحسب قديماً بـ 5
+    const reservedNew = Math.max(0, Number(serviceCredits) || 0) * DEFAULT_COMMISSION_PER_ORDER;
+    const leftover = Math.max(0, balance - reservedNew);
+    legacyServiceCredits = Math.floor(leftover / LEGACY_COMMISSION_PER_ORDER);
   }
   if (legacyServiceCredits == null) legacyServiceCredits = 0;
 
@@ -54,6 +62,25 @@ export function ensureWalletCreditsShape(wallet = {}) {
     balance,
     legacyServiceCredits,
     serviceCredits,
+  };
+}
+
+/**
+ * عند الشحن: ثبّت خدمات الـ 5 ر.س من الرصيد الحالي قبل إضافة الشحن الجديد بـ 10 ر.س.
+ */
+export function applyTopUpCredits(wallet, amountSar, pricing = DEFAULT_PRICING) {
+  const validation = validateTopUpAmount(Number(amountSar), pricing);
+  if (!validation.ok) return { ok: false, error: validation.error };
+
+  const before = ensureWalletCreditsShape(wallet || {});
+  const newBalance = before.balance + Number(amountSar);
+  return {
+    ok: true,
+    newBalance,
+    legacyServiceCredits: before.legacyServiceCredits,
+    serviceCredits: before.serviceCredits + validation.serviceCredits,
+    serviceCreditsAdded: validation.serviceCredits,
+    unitValue: validation.unitValue,
   };
 }
 
@@ -67,6 +94,14 @@ export function countRemainingServices(wallet, pricing = DEFAULT_PRICING) {
   return Math.floor(w.balance / unit);
 }
 
+/** مبلغ الخصم عند إكمال طلب: قديم 5 ر.س أولاً، ثم شحن جديد 10 ر.س */
+export function resolveNextDeductionAmount(wallet, pricing = DEFAULT_PRICING) {
+  const w = ensureWalletCreditsShape(wallet);
+  const p = normalizePricing(pricing);
+  if (w.legacyServiceCredits > 0) return p.legacyProviderCommissionPerOrder;
+  return p.providerCommissionPerOrder;
+}
+
 /** هل الرصيد كافٍ لاستقبال طلب؟ */
 export function canReceiveRequestsWithWallet(wallet, pricing = DEFAULT_PRICING) {
   const w = ensureWalletCreditsShape(wallet);
@@ -77,14 +112,6 @@ export function canReceiveRequestsWithWallet(wallet, pricing = DEFAULT_PRICING) 
     return w.balance >= p.minBalanceForRequest;
   }
   return false;
-}
-
-/** مبلغ الخصم التالي عند إكمال طلب */
-export function resolveNextDeductionAmount(wallet, pricing = DEFAULT_PRICING) {
-  const w = ensureWalletCreditsShape(wallet);
-  const p = normalizePricing(pricing);
-  if (w.legacyServiceCredits > 0) return p.legacyProviderCommissionPerOrder;
-  return p.providerCommissionPerOrder;
 }
 
 /** اعتماد شحن جديد — مضاعفات السعر الحالي */
