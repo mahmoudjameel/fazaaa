@@ -23,10 +23,16 @@ import { normalizeDocumentsForStorage } from '../utils/documentUtils';
 import { withNormalizedProviderWallet } from '../utils/providerWallet';
 import { normalizePricing, validateTopUpAmount, applyTopUpCredits, ensureWalletCreditsShape } from '../utils/providerPricing';
 import { diagnoseProviderForRequest, evaluateProviderEligibility } from '../utils/dispatchDiagnostics';
+import { getCached, setCached, createSharedSnapshotListener } from '../utils/adminQueryCache';
 
 // Providers Management
-export const getAllProviders = async () => {
+export const getAllProviders = async ({ force = false } = {}) => {
   try {
+    const cacheKey = 'getAllProviders';
+    if (!force) {
+      const cached = getCached(cacheKey, 45_000);
+      if (cached) return cached;
+    }
     const providersRef = collection(db, 'providers');
     const q = query(providersRef, orderBy('createdAt', 'desc'));
     const querySnapshot = await getDocs(q);
@@ -39,7 +45,7 @@ export const getAllProviders = async () => {
       // وعدم تجاوزه بحقل id داخل بيانات المستند
       providers.push(withNormalizedProviderWallet({ ...data, id: doc.id }));
     });
-    return { success: true, providers };
+    return setCached(cacheKey, { success: true, providers });
   } catch (error) {
     console.error('Get providers error:', error);
     throw error;
@@ -1171,8 +1177,13 @@ function toDate(ts) {
   return isNaN(d.getTime()) ? null : d;
 }
 
-export const getDashboardStats = async () => {
+export const getDashboardStats = async ({ force = false } = {}) => {
   try {
+    const cacheKey = 'getDashboardStats';
+    if (!force) {
+      const cached = getCached(cacheKey, 30_000);
+      if (cached) return cached;
+    }
     const [providersSnapshot, requestsSnapshot, ordersSnapshot, customersSnapshot] = await Promise.all([
       getDocs(collection(db, 'providers')),
       getDocs(collection(db, 'requests')),
@@ -1268,7 +1279,7 @@ export const getDashboardStats = async () => {
       changeCommission: calcChange(todayCommission, yesterdayCommission),
     };
 
-    return { success: true, stats };
+    return setCached(cacheKey, { success: true, stats });
   } catch (error) {
     console.error('Get stats error:', error);
     throw error;
@@ -1400,97 +1411,80 @@ export const getRecentActivity = async () => {
 // ✅ Real-time Listeners for Admin Dashboard
 
 /**
- * الاستماع للطلبات في الوقت الفعلي
+ * الاستماع للطلبات في الوقت الفعلي (مستمع مشترك — الرجوع للتاب فوري من الكاش)
  * @param {Function} callback - دالة تُستدعى عند كل تحديث
  * @returns {Function} unsubscribe function
  */
-export const listenToAllRequests = (callback) => {
-  try {
+export const listenToAllRequests = createSharedSnapshotListener({
+  key: 'allRequests',
+  keepAliveMs: 120_000,
+  setup: (emit) => {
     const requestsRef = collection(db, 'requests');
     const q = query(requestsRef, orderBy('createdAt', 'desc'));
-
-    const unsubscribe = onSnapshot(q,
+    return onSnapshot(
+      q,
       (snapshot) => {
-        const requests = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-        callback(requests);
+        emit(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })));
       },
       (error) => {
         console.error('Error listening to requests:', error);
-        callback([]);
+        emit([]);
       }
     );
-
-    return unsubscribe;
-  } catch (error) {
-    console.error('Setup listener error:', error);
-    return () => { };
-  }
-};
+  },
+});
 
 /**
  * الاستماع للمزودين الجدد (pending)
  * @param {Function} callback - دالة تُستدعى عند كل تحديث
  * @returns {Function} unsubscribe function
  */
-export const listenToPendingProviders = (callback) => {
-  try {
+export const listenToPendingProviders = createSharedSnapshotListener({
+  key: 'pendingProviders',
+  keepAliveMs: 90_000,
+  setup: (emit) => {
     const providersRef = collection(db, 'providers');
     const q = query(providersRef, where('status', '==', 'pending'), orderBy('createdAt', 'desc'));
-
-    const unsubscribe = onSnapshot(q,
+    return onSnapshot(
+      q,
       (snapshot) => {
-        const providers = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-        callback(providers);
+        emit(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })));
       },
       (error) => {
         console.error('Error listening to pending providers:', error);
-        callback([]);
+        emit([]);
       }
     );
-
-    return unsubscribe;
-  } catch (error) {
-    console.error('Setup listener error:', error);
-    return () => { };
-  }
-};
+  },
+});
 
 /**
- * الاستماع لجميع المزودين في الوقت الفعلي
+ * الاستماع لجميع المزودين في الوقت الفعلي (مستمع مشترك)
  * @param {Function} callback - دالة تُستدعى عند كل تحديث
  * @returns {Function} unsubscribe function
  */
-export const listenToAllProviders = (callback) => {
-  try {
+export const listenToAllProviders = createSharedSnapshotListener({
+  key: 'allProviders',
+  keepAliveMs: 120_000,
+  setup: (emit) => {
     const providersRef = collection(db, 'providers');
     const q = query(providersRef, orderBy('createdAt', 'desc'));
-
-    const unsubscribe = onSnapshot(q,
+    return onSnapshot(
+      q,
       (snapshot) => {
-        const providers = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-        callback(providers);
+        emit(
+          snapshot.docs
+            .map((d) => withNormalizedProviderWallet({ ...d.data(), id: d.id }))
+            .filter((p) => !p?.mergedInto)
+        );
       },
       (error) => {
         console.error('Error listening to providers:', error);
-        callback([]);
+        emit([]);
       }
     );
-
-    return unsubscribe;
-  } catch (error) {
-    console.error('Setup listener error:', error);
-    return () => { };
-  }
-};
+  },
+});
 
 /**
  * إرسال تنبيه Push لمزودين محددين عبر admin_notifications (Cloud Function).

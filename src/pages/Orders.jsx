@@ -38,6 +38,7 @@ import {
 } from 'lucide-react';
 import {
   listenToAllRequests,
+  getAllProviders,
   getProviderById,
   getUsersBySearch,
   getProvidersBySearch,
@@ -307,13 +308,13 @@ export const Orders = () => {
   const [dateRangeFilter, setDateRangeFilter] = useState('all');
 
   useEffect(() => {
-    // جلب المزودين لغرض حساب مسافة SLA للطلبات القديمة التي لم يُحفظ فيها الوقت
+    // جلب المزودين لغرض حساب مسافة SLA — يستخدم كاش getAllProviders إن وُجد
     const fetchAllProvidersForSla = async () => {
       try {
-        const snap = await getDocs(collection(db, 'providers'));
+        const result = await getAllProviders();
         const dict = {};
-        snap.forEach(d => {
-          dict[d.id] = d.data();
+        (result.providers || []).forEach((p) => {
+          dict[p.id] = p;
         });
         setProvidersDict(dict);
       } catch (e) {
