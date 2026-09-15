@@ -1418,6 +1418,8 @@ export const getRecentActivity = async () => {
 export const listenToAllRequests = createSharedSnapshotListener({
   key: 'allRequests',
   keepAliveMs: 120_000,
+  // البحث المتدرج يحدّث الطلب كل ~5ث — بدون throttle الصفحة تقفز أثناء التمرير
+  throttleMs: 3000,
   setup: (emit) => {
     const requestsRef = collection(db, 'requests');
     const q = query(requestsRef, orderBy('createdAt', 'desc'));
@@ -1466,6 +1468,8 @@ export const listenToPendingProviders = createSharedSnapshotListener({
 export const listenToAllProviders = createSharedSnapshotListener({
   key: 'allProviders',
   keepAliveMs: 120_000,
+  // نبضات GPS للمزودين كثيرة — throttle يمنع وميض الخريطة/القوائم
+  throttleMs: 5000,
   setup: (emit) => {
     const providersRef = collection(db, 'providers');
     const q = query(providersRef, orderBy('createdAt', 'desc'));

@@ -333,7 +333,15 @@ export const Orders = () => {
     fetchCities();
 
     // استخدام real-time listener بدلاً من fetch
+    // نحدّث الواجهة فقط عند تغيّر حقول العرض المهمة (تجنب قفز التمرير
+    // بسبب تحديثات البحث المتدرج مثل providerIdsToNotify كل بضع ثوانٍ)
+    let lastSig = '';
     const unsubscribe = listenToAllRequests((reqs) => {
+      const sig = (reqs || [])
+        .map((r) => `${r.id}:${r.status}:${r.providerId || ''}:${r.assignedAt?.seconds || r.assignedAt || ''}:${r.rating ?? ''}`)
+        .join('|');
+      if (sig === lastSig) return;
+      lastSig = sig;
       setRequests(reqs);
       setLoading(false);
     });
@@ -342,18 +350,19 @@ export const Orders = () => {
     fetchMainServices();
     fetchServices();
 
-    // Deep linking from Dashboard
+    return () => unsubscribe();
+  }, []);
+
+  // Deep linking من لوحة التحكم — منفصل حتى لا يُعاد اشتراك المستمع مع كل تغيير في الـ URL
+  useEffect(() => {
     const params = new URLSearchParams(location.search);
     const status = params.get('status');
-    if (status) {
-      if (status === 'active') {
-        setStatusFilter('active');
-      } else {
-        setStatusFilter(status);
-      }
+    if (!status) return;
+    if (status === 'active') {
+      setStatusFilter('active');
+    } else {
+      setStatusFilter(status);
     }
-
-    return () => unsubscribe();
   }, [location.search]);
 
   // فتح تفاصيل طلب محدد عند القدوم من الشكاوى / لوحة التحكم

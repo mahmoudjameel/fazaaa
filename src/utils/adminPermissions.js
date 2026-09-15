@@ -21,6 +21,7 @@ export const ADMIN_PERMISSION_DEFS = [
   { id: 'complaints', path: '/admin/complaints', category: 'management', label: 'الشكاوي' },
   { id: 'chats', path: '/admin/chats', category: 'management', label: 'المحادثات' },
   { id: 'withdrawal_requests', path: '/admin/withdrawal-requests', category: 'financial', label: 'طلبات السحب' },
+  { id: 'wallet_topups', path: '/admin/wallet-topups', category: 'financial', label: 'عمليات شحن المزودين' },
   { id: 'cities', path: '/admin/cities', category: 'settings', label: 'المدن' },
   { id: 'city_managers', path: '/admin/city-managers', category: 'settings', label: 'مديرو المدن' },
   { id: 'distribution', path: '/admin/distribution', category: 'settings', label: 'إعدادات التوزيع' },

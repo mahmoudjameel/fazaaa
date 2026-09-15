@@ -27,6 +27,7 @@ const Complaints = lazy(() => import('./pages/Complaints').then((m) => ({ defaul
 const Chats = lazy(() => import('./pages/Chats').then((m) => ({ default: m.Chats })));
 const BankSettings = lazy(() => import('./pages/BankSettings'));
 const WithdrawalRequests = lazy(() => import('./pages/WithdrawalRequests'));
+const WalletTopUps = lazy(() => import('./pages/WalletTopUps'));
 const ProviderProfileRequests = lazy(() => import('./pages/ProviderProfileRequests'));
 const AppSettings = lazy(() => import('./pages/AppSettings'));
 const Admins = lazy(() => import('./pages/Admins'));
@@ -130,6 +131,7 @@ function App() {
             <Route path="chats" element={<Chats />} />
             <Route path="bank-settings" element={<BankSettings />} />
             <Route path="withdrawal-requests" element={<WithdrawalRequests />} />
+            <Route path="wallet-topups" element={<WalletTopUps />} />
             <Route path="provider-profile-requests" element={<ProviderProfileRequests />} />
             <Route path="app-settings" element={<AppSettings />} />
             <Route path="provider-drawer-sections" element={<ProviderDrawerSections />} />

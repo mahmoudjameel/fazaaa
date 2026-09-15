@@ -33,28 +33,73 @@ export function invalidateCached(keyOrPrefix) {
 /**
  * مستمع مشترك: يبقى حياً بعد مغادرة الصفحة لفترة قصيرة
  * حتى الرجوع للتاب لا يعيد تنزيل المجموعة من الصفر.
+ *
+ * throttleMs: يحدّ من إعادة رسم الصفحة عند تحديثات Firestore الكثيرة
+ * (مثل تحديثات البحث المتدرج / GPS كل بضع ثوانٍ).
  */
-export function createSharedSnapshotListener({ key, setup, keepAliveMs = 90_000 }) {
+export function createSharedSnapshotListener({
+  key,
+  setup,
+  keepAliveMs = 90_000,
+  throttleMs = 0,
+}) {
   let unsubscribeFs = null;
   let lastData = null;
   let keepAliveTimer = null;
+  let throttleTimer = null;
+  let pendingData = undefined;
+  let lastEmitAt = 0;
   const subscribers = new Set();
 
-  const start = () => {
-    if (unsubscribeFs) return;
-    unsubscribeFs = setup((data) => {
-      lastData = data;
-      subscribers.forEach((cb) => {
-        try {
-          cb(data);
-        } catch (e) {
-          console.error(`[sharedListener:${key}] subscriber error`, e);
-        }
-      });
+  const deliver = (data) => {
+    lastData = data;
+    subscribers.forEach((cb) => {
+      try {
+        cb(data);
+      } catch (e) {
+        console.error(`[sharedListener:${key}] subscriber error`, e);
+      }
     });
   };
 
+  const emit = (data) => {
+    if (!throttleMs || throttleMs <= 0) {
+      deliver(data);
+      return;
+    }
+
+    pendingData = data;
+    const elapsed = Date.now() - lastEmitAt;
+    if (elapsed >= throttleMs) {
+      lastEmitAt = Date.now();
+      pendingData = undefined;
+      deliver(data);
+      return;
+    }
+
+    if (throttleTimer) return;
+    throttleTimer = setTimeout(() => {
+      throttleTimer = null;
+      lastEmitAt = Date.now();
+      if (pendingData !== undefined) {
+        const next = pendingData;
+        pendingData = undefined;
+        deliver(next);
+      }
+    }, throttleMs - elapsed);
+  };
+
+  const start = () => {
+    if (unsubscribeFs) return;
+    unsubscribeFs = setup(emit);
+  };
+
   const stop = () => {
+    if (throttleTimer) {
+      clearTimeout(throttleTimer);
+      throttleTimer = null;
+    }
+    pendingData = undefined;
     if (unsubscribeFs) {
       unsubscribeFs();
       unsubscribeFs = null;

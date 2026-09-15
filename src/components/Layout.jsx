@@ -4,7 +4,7 @@ import {
   MessageSquare, MessageCircle, UserCheck, Sliders, MapPin,
   UserCog, CreditCard, Banknote, AlertCircle, Shield,
   ChevronLeft, UserPlus, Bell, ImageIcon, Ticket, Timer,
-  PanelRight, PanelLeft,   Route, Globe, AlertTriangle, Stethoscope, FlaskConical, Ban, FileText, BarChart3
+  PanelRight, PanelLeft,   Route, Globe, AlertTriangle, Stethoscope, FlaskConical, Ban, FileText, BarChart3, Wallet
 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
@@ -47,7 +47,7 @@ export const Layout = () => {
     const q = query(collection(db, 'requests'), where('status', '==', 'pending_review'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const count = snapshot.size;
-      setPendingReviewCount(count);
+      setPendingReviewCount((prev) => (prev === count ? prev : count));
       if (count > lastPendingReviewCountRef.current) {
         audioRef.current.play().catch(() => {});
         if ('Notification' in window && Notification.permission === 'granted') {
@@ -61,7 +61,8 @@ export const Layout = () => {
     });
     const tq = query(collection(db, 'support_tickets'), where('status', '==', 'open'));
     const unsubTickets = onSnapshot(tq, (snapshot) => {
-      setOpenTicketsCount(snapshot.size);
+      const count = snapshot.size;
+      setOpenTicketsCount((prev) => (prev === count ? prev : count));
     });
 
     // الشارة = تصعيدات غير مقروءة فقط؛ الصوت/الإشعار عند وصول تصعيد جديد بعد التحميل
@@ -163,6 +164,7 @@ export const Layout = () => {
     { id: 'marketing_insights',      path: '/admin/marketing-insights',       icon: BarChart3,       label: 'تحليلات التسويق',          category: 'management' },
     { id: 'chats',                   path: '/admin/chats',                    icon: MessageCircle,   label: 'المحادثات',                category: 'management' },
     { id: 'withdrawal_requests',     path: '/admin/withdrawal-requests',      icon: Banknote,        label: 'طلبات السحب',              category: 'financial' },
+    { id: 'wallet_topups',           path: '/admin/wallet-topups',            icon: Wallet,          label: 'عمليات شحن المزودين',      category: 'financial' },
     { id: 'cities',                  path: '/admin/cities',                   icon: MapPin,          label: 'المدن',                    category: 'settings' },
     { id: 'city_managers',           path: '/admin/city-managers',            icon: UserCog,         label: 'مديرو المدن',              category: 'settings' },
     { id: 'distribution',            path: '/admin/distribution',             icon: Route,           label: 'إعدادات التوزيع',          category: 'settings' },

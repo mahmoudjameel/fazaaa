@@ -10,6 +10,24 @@ const CHATS_COLLECTION = 'chats';
 /** لا نجلب كل المحادثات — كانت تسبب تعليق «جاري التحميل» بسبب آلاف القراءات المتسلسلة */
 const CHATS_PAGE_SIZE = 80;
 
+/** طلب منتهٍ ⇒ المحادثة تُعرض مغلقة حتى لو بقي chats.status = active (سباق إنشاء الشات بعد الإلغاء) */
+const CLOSED_REQUEST_STATUSES = [
+  'completed',
+  'canceled_by_client',
+  'canceled_by_client_with_reason',
+  'canceled_by_provider',
+  'canceled_by_provider_with_reason',
+  'canceled_by_admin',
+  'timed_out',
+  'escalated_to_city_manager',
+];
+
+const resolveChatDisplayStatus = (chatStatus, requestStatus) => {
+  if (chatStatus === 'closed') return 'closed';
+  if (requestStatus && CLOSED_REQUEST_STATUSES.includes(requestStatus)) return 'closed';
+  return chatStatus === 'active' ? 'active' : (chatStatus || 'active');
+};
+
 const toMillis = (value) => {
   if (!value) return 0;
   if (typeof value.toMillis === 'function') return value.toMillis();
@@ -85,6 +103,7 @@ export const Chats = () => {
         const requestSnap = requestSnaps[index];
         const req = requestSnap?.exists?.() ? requestSnap.data() : null;
         if (req?.customerId) customerIds.add(req.customerId);
+        const requestStatus = req?.status || null;
         return {
           ...chat,
           orderNumber: req?.orderNumber != null ? req.orderNumber : null,
@@ -92,6 +111,8 @@ export const Chats = () => {
           providerName: req?.providerName || '—',
           customerId: req?.customerId || null,
           customerName: '—',
+          requestStatus,
+          status: resolveChatDisplayStatus(chat.status, requestStatus),
         };
       });
 
