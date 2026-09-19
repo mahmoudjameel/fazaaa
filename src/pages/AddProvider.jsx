@@ -145,7 +145,7 @@ export const AddProvider = () => {
             }
 
             alert('تم إضافة المزود بنجاح');
-            navigate('/providers');
+            navigate('/admin/providers');
         } catch (error) {
             console.error('Error adding provider:', error);
             alert('فشل إضافة المزود');
@@ -174,7 +174,7 @@ export const AddProvider = () => {
                     <p className="text-gray-500 mt-1">أدخل بيانات المزود لتسجيله مباشرة في النظام</p>
                 </div>
                 <button
-                    onClick={() => navigate('/providers')}
+                    onClick={() => navigate('/admin/providers')}
                     className="p-2 hover:bg-gray-100 rounded-full transition-colors"
                 >
                     <X size={24} className="text-gray-400" />
@@ -404,7 +404,7 @@ export const AddProvider = () => {
                         </button>
                         <button
                             type="button"
-                            onClick={() => navigate('/providers')}
+                            onClick={() => navigate('/admin/providers')}
                             className="px-8 bg-gray-100 text-gray-600 py-4 rounded-xl font-bold text-lg hover:bg-gray-200 transition-colors"
                         >
                             إلغاء

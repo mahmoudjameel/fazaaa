@@ -6,7 +6,7 @@ import {
   ChevronLeft, UserPlus, Bell, ImageIcon, Ticket, Timer,
   PanelRight, PanelLeft,   Route, Globe, AlertTriangle, Stethoscope, FlaskConical, Ban, FileText, BarChart3, Wallet
 } from 'lucide-react';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, Fragment } from 'react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../services/firebase';
 import { signOut } from 'firebase/auth';
@@ -200,7 +200,8 @@ export const Layout = () => {
     settings:   'الإعدادات',
   };
 
-  const NavItem = ({ item }) => {
+  // دالة عرض (وليست مكوّناً) — تعريف مكوّن داخل Layout كان يعيد تركيب الأزرار عند كل تحديث فيضيع الضغط
+  const renderNavItem = (item) => {
     const Icon = item.icon;
     const isActive = location.pathname === item.path;
     return (
@@ -315,7 +316,7 @@ export const Layout = () => {
                 )}
                 {!sidebarOpen && <div className="my-2 mx-2 h-px bg-white/6" />}
                 <div className="space-y-0.5">
-                  {items.map(item => <NavItem key={item.path} item={item} />)}
+                  {items.map(item => <Fragment key={item.path}>{renderNavItem(item)}</Fragment>)}
                 </div>
               </div>
             );

@@ -142,6 +142,8 @@ function App() {
             <Route path="support-tickets" element={<SupportTickets />} />
             <Route path="admins" element={<Admins />} />
             <Route path="marketing-insights" element={<MarketingInsights />} />
+            {/* مسار داخلي غير معروف: ابقَ داخل اللوحة بدل الرجوع للصفحة العامة */}
+            <Route path="*" element={<Navigate to="/admin" replace />} />
           </Route>
 
           {/* Catch-all redirect */}
