@@ -22,6 +22,8 @@ import {
   removeProviderDocument,
   addOrUpdateProviderDocument,
   getProviderOrderStats,
+  PROVIDER_OUTCOME_LABELS,
+  getProviderCancellationCounts,
   getProviderIdsWithCompletedOrders,
   toggleProviderVIP,
   getProviderWalletHistory,
@@ -103,6 +105,11 @@ export const Providers = () => {
   const [serviceFilter, setServiceFilter] = useState('all');
   const [cityFilter, setCityFilter] = useState('all');
   const [nationalityFilter, setNationalityFilter] = useState('all');
+  // كثيرو الإلغاء: 'all' | '7' | '30' (أيام) — ٣ إلغاءات فأكثر خلال الفترة
+  const [cancelFreqFilter, setCancelFreqFilter] = useState('all');
+  const [cancelCounts, setCancelCounts] = useState({});
+  const [loadingCancelCounts, setLoadingCancelCounts] = useState(false);
+  const CANCEL_THRESHOLD = 3;
   const [selectedProvider, setSelectedProvider] = useState(null);
   const [selectedProvidersForGroup, setSelectedProvidersForGroup] = useState([]);
   const [lowBalanceFilter, setLowBalanceFilter] = useState(false);
@@ -284,7 +291,24 @@ export const Providers = () => {
 
   useEffect(() => {
     filterProviders();
-  }, [providers, mainServices, searchTerm, statusFilter, typeFilter, groupFilter, serviceFilter, cityFilter, nationalityFilter, lowBalanceFilter, executedOrdersFilter, locationIssueFilter, providerIdsWithCompletedOrders, executedOrdersCounts]);
+  }, [providers, mainServices, searchTerm, statusFilter, typeFilter, groupFilter, serviceFilter, cityFilter, nationalityFilter, lowBalanceFilter, executedOrdersFilter, locationIssueFilter, providerIdsWithCompletedOrders, executedOrdersCounts, cancelFreqFilter, cancelCounts]);
+
+  useEffect(() => {
+    if (cancelFreqFilter === 'all') {
+      setCancelCounts({});
+      return undefined;
+    }
+    let cancelled = false;
+    setLoadingCancelCounts(true);
+    getProviderCancellationCounts(Number(cancelFreqFilter))
+      .then((counts) => { if (!cancelled) setCancelCounts(counts || {}); })
+      .catch((e) => {
+        console.error('Error loading cancellation counts:', e);
+        if (!cancelled) alert('تعذر تحميل إحصائيات الإلغاء');
+      })
+      .finally(() => { if (!cancelled) setLoadingCancelCounts(false); });
+    return () => { cancelled = true; };
+  }, [cancelFreqFilter]);
 
   // تحميل قائمة من نفّذوا طلبات — للإحصائيات وللفلتر
   useEffect(() => {
@@ -980,6 +1004,12 @@ export const Providers = () => {
       );
     }
 
+    if (cancelFreqFilter !== 'all') {
+      filtered = filtered
+        .filter((p) => (cancelCounts[String(p.id)]?.count || 0) >= CANCEL_THRESHOLD)
+        .sort((a, b) => (cancelCounts[String(b.id)]?.count || 0) - (cancelCounts[String(a.id)]?.count || 0));
+    }
+
     setFilteredProviders(filtered);
   };
 
@@ -1538,6 +1568,20 @@ export const Providers = () => {
                     </option>
                   ))}
                 </select>
+                <div className="relative min-w-0">
+                  <select
+                    value={cancelFreqFilter}
+                    onChange={(e) => setCancelFreqFilter(e.target.value)}
+                    className={`w-full min-w-0 px-4 py-3 border-2 rounded-lg focus:outline-none text-sm md:text-base ${cancelFreqFilter !== 'all' ? 'border-rose-400 bg-rose-50 text-rose-800 font-bold' : 'border-gray-200 focus:border-teal-400'}`}
+                  >
+                    <option value="all">كثيرو الإلغاء — الكل</option>
+                    <option value="7">ألغى ٣ مرات فأكثر خلال أسبوع</option>
+                    <option value="30">ألغى ٣ مرات فأكثر خلال شهر</option>
+                  </select>
+                  {loadingCancelCounts && (
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-rose-600">جاري الحساب…</span>
+                  )}
+                </div>
                 <select
                   value={nationalityFilter}
                   onChange={(e) => setNationalityFilter(e.target.value)}
@@ -1672,6 +1716,11 @@ export const Providers = () => {
                                   <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
                                     <Phone size={10} className="ml-1" />
                                     OTP
+                                  </span>
+                                )}
+                                {cancelFreqFilter !== 'all' && (cancelCounts[String(provider.id)]?.count || 0) > 0 && (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-rose-100 text-rose-800">
+                                    ألغى {cancelCounts[String(provider.id)].count} مرات خلال {cancelFreqFilter === '7' ? 'أسبوع' : 'شهر'}
                                   </span>
                                 )}
                                 {executedOrdersCount > 0 && (
@@ -3039,17 +3088,11 @@ export const Providers = () => {
                   {activeTab === 'orders' && (
                     <div className="space-y-6 animate-in fade-in duration-300">
                       {(() => {
-                        const CANCELLED_STATUSES = ['canceled_by_provider', 'canceled_by_provider_with_reason', 'canceled_by_client', 'canceled_by_client_with_reason', 'timed_out'];
-                        const ACTIVE_STATUSES = ['searching', 'accepted', 'assigned', 'en_route', 'arrived', 'in_progress', 'pending_legal_docs', 'arriving', 'pending_client_confirmation', 'pending_review'];
-
                         const allOrders = orderStats?.orders || [];
-                        const filteredOrders = ordersFilter === 'completed'
-                          ? allOrders.filter(o => o.status === 'completed')
-                          : ordersFilter === 'cancelled'
-                            ? allOrders.filter(o => CANCELLED_STATUSES.includes(o.status))
-                            : ordersFilter === 'active'
-                              ? allOrders.filter(o => ACTIVE_STATUSES.includes(o.status))
-                              : allOrders;
+                        // التصنيف حسب نتيجة الطلب لهذا المزود (providerOutcome) — نفس منطق صفحة الطلبات
+                        const filteredOrders = ordersFilter === 'all'
+                          ? allOrders
+                          : allOrders.filter(o => o.providerOutcome === ordersFilter);
 
                         const badges = {
                           completed: { text: 'مكتمل', color: 'bg-green-100 text-green-700' },
@@ -3070,48 +3113,53 @@ export const Providers = () => {
 
                         return (
                           <>
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                              <button
-                                type="button"
-                                onClick={() => setOrdersFilter(ordersFilter === 'all' ? 'all' : 'all')}
-                                className={`p-5 rounded-2xl text-right transition-all border-2 ${ordersFilter === 'all' ? 'border-blue-400 ring-2 ring-blue-200 bg-blue-50' : 'border-blue-100 bg-blue-50 hover:border-blue-300'}`}
-                              >
-                                <p className="text-blue-600 text-xs font-bold mb-1">إجمالي الطلبات</p>
-                                <h4 className="text-2xl font-black text-blue-700">{orderStats?.total || 0}</h4>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setOrdersFilter(ordersFilter === 'completed' ? 'all' : 'completed')}
-                                className={`p-5 rounded-2xl text-right transition-all border-2 ${ordersFilter === 'completed' ? 'border-green-400 ring-2 ring-green-200 bg-green-50' : 'border-green-100 bg-green-50 hover:border-green-300'}`}
-                              >
-                                <p className="text-green-600 text-xs font-bold mb-1">مكتملة</p>
-                                <h4 className="text-2xl font-black text-green-700">{orderStats?.completed || 0}</h4>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setOrdersFilter(ordersFilter === 'cancelled' ? 'all' : 'cancelled')}
-                                className={`p-5 rounded-2xl text-right transition-all border-2 ${ordersFilter === 'cancelled' ? 'border-red-400 ring-2 ring-red-200 bg-red-50' : 'border-red-100 bg-red-50 hover:border-red-300'}`}
-                              >
-                                <p className="text-red-600 text-xs font-bold mb-1">ملغاة</p>
-                                <h4 className="text-2xl font-black text-red-700">{orderStats?.cancelled || 0}</h4>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setOrdersFilter(ordersFilter === 'active' ? 'all' : 'active')}
-                                className={`p-5 rounded-2xl text-right transition-all border-2 ${ordersFilter === 'active' ? 'border-purple-400 ring-2 ring-purple-200 bg-purple-50' : 'border-purple-100 bg-purple-50 hover:border-purple-300'}`}
-                              >
-                                <p className="text-purple-600 text-xs font-bold mb-1">نسبة الإنجاز</p>
-                                <h4 className="text-2xl font-black text-purple-700">
-                                  {orderStats?.total ? Math.round((orderStats.completed / orderStats.total) * 100) : 0}%
-                                </h4>
-                              </button>
-                            </div>
+                            {(() => {
+                              const cards = [
+                                { key: 'all', label: 'إجمالي الطلبات', value: orderStats?.total || 0, tone: 'blue' },
+                                { key: 'completed', label: 'مكتملة', value: orderStats?.completed || 0, tone: 'green' },
+                                { key: 'active', label: 'نشطة', value: orderStats?.active || 0, tone: 'teal' },
+                                { key: 'provider_cancelled', label: 'إلغاء/اعتذار من المزود', value: orderStats?.providerCancelled || 0, tone: 'red' },
+                                { key: 'client_cancelled', label: 'إلغاء من العميل', value: orderStats?.clientCancelled || 0, tone: 'orange' },
+                                { key: 'other_cancelled', label: 'إلغاء إدارة / انتهاء الوقت', value: orderStats?.otherCancelled || 0, tone: 'gray' },
+                              ];
+                              const tones = {
+                                blue: ['border-blue-400 ring-2 ring-blue-200 bg-blue-50', 'border-blue-100 bg-blue-50 hover:border-blue-300', 'text-blue-600', 'text-blue-700'],
+                                green: ['border-green-400 ring-2 ring-green-200 bg-green-50', 'border-green-100 bg-green-50 hover:border-green-300', 'text-green-600', 'text-green-700'],
+                                teal: ['border-teal-400 ring-2 ring-teal-200 bg-teal-50', 'border-teal-100 bg-teal-50 hover:border-teal-300', 'text-teal-600', 'text-teal-700'],
+                                red: ['border-red-400 ring-2 ring-red-200 bg-red-50', 'border-red-100 bg-red-50 hover:border-red-300', 'text-red-600', 'text-red-700'],
+                                orange: ['border-orange-400 ring-2 ring-orange-200 bg-orange-50', 'border-orange-100 bg-orange-50 hover:border-orange-300', 'text-orange-600', 'text-orange-700'],
+                                gray: ['border-gray-400 ring-2 ring-gray-200 bg-gray-50', 'border-gray-100 bg-gray-50 hover:border-gray-300', 'text-gray-600', 'text-gray-700'],
+                              };
+                              const rate = orderStats?.total ? Math.round((orderStats.completed / orderStats.total) * 100) : 0;
+                              return (
+                                <>
+                                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                                    {cards.map((c) => {
+                                      const [on, off, lbl, val] = tones[c.tone];
+                                      const selected = ordersFilter === c.key;
+                                      return (
+                                        <button
+                                          key={c.key}
+                                          type="button"
+                                          onClick={() => setOrdersFilter(selected ? 'all' : c.key)}
+                                          className={`p-4 rounded-2xl text-right transition-all border-2 ${selected ? on : off}`}
+                                        >
+                                          <p className={`${lbl} text-xs font-bold mb-1`}>{c.label}</p>
+                                          <h4 className={`text-2xl font-black ${val}`}>{c.value}</h4>
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                  <p className="text-sm text-purple-700 font-bold">نسبة الإنجاز: {rate}%</p>
+                                </>
+                              );
+                            })()}
 
                             <div>
                               <h4 className="font-bold text-gray-800 mb-4 flex items-center justify-between">
                                 <span className="flex items-center gap-2">
                                   <Clock size={18} className="text-gray-500" />
-                                  {ordersFilter === 'all' ? 'كل الطلبات' : ordersFilter === 'completed' ? 'الطلبات المكتملة' : ordersFilter === 'cancelled' ? 'الطلبات الملغاة' : 'نسبة الإنجاز'}
+                                  {ordersFilter === 'all' ? 'كل الطلبات' : (PROVIDER_OUTCOME_LABELS[ordersFilter] || 'الطلبات')}
                                 </span>
                                 <span className="text-sm font-normal text-gray-400">({filteredOrders.length})</span>
                               </h4>
@@ -3132,7 +3180,10 @@ export const Providers = () => {
                                       <tr><td colSpan="4" className="text-center py-8 text-gray-400">لا توجد طلبات مسجلة</td></tr>
                                     ) : (
                                       filteredOrders.map((order) => {
-                                        const badge = badges[order.status] || { text: order.status, color: 'bg-gray-100 text-gray-700' };
+                                        // طلب اعتذر عنه المزود ثم أُعيد للبحث/أكمله غيره — حالته العامة لا تخصّ هذا المزود
+                                        const badge = order.providerOutcome === 'provider_cancelled' && order.providerId !== selectedProvider?.id
+                                          ? { text: 'اعتذر المزود', color: 'bg-red-100 text-red-700' }
+                                          : (badges[order.status] || { text: order.status, color: 'bg-gray-100 text-gray-700' });
                                         return (
                                           <tr key={order.id} className="hover:bg-gray-50 transition-colors">
                                             <td className="px-4 py-3 font-mono text-gray-500">{order.orderNumber != null ? `#${String(order.orderNumber).padStart(9, '0')}` : '—'}</td>

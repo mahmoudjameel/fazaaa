@@ -47,6 +47,8 @@ import {
   updateRequestRating,
   cancelOrderByAdmin,
   getProviderIdsWithCompletedOrders,
+  getProviderOrderStats,
+  PROVIDER_OUTCOME_LABELS,
   getAllCities,
   phonesMatchForSearch,
 } from '../services/adminService';
@@ -611,47 +613,12 @@ export const Orders = () => {
     setLoadingProviderOrders(true);
     setActivityFilter('all');
     try {
-      const allOrders = new Map();
-
-      // 1) من الطلبات المحملة حالياً في الصفحة
-      requests.forEach(req => {
-        if (req.providerId === providerId) {
-          allOrders.set(req.id, req);
-        } else if (Array.isArray(req.history) && req.history.some(h => h.providerId === providerId)) {
-          allOrders.set(req.id, req);
-        }
-      });
-
-      // 2) جلب من requests collection
-      try {
-        const q1 = query(collection(db, 'requests'), where('providerId', '==', providerId));
-        const snap1 = await getDocs(q1);
-        snap1.docs.forEach(d => {
-          if (!allOrders.has(d.id)) allOrders.set(d.id, { id: d.id, ...d.data() });
-        });
-      } catch (e) {
-        console.warn('requests query failed:', e.message);
-      }
-      // 3) جلب من orders collection
-      try {
-        const q2 = query(collection(db, 'orders'), where('providerId', '==', providerId));
-        const snap2 = await getDocs(q2);
-        snap2.docs.forEach(d => {
-          if (!allOrders.has(d.id)) allOrders.set(d.id, { id: d.id, ...d.data() });
-        });
-      } catch (e) {
-        console.warn('orders query failed:', e.message);
-      }
-
-      const getTs = (item) => {
-        if (item.createdAt?.toMillis) return item.createdAt.toMillis();
-        if (item.createdAt?.seconds) return item.createdAt.seconds * 1000;
-        if (item.createdAt) return new Date(item.createdAt).getTime() || 0;
-        return 0;
-      };
-
-      const sorted = [...allOrders.values()].sort((a, b) => getTs(b) - getTs(a));
-      setProviderOrders(sorted);
+      // نفس مصدر صفحة «المزودون» حتى تتطابق الأرقام — مع طلبات محمّلة ذُكر فيها المزود في history
+      const extra = requests.filter((req) =>
+        Array.isArray(req.history) && req.history.some((h) => h?.providerId === providerId)
+      );
+      const result = await getProviderOrderStats(providerId, extra);
+      setProviderOrders(result.orders || []);
     } catch (error) {
       console.error('Error fetching provider orders:', error);
       setProviderOrders([]);
@@ -666,6 +633,17 @@ export const Orders = () => {
   };
 
   const formatArrivalChip = (arrival) => formatProviderAppArrivalLabel(arrival);
+
+  /** المزود ألغى/اعتذر — الطلب يعود للبحث بعدها، لذا نعتمد على history وليس الحالة الحالية */
+  const wasCancelledByProvider = (r) =>
+    r?.status === 'canceled_by_provider' ||
+    r?.status === 'canceled_by_provider_with_reason' ||
+    !!r?.previousProviderId ||
+    (Array.isArray(r?.history) && r.history.some((h) =>
+      h?.action === 'provider_cancellation' ||
+      h?.status === 'canceled_by_provider' ||
+      h?.status === 'canceled_by_provider_with_reason'
+    ));
 
   const getRequestCreatedMs = (req) => {
     const createdAt = req?.createdAt;
@@ -913,7 +891,7 @@ export const Orders = () => {
       } else if (statusFilter === 'cancelled_by_customer') {
         filtered = filtered.filter((r) => r.status === 'canceled_by_client' || r.status === 'canceled_by_client_with_reason');
       } else if (statusFilter === 'cancelled_by_provider') {
-        filtered = filtered.filter((r) => r.status === 'canceled_by_provider' || r.status === 'canceled_by_provider_with_reason');
+        filtered = filtered.filter(wasCancelledByProvider);
       } else if (statusFilter === 'no_providers_timeout') {
         filtered = filtered.filter(o => {
           if (resolveDisplayStatus(o) === 'timed_out' || o.status === 'timed_out') return true;
@@ -1652,6 +1630,24 @@ export const Orders = () => {
             dot: 'bg-red-500',
             active: 'bg-red-600 border-red-600 text-white',
             inactive: 'bg-white border-gray-200 hover:border-red-300 text-gray-800',
+          },
+          {
+            key: 'cancelled_by_customer',
+            label: 'إلغاء من العميل',
+            icon: XCircle,
+            value: requests.filter((r) => r.status === 'canceled_by_client' || r.status === 'canceled_by_client_with_reason').length,
+            dot: 'bg-orange-500',
+            active: 'bg-orange-600 border-orange-600 text-white',
+            inactive: 'bg-white border-gray-200 hover:border-orange-300 text-gray-800',
+          },
+          {
+            key: 'cancelled_by_provider',
+            label: 'إلغاء من المزود',
+            icon: XCircle,
+            value: requests.filter(wasCancelledByProvider).length,
+            dot: 'bg-rose-500',
+            active: 'bg-rose-600 border-rose-600 text-white',
+            inactive: 'bg-white border-gray-200 hover:border-rose-300 text-gray-800',
           },
           {
             key: 'completed',
@@ -3731,75 +3727,49 @@ export const Orders = () => {
                       {loadingProviderOrders ? (
                         <div className="text-center py-8 text-gray-400 text-sm">جاري تحميل سجل النشاط...</div>
                       ) : (() => {
-                        const COMPLETED_STATUSES = ['completed'];
-                        const CANCELLED_STATUSES = ['canceled_by_provider', 'canceled_by_provider_with_reason', 'canceled_by_client', 'canceled_by_client_with_reason', 'timed_out'];
-                        const ACTIVE_STATUSES = ['searching', 'accepted', 'assigned', 'en_route', 'arrived', 'in_progress', 'pending_legal_docs', 'arriving', 'pending_client_confirmation', 'pending_review'];
-
-                        const completed = providerOrders.filter(req =>
-                          COMPLETED_STATUSES.includes(req.status) && req.providerId === selectedProvider.id
-                        );
-                        const cancelled = providerOrders.filter(req => {
-                          if (CANCELLED_STATUSES.includes(req.status)) return true;
-                          return Array.isArray(req.history) && req.history.some(h =>
-                            h.providerId === selectedProvider.id &&
-                            (h.action === 'provider_cancellation' || CANCELLED_STATUSES.includes(h.status))
-                          );
-                        });
-                        const active = providerOrders.filter(req =>
-                          ACTIVE_STATUSES.includes(req.status) && req.providerId === selectedProvider.id
-                        );
-
-                        const filteredList = activityFilter === 'completed' ? completed
-                          : activityFilter === 'cancelled' ? cancelled
-                            : activityFilter === 'active' ? active
-                              : providerOrders;
+                        const countOf = (key) => providerOrders.filter((o) => o.providerOutcome === key).length;
+                        const filteredList = activityFilter === 'all'
+                          ? providerOrders
+                          : providerOrders.filter((o) => o.providerOutcome === activityFilter);
+                        const activityCards = [
+                          { key: 'all', label: 'إجمالي التفاعل', value: providerOrders.length, cls: 'blue' },
+                          { key: 'completed', label: 'مكتملة', value: countOf('completed'), cls: 'green' },
+                          { key: 'active', label: 'نشطة', value: countOf('active'), cls: 'teal' },
+                          { key: 'provider_cancelled', label: 'إلغاء من المزود', value: countOf('provider_cancelled'), cls: 'red' },
+                          { key: 'client_cancelled', label: 'إلغاء من العميل', value: countOf('client_cancelled'), cls: 'orange' },
+                          { key: 'other_cancelled', label: 'إدارة/انتهاء وقت', value: countOf('other_cancelled'), cls: 'gray' },
+                        ];
+                        const activityTones = {
+                          blue: 'bg-blue-50 text-blue-700 ring-blue-300',
+                          green: 'bg-green-50 text-green-700 ring-green-300',
+                          teal: 'bg-teal-50 text-teal-700 ring-teal-300',
+                          red: 'bg-red-50 text-red-700 ring-red-300',
+                          orange: 'bg-orange-50 text-orange-700 ring-orange-300',
+                          gray: 'bg-gray-50 text-gray-700 ring-gray-300',
+                        };
 
                         return (
                           <div className="space-y-4">
-                            <div className="grid grid-cols-4 gap-2 sm:gap-3">
-                              <button
-                                type="button"
-                                onClick={() => setActivityFilter(activityFilter === 'all' ? 'all' : 'all')}
-                                className={`p-2 sm:p-3 rounded-lg text-center transition-all border-2 ${activityFilter === 'all' ? 'border-blue-400 ring-2 ring-blue-200 bg-blue-50' : 'border-transparent bg-blue-50 hover:border-blue-200'}`}
-                              >
-                                <p className="text-[10px] sm:text-xs text-blue-600 font-bold mb-1">إجمالي التفاعل</p>
-                                <p className="text-lg sm:text-xl font-black text-blue-800">{providerOrders.length}</p>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setActivityFilter(activityFilter === 'completed' ? 'all' : 'completed')}
-                                className={`p-2 sm:p-3 rounded-lg text-center transition-all border-2 ${activityFilter === 'completed' ? 'border-green-400 ring-2 ring-green-200 bg-green-50' : 'border-transparent bg-green-50 hover:border-green-200'}`}
-                              >
-                                <p className="text-[10px] sm:text-xs text-green-600 font-bold mb-1">مكتملة</p>
-                                <p className="text-lg sm:text-xl font-black text-green-800">{completed.length}</p>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setActivityFilter(activityFilter === 'cancelled' ? 'all' : 'cancelled')}
-                                className={`p-2 sm:p-3 rounded-lg text-center transition-all border-2 ${activityFilter === 'cancelled' ? 'border-red-400 ring-2 ring-red-200 bg-red-50' : 'border-transparent bg-red-50 hover:border-red-200'}`}
-                              >
-                                <p className="text-[10px] sm:text-xs text-red-600 font-bold mb-1">ملغية/اعتذار</p>
-                                <p className="text-lg sm:text-xl font-black text-red-800">{cancelled.length}</p>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setActivityFilter(activityFilter === 'active' ? 'all' : 'active')}
-                                className={`p-2 sm:p-3 rounded-lg text-center transition-all border-2 ${activityFilter === 'active' ? 'border-orange-400 ring-2 ring-orange-200 bg-orange-50' : 'border-transparent bg-orange-50 hover:border-orange-200'}`}
-                              >
-                                <p className="text-[10px] sm:text-xs text-orange-600 font-bold mb-1">نشطة</p>
-                                <p className="text-lg sm:text-xl font-black text-orange-800">{active.length}</p>
-                              </button>
+                            <div className="grid grid-cols-3 gap-2 sm:gap-3">
+                              {activityCards.map((c) => (
+                                <button
+                                  key={c.key}
+                                  type="button"
+                                  onClick={() => setActivityFilter(activityFilter === c.key ? 'all' : c.key)}
+                                  className={`p-2 sm:p-3 rounded-lg text-center transition-all ${activityTones[c.cls]} ${activityFilter === c.key ? 'ring-2' : 'hover:ring-1'}`}
+                                >
+                                  <p className="text-[10px] sm:text-xs font-bold mb-1">{c.label}</p>
+                                  <p className="text-lg sm:text-xl font-black">{c.value}</p>
+                                </button>
+                              ))}
                             </div>
 
                             <div className="space-y-2">
                               <h5 className="text-[10px] sm:text-xs font-bold text-gray-400 uppercase tracking-wider">
-                                {activityFilter === 'all' ? `كل النشاطات (${filteredList.length})` :
-                                  activityFilter === 'completed' ? `المكتملة (${filteredList.length})` :
-                                    activityFilter === 'cancelled' ? `الملغية/الاعتذار (${filteredList.length})` :
-                                      `النشطة (${filteredList.length})`}
+                                {activityFilter === 'all' ? `كل النشاطات (${filteredList.length})` : `${PROVIDER_OUTCOME_LABELS[activityFilter] || ''} (${filteredList.length})`}
                               </h5>
                               {filteredList.length > 0 ? (
-                                filteredList.slice(0, 10).map((order, idx) => {
+                                filteredList.map((order, idx) => {
                                   let statusText = getStatusBadge(resolveDisplayStatus(order)).text;
                                   let statusColor = getStatusBadge(resolveDisplayStatus(order)).color;
 
@@ -3808,7 +3778,7 @@ export const Orders = () => {
                                     (h.action === 'provider_cancellation' || h.status === 'canceled_by_provider' || h.status === 'canceled_by_provider_with_reason')
                                   );
 
-                                  if (didCancelThis && order.providerId !== selectedProvider.id) {
+                                  if ((didCancelThis || order.providerOutcome === 'provider_cancelled') && order.providerId !== selectedProvider.id) {
                                     statusText = "تم الاعتذار عنه";
                                     statusColor = "bg-red-100 text-red-700";
                                   }
@@ -3824,11 +3794,10 @@ export const Orders = () => {
                                       key={order.id || idx}
                                       className="flex items-center justify-between p-2.5 hover:bg-gray-50 rounded-lg border border-gray-100 transition-colors cursor-pointer"
                                       onClick={() => {
-                                        const found = requests.find(r => r.id === order.id);
-                                        if (found) {
-                                          setSelectedRequest(found);
-                                          setSelectedProvider(null);
-                                        }
+                                        // الطلبات القديمة قد لا تكون ضمن المحمّل — نستخدم بيانات الطلب نفسه
+                                        const found = requests.find(r => r.id === order.id) || order;
+                                        setSelectedRequest(found);
+                                        setSelectedProvider(null);
                                       }}
                                     >
                                       <div className="flex-1 min-w-0 pr-2">

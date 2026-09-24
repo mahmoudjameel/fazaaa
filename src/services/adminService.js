@@ -13,6 +13,7 @@ import {
   addDoc,
   setDoc,
   serverTimestamp,
+  Timestamp,
   onSnapshot,
   runTransaction,
   collectionGroup,
@@ -2452,36 +2453,82 @@ export const adjustProviderWallet = async (providerId, amount, type, reason) => 
  * @param {string} providerId - معرف المزود
  * @returns {Promise<Object>}
  */
-export const getProviderOrderStats = async (providerId) => {
+const PROVIDER_CANCELLED_STATUSES = ['canceled_by_provider', 'canceled_by_provider_with_reason', 'canceled_by_client', 'canceled_by_client_with_reason', 'canceled_by_admin', 'timed_out'];
+const PROVIDER_ACTIVE_STATUSES = ['searching', 'accepted', 'assigned', 'en_route', 'arrived', 'in_progress', 'pending_legal_docs', 'arriving', 'pending_client_confirmation', 'pending_review'];
+
+/**
+ * نتيجة الطلب بالنسبة لهذا المزود تحديداً:
+ * طلب اعتذر عنه المزود ثم أكمله مزود آخر = «اعتذار» لهذا المزود وليس «مكتمل».
+ */
+export const resolveProviderOrderOutcome = (order, providerId) => {
+  const pid = String(providerId || '');
+  const isCurrentProvider = String(order?.providerId || '') === pid;
+  const history = Array.isArray(order?.history) ? order.history : [];
+  const providerCancelledIt =
+    String(order?.cancelledBy || '') === pid ||
+    String(order?.previousProviderId || '') === pid ||
+    history.some((h) => String(h?.providerId || '') === pid && (
+      h?.action === 'provider_cancellation' ||
+      h?.status === 'canceled_by_provider' ||
+      h?.status === 'canceled_by_provider_with_reason'
+    ));
+
+  if (!isCurrentProvider) return providerCancelledIt ? 'provider_cancelled' : 'other';
+  if (order.status === 'completed') return 'completed';
+  if (order.status === 'canceled_by_provider' || order.status === 'canceled_by_provider_with_reason') return 'provider_cancelled';
+  if (order.status === 'canceled_by_client' || order.status === 'canceled_by_client_with_reason') return 'client_cancelled';
+  if (PROVIDER_CANCELLED_STATUSES.includes(order.status)) return 'other_cancelled';
+  if (PROVIDER_ACTIVE_STATUSES.includes(order.status)) return 'active';
+  return 'other';
+};
+
+export const PROVIDER_OUTCOME_LABELS = {
+  completed: 'مكتمل',
+  active: 'نشط',
+  provider_cancelled: 'إلغاء/اعتذار من المزود',
+  client_cancelled: 'إلغاء من العميل',
+  other_cancelled: 'ملغي (إدارة / انتهاء الوقت)',
+  other: 'أخرى',
+};
+
+export const isCancelledOutcome = (outcome) =>
+  outcome === 'provider_cancelled' || outcome === 'client_cancelled' || outcome === 'other_cancelled';
+
+/**
+ * كل الطلبات التي تعامل معها المزود — الحالية (providerId) والتي اعتذر عنها
+ * (providerId يُمسح عند الاعتذار ويبقى في previousProviderId / cancelledBy).
+ * مصدر واحد لصفحتي «المزودون» و«الطلبات» حتى تتطابق الأرقام.
+ */
+export const getProviderOrderStats = async (providerId, extraOrders = []) => {
   try {
     const allOrders = new Map();
+    const add = (id, data) => { if (!allOrders.has(id)) allOrders.set(id, { id, ...data }); };
 
-    try {
-      const q1 = query(collection(db, 'requests'), where('providerId', '==', providerId));
-      const snap1 = await getDocs(q1);
-      snap1.forEach((d) => allOrders.set(d.id, { id: d.id, ...d.data() }));
-    } catch (e) { console.warn('requests query:', e.message); }
+    const queries = [
+      ['requests', 'providerId'],
+      ['requests', 'previousProviderId'],
+      ['requests', 'cancelledBy'],
+      ['orders', 'providerId'],
+    ];
+    await Promise.all(queries.map(async ([col, field]) => {
+      try {
+        const snap = await getDocs(query(collection(db, col), where(field, '==', providerId)));
+        snap.forEach((d) => add(d.id, d.data()));
+      } catch (e) { console.warn(`${col}.${field} query:`, e.message); }
+    }));
+    (extraOrders || []).forEach((o) => { if (o?.id) add(o.id, o); });
 
-    try {
-      const q2 = query(collection(db, 'orders'), where('providerId', '==', providerId));
-      const snap2 = await getDocs(q2);
-      snap2.forEach((d) => { if (!allOrders.has(d.id)) allOrders.set(d.id, { id: d.id, ...d.data() }); });
-    } catch (e) { console.warn('orders query:', e.message); }
-
-    const CANCELLED_STATUSES = ['canceled_by_provider', 'canceled_by_provider_with_reason', 'canceled_by_client', 'canceled_by_client_with_reason', 'timed_out'];
-    const ACTIVE_STATUSES = ['searching', 'accepted', 'assigned', 'en_route', 'arrived', 'in_progress', 'pending_legal_docs', 'arriving', 'pending_client_confirmation', 'pending_review'];
-
-    let completed = 0;
-    let cancelled = 0;
-    let active = 0;
+    const counts = { completed: 0, active: 0, provider_cancelled: 0, client_cancelled: 0, other_cancelled: 0, other: 0 };
     const orders = [];
 
     allOrders.forEach((data) => {
-      if (data.status === 'completed') completed++;
-      else if (CANCELLED_STATUSES.includes(data.status)) cancelled++;
-      else if (ACTIVE_STATUSES.includes(data.status)) active++;
-      orders.push(data);
+      const providerOutcome = resolveProviderOrderOutcome(data, providerId);
+      counts[providerOutcome] = (counts[providerOutcome] || 0) + 1;
+      orders.push({ ...data, providerOutcome });
     });
+    const completed = counts.completed;
+    const active = counts.active;
+    const cancelled = counts.provider_cancelled + counts.client_cancelled + counts.other_cancelled;
 
     orders.sort((a, b) => {
       const tA = a.createdAt?.toMillis ? a.createdAt.toMillis() : a.createdAt?.seconds ? a.createdAt.seconds * 1000 : 0;
@@ -2489,11 +2536,75 @@ export const getProviderOrderStats = async (providerId) => {
       return tB - tA;
     });
 
-    return { success: true, completed, cancelled, active, total: orders.length, orders };
+    return {
+      success: true,
+      completed,
+      cancelled,
+      active,
+      providerCancelled: counts.provider_cancelled,
+      clientCancelled: counts.client_cancelled,
+      otherCancelled: counts.other_cancelled,
+      total: orders.length,
+      orders,
+    };
   } catch (error) {
     console.error('Get provider order stats error:', error);
     throw error;
   }
+};
+
+/**
+ * عدد مرات إلغاء/اعتذار كل مزود خلال آخر N يوم — لكشف من يلغي كثيراً
+ * (البعض يلغي بعد الاتفاق مع العميل خارج التطبيق حتى لا تُخصم العمولة).
+ * يُحسب من history لأن الطلب يعود للبحث بعد إلغاء المزود.
+ * @returns {Promise<Record<string, { count: number, requestIds: string[] }>>}
+ */
+export const getProviderCancellationCounts = async (days = 7) => {
+  const cutoffMs = Date.now() - days * 24 * 60 * 60 * 1000;
+  // الإلغاء يحدث عادة خلال ساعات من الإنشاء — يوم إضافي هامش أمان
+  const createdFrom = Timestamp.fromMillis(cutoffMs - 24 * 60 * 60 * 1000);
+  const snap = await getDocs(query(collection(db, 'requests'), where('createdAt', '>=', createdFrom)));
+
+  const toMs = (v) => {
+    if (!v) return 0;
+    if (typeof v.toMillis === 'function') return v.toMillis();
+    if (typeof v.seconds === 'number') return v.seconds * 1000;
+    const t = new Date(v).getTime();
+    return Number.isFinite(t) ? t : 0;
+  };
+
+  const result = {};
+  const add = (pid, requestId) => {
+    if (!pid) return;
+    const key = String(pid);
+    if (!result[key]) result[key] = { count: 0, requestIds: [] };
+    if (result[key].requestIds.includes(requestId)) return;
+    result[key].count += 1;
+    result[key].requestIds.push(requestId);
+  };
+
+  snap.forEach((d) => {
+    const data = d.data() || {};
+    const history = Array.isArray(data.history) ? data.history : [];
+    let found = false;
+    history.forEach((h) => {
+      const isProviderCancel =
+        h?.action === 'provider_cancellation' ||
+        h?.status === 'canceled_by_provider' ||
+        h?.status === 'canceled_by_provider_with_reason';
+      if (!isProviderCancel || !h?.providerId) return;
+      if (toMs(h.timestamp) && toMs(h.timestamp) < cutoffMs) return;
+      add(h.providerId, d.id);
+      found = true;
+    });
+    // احتياط لطلبات بلا سجل: الحالة الحالية إلغاء من المزود
+    if (!found && (data.status === 'canceled_by_provider' || data.status === 'canceled_by_provider_with_reason')) {
+      const at = toMs(data.cancelledAt) || toMs(data.updatedAt);
+      if (!at || at >= cutoffMs) add(data.cancelledBy || data.providerId, d.id);
+    }
+  });
+
+  return result;
 };
 
 // مراحل يكتبها المزود بنفسه من التطبيق — وجودها يثبت تنفيذاً فعلياً وليس إغلاقاً إدارياً
