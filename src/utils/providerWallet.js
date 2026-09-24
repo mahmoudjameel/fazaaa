@@ -1,7 +1,9 @@
 import {
   countRemainingServices,
   DEFAULT_PRICING,
-} from './providerPricing';
+  ensureWalletCreditsShape,
+  normalizePricing,
+} from './providerPricing.js';
 
 const toFiniteBalance = (value) => {
   if (value == null || value === '') return null;
@@ -40,14 +42,25 @@ export function resolveProviderWalletBalance(providerData, transactionHistory = 
 
 /** عدد الخدمات المتبقية — يحترم رصيد الشحن القديم (5 ر.س) والجديد (10 ر.س) */
 export function countProviderRemainingServices(providerData, pricing = DEFAULT_PRICING) {
-  return countRemainingServices(providerData?.wallet || {}, pricing);
+  const balance = Math.max(0, resolveProviderWalletBalance(providerData));
+  const wallet = { ...providerData?.wallet, balance };
+  const shaped = ensureWalletCreditsShape(wallet);
+  const prices = normalizePricing(pricing);
+  const legacy = Math.min(
+    Math.max(0, Math.floor(shaped.legacyServiceCredits)),
+    Math.floor(balance / prices.legacyProviderCommissionPerOrder)
+  );
+  const remainingBalance = Math.max(0, balance - legacy * prices.legacyProviderCommissionPerOrder);
+  const affordable = legacy + Math.floor(remainingBalance / prices.providerCommissionPerOrder);
+  // العدادات القديمة قد لا تتزامن مع الخصم؛ لا نعرض خدمات لا يغطيها الرصيد.
+  return Math.max(0, Math.min(Math.floor(countRemainingServices(wallet, prices)), affordable));
 }
 
 /** رصيد منخفض: 3 خدمات أو أقل */
 export const LOW_BALANCE_SERVICE_THRESHOLD = 3;
 
-export function isLowWalletBalance(providerData, threshold = LOW_BALANCE_SERVICE_THRESHOLD) {
-  return countProviderRemainingServices(providerData) <= threshold;
+export function isLowWalletBalance(providerData, threshold = LOW_BALANCE_SERVICE_THRESHOLD, pricing = DEFAULT_PRICING) {
+  return countProviderRemainingServices(providerData, pricing) <= threshold;
 }
 
 export function withNormalizedProviderWallet(provider, transactionHistory = []) {

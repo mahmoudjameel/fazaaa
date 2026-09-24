@@ -291,7 +291,7 @@ export const Providers = () => {
 
   useEffect(() => {
     filterProviders();
-  }, [providers, mainServices, searchTerm, statusFilter, typeFilter, groupFilter, serviceFilter, cityFilter, nationalityFilter, lowBalanceFilter, executedOrdersFilter, locationIssueFilter, providerIdsWithCompletedOrders, executedOrdersCounts, cancelFreqFilter, cancelCounts]);
+  }, [providers, mainServices, searchTerm, statusFilter, typeFilter, groupFilter, serviceFilter, cityFilter, nationalityFilter, lowBalanceFilter, pricingSettings, executedOrdersFilter, locationIssueFilter, providerIdsWithCompletedOrders, executedOrdersCounts, cancelFreqFilter, cancelCounts]);
 
   useEffect(() => {
     if (cancelFreqFilter === 'all') {
@@ -887,7 +887,7 @@ export const Providers = () => {
       filtered = filtered.filter((p) => {
         const approvalStatus = p.approvalStatus || p.status;
         if (approvalStatus !== 'approved') return false;
-        return isLowWalletBalance(p);
+        return isLowWalletBalance(p, LOW_BALANCE_SERVICE_THRESHOLD, pricingSettings);
       });
       filtered = [...filtered].sort(
         (a, b) => resolveProviderWalletBalance(a) - resolveProviderWalletBalance(b)
@@ -993,15 +993,6 @@ export const Providers = () => {
           );
         });
       }
-    }
-
-    if (searchTerm) {
-      filtered = filtered.filter(
-        (p) =>
-          p.firstName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          p.lastName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          phonesMatchForSearch(p.phone, searchTerm)
-      );
     }
 
     if (cancelFreqFilter !== 'all') {
@@ -1696,7 +1687,8 @@ export const Providers = () => {
                       const StatusIcon = statusBadge.icon;
                       const TypeIcon = typeBadge.icon;
                       const walletBalance = resolveProviderWalletBalance(provider);
-                      const isLowBalance = isLowWalletBalance(provider);
+                      const remainingServices = countProviderRemainingServices(provider, pricingSettings);
+                      const isLowBalance = isLowWalletBalance(provider, LOW_BALANCE_SERVICE_THRESHOLD, pricingSettings);
                       const executedOrdersCount = executedOrdersCounts[String(provider.id)] || 0;
                       const locationIssue = inferLocationTrackingIssue(provider);
                       return (
@@ -1763,6 +1755,9 @@ export const Providers = () => {
                                   : 'bg-emerald-50 text-emerald-700'
                               }`}
                             >
+                              {remainingServices} خدمات
+                            </span>
+                            <span className="block mt-1 text-xs text-gray-500">
                               {walletBalance.toFixed(2)} ر.س
                             </span>
                           </td>
@@ -2926,19 +2921,7 @@ export const Providers = () => {
                               ? ' (من رصيد الشحن القديم)'
                               : ' (سعر الشحن الجديد)'}
                           </p>
-                          {(() => {
-                            const w = selectedProvider?.wallet || {};
-                            const legacy = typeof w.legacyServiceCredits === 'number' ? w.legacyServiceCredits : null;
-                            const neu = typeof w.serviceCredits === 'number' ? w.serviceCredits : null;
-                            if (legacy == null && neu == null) return null;
-                            return (
-                              <p className="text-xs text-gray-400 mt-0.5">
-                                {legacy != null ? `قديم: ${legacy}` : null}
-                                {legacy != null && neu != null ? ' + ' : null}
-                                {neu != null ? `جديد: ${neu}` : null}
-                              </p>
-                            );
-                          })()}
+
                         </div>
                         <div className="bg-white p-5 rounded-2xl border-2 border-gray-100 shadow-sm">
                           <p className="text-gray-500 text-sm font-semibold mb-1">إجمالي الإيداعات</p>
