@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Search, Users as UsersIcon, Mail, Phone, Calendar, MapPin, Filter, Loader2, Package, Clock, AlertCircle, XCircle, Plus, ShieldBan, ShieldOff, Trash2, Award, UserX, ArrowUpDown } from 'lucide-react';
 import { collection, getDocs, query, orderBy, where, doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
@@ -29,6 +30,7 @@ export const Users = () => {
   const [behaviorFilter, setBehaviorFilter] = useState('all');
   const [sortBy, setSortBy] = useState('registered_newest');
   const [cities, setCities] = useState(SAUDI_CITIES_FALLBACK);
+  const navigate = useNavigate();
   const [selectedUser, setSelectedUser] = useState(null);
   const [userOrders, setUserOrders] = useState([]);
   const [userPhoneBanned, setUserPhoneBanned] = useState(false);
@@ -83,38 +85,23 @@ export const Users = () => {
 
       setLoadingOrders(true);
       try {
+        // الطلبات تُخزَّن غالباً بـ customerId (وقديماً userId) — نجلب الاثنين وندمج.
+        // بدون orderBy حتى لا نحتاج فهرساً مركّباً؛ الترتيب يتم محلياً.
         const requestsRef = collection(db, 'requests');
-        const q = query(
-          requestsRef,
-          where('userId', '==', userId),
-          orderBy('createdAt', 'desc')
-        );
-        const querySnapshot = await getDocs(q);
-        const ordersList = [];
-        querySnapshot.forEach((doc) => {
-          ordersList.push({ id: doc.id, ...doc.data() });
+        const results = await Promise.allSettled([
+          getDocs(query(requestsRef, where('customerId', '==', userId))),
+          getDocs(query(requestsRef, where('userId', '==', userId))),
+        ]);
+        const byId = new Map();
+        results.forEach((r) => {
+          if (r.status !== 'fulfilled') {
+            console.error('Error fetching user orders:', r.reason);
+            return;
+          }
+          r.value.forEach((d) => byId.set(d.id, { id: d.id, ...d.data() }));
         });
-        setUserOrders(ordersList);
-      } catch (error) {
-        console.error('Error fetching user orders:', error);
-        // إذا فشل مع userId، جرب customerId
-        try {
-          const requestsRef = collection(db, 'requests');
-          const q = query(
-            requestsRef,
-            where('customerId', '==', userId),
-            orderBy('createdAt', 'desc')
-          );
-          const querySnapshot = await getDocs(q);
-          const ordersList = [];
-          querySnapshot.forEach((doc) => {
-            ordersList.push({ id: doc.id, ...doc.data() });
-          });
-          setUserOrders(ordersList);
-        } catch (error2) {
-          console.error('Error fetching user orders with customerId:', error2);
-          setUserOrders([]);
-        }
+        const toMs = (v) => v?.toMillis?.() ?? (v?.seconds ? v.seconds * 1000 : (v ? new Date(v).getTime() || 0 : 0));
+        setUserOrders(Array.from(byId.values()).sort((a, b) => toMs(b.createdAt) - toMs(a.createdAt)));
       } finally {
         setLoadingOrders(false);
       }
@@ -693,8 +680,11 @@ export const Users = () => {
                             لم يطلب بعد
                           </span>
                         ) : (
-                          <span
-                            className={`inline-flex items-center gap-1 px-2 sm:px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap ${
+                          <button
+                            type="button"
+                            onClick={() => setSelectedUser(user)}
+                            title="عرض طلبات العميل"
+                            className={`inline-flex items-center gap-1 px-2 sm:px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap underline-offset-2 hover:underline ${
                               (user.orderCount ?? 0) > 3
                                 ? 'bg-purple-100 text-purple-800'
                                 : 'bg-teal-100 text-teal-800'
@@ -709,7 +699,7 @@ export const Users = () => {
                             {(user.completedOrderCount ?? 0) > 0 && (
                               <span className="opacity-75">({user.completedOrderCount} مكتمل)</span>
                             )}
-                          </span>
+                          </button>
                         )}
                       </div>
                       <div className="space-y-1 text-xs sm:text-sm text-gray-600">
@@ -965,7 +955,12 @@ export const Users = () => {
                         return (
                           <div
                             key={order.id}
-                            className={`bg-white rounded-lg p-4 border ${isCanceled
+                            role="button"
+                            tabIndex={0}
+                            title="فتح تفاصيل الطلب"
+                            onClick={() => navigate(`/admin/orders?orderId=${order.id}`)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') navigate(`/admin/orders?orderId=${order.id}`); }}
+                            className={`cursor-pointer hover:shadow-md transition-shadow bg-white rounded-lg p-4 border ${isCanceled
                               ? 'border-red-200 bg-red-50'
                               : order.status === 'completed'
                                 ? 'border-green-200 bg-green-50'
