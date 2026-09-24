@@ -235,6 +235,9 @@ export const Orders = () => {
   const location = useLocation();
   const [requests, setRequests] = useState([]);
   const [filteredRequests, setFilteredRequests] = useState([]);
+  // عرض تدريجي — رسم آلاف البطاقات دفعة واحدة يبطئ الصفحة ويُسقطها على الجوال
+  const ORDERS_PAGE_SIZE = 50;
+  const [visibleCount, setVisibleCount] = useState(ORDERS_PAGE_SIZE);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [matchedUids, setMatchedUids] = useState([]);
@@ -471,6 +474,10 @@ export const Orders = () => {
   }, [requests]);
 
   useEffect(() => {
+    setVisibleCount(ORDERS_PAGE_SIZE);
+  }, [searchTerm, statusFilter, cityFilter, serviceFilter, slaFilter, executedProviderFilter, dateRangeFilter]);
+
+  useEffect(() => {
     filterOrders();
   }, [requests, searchTerm, statusFilter, cityFilter, serviceFilter, slaFilter, executedProviderFilter, executedProviderIds, dateRangeFilter, matchedUids, providersDict, mainServices, services, cities, nowTick]);
 
@@ -694,7 +701,7 @@ export const Orders = () => {
 
     // بدون searchEndsAt: مهلة من آخر تحديث (آمن للبحث البديل) ثم الإنشاء
     if (!endsMs) {
-      const startMs = toMillisMs(order.updatedAt) || toMillisMs(order.createdAt) || getRequestCreatedMs(order);
+      const startMs = toFirestoreMs(order.updatedAt) || toFirestoreMs(order.createdAt) || getRequestCreatedMs(order);
       if (startMs > 0 && now - startMs >= SEARCH_WINDOW_MS) return 'timed_out';
     }
 
@@ -2185,7 +2192,7 @@ export const Orders = () => {
             <p className="text-gray-400 text-sm">جرّب تغيير الفلاتر أو مصطلح البحث</p>
           </div>
         ) : (
-          filteredRequests.map((order) => {
+          filteredRequests.slice(0, visibleCount).map((order) => {
             const displayStatus = resolveDisplayStatus(order);
             const statusBadge = getStatusBadge(displayStatus);
             const isActive = ['searching','assigned','en_route','arrived','in_progress'].includes(displayStatus);
@@ -2412,6 +2419,14 @@ export const Orders = () => {
               </div>
             );
           })
+        )}
+        {filteredRequests.length > visibleCount && (
+          <button
+            onClick={() => setVisibleCount((c) => c + ORDERS_PAGE_SIZE)}
+            className="w-full py-3 bg-white rounded-2xl border border-gray-200 text-sm font-bold text-teal-600 hover:bg-teal-50"
+          >
+            عرض المزيد ({filteredRequests.length - visibleCount} متبقي)
+          </button>
         )}
       </div>
 
