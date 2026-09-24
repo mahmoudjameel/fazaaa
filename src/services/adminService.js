@@ -1415,6 +1415,31 @@ export const getRecentActivity = async () => {
  * @param {Function} callback - دالة تُستدعى عند كل تحديث
  * @returns {Function} unsubscribe function
  */
+/**
+ * مستمع لأحدث N طلب فقط — تحميل المجموعة كاملة يستهلك ذاكرة الجوال
+ * ويجعل Safari يعيد تحميل الصفحة. مستمع مشترك لكل حد (max).
+ */
+const recentRequestsListeners = new Map();
+export const listenToRecentRequests = (max, callback) => {
+  if (!recentRequestsListeners.has(max)) {
+    recentRequestsListeners.set(max, createSharedSnapshotListener({
+      key: `recentRequests:${max}`,
+      keepAliveMs: 120_000,
+      // البحث المتدرج يحدّث الطلب كل ~5ث — بدون throttle الصفحة تقفز أثناء التمرير
+      throttleMs: 3000,
+      setup: (emit) => onSnapshot(
+        query(collection(db, 'requests'), orderBy('createdAt', 'desc'), limit(max)),
+        (snapshot) => emit(snapshot.docs.map((d) => ({ id: d.id, ...d.data() }))),
+        (error) => {
+          console.error('Error listening to recent requests:', error);
+          emit([]);
+        }
+      ),
+    }));
+  }
+  return recentRequestsListeners.get(max)(callback);
+};
+
 export const listenToAllRequests = createSharedSnapshotListener({
   key: 'allRequests',
   keepAliveMs: 120_000,

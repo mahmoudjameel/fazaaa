@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useState, useEffect, lazy, Suspense } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from './services/firebase';
@@ -52,6 +52,13 @@ function PageFallback() {
       <div className="text-sm text-gray-500">جاري تحميل الصفحة...</div>
     </div>
   );
+}
+
+/** يحفظ المسار الحالي حتى يرجع الأدمن لنفس القسم بعد تسجيل الدخول */
+function RequireAuth({ isAuthenticated, children }) {
+  const location = useLocation();
+  if (!isAuthenticated) return <Navigate to="/login" replace state={{ from: location }} />;
+  return children;
 }
 
 function App() {
@@ -108,7 +115,7 @@ function App() {
           {/* Admin dashboard – protected */}
           <Route
             path="/admin"
-            element={isAuthenticated ? <Layout /> : <Navigate to="/login" />}
+            element={<RequireAuth isAuthenticated={isAuthenticated}><Layout /></RequireAuth>}
           >
             <Route index element={<Dashboard />} />
             <Route path="services" element={<Services />} />

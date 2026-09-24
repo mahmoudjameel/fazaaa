@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Lock, Mail, Eye, EyeOff } from 'lucide-react';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
@@ -8,6 +8,7 @@ import { SeoHead } from '../components/SeoHead';
 import { PAGE_SEO } from '../seo/config';
 import {
   applyAdminSessionFromDoc,
+  canAccessAdminPath,
   getFirstAllowedAdminPath,
   writeAdminSessionToStorage,
 } from '../utils/adminPermissions';
@@ -19,6 +20,11 @@ export const Login = ({ onLogin }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
+  // الرجوع لنفس القسم الذي كان مفتوحاً قبل طلب تسجيل الدخول
+  const fromPath = location.state?.from?.pathname
+    ? `${location.state.from.pathname}${location.state.from.search || ''}`
+    : null;
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -48,7 +54,10 @@ export const Login = ({ onLogin }) => {
         if (onLogin) {
           onLogin();
         }
-        const nextPath = getFirstAllowedAdminPath(session) || '/admin';
+        const nextPath =
+          fromPath && canAccessAdminPath(location.state.from.pathname, session)
+            ? fromPath
+            : getFirstAllowedAdminPath(session) || '/admin';
         navigate(nextPath);
       } else {
         // BOOTSTRAP: إذا كان هذا هو البريد "admin@fazaaa.com" أو المستخدم يحاول الدخول كمدير رئيسي
@@ -75,7 +84,7 @@ export const Login = ({ onLogin }) => {
           });
 
           if (onLogin) onLogin();
-          navigate('/admin');
+          navigate(fromPath || '/admin');
           return;
         }
 
