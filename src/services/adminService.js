@@ -2574,13 +2574,16 @@ export const getProviderCancellationCounts = async (days = 7) => {
   };
 
   const result = {};
-  const add = (pid, requestId) => {
+  // events: تفاصيل كل إلغاء (للمتابعة)، lastCancelAt: آخر إلغاء — للترتيب «الأحدث»
+  const add = (pid, requestId, atMs = 0, reason = null, orderNumber = null) => {
     if (!pid) return;
     const key = String(pid);
-    if (!result[key]) result[key] = { count: 0, requestIds: [] };
+    if (!result[key]) result[key] = { count: 0, requestIds: [], events: [], lastCancelAt: 0 };
     if (result[key].requestIds.includes(requestId)) return;
     result[key].count += 1;
     result[key].requestIds.push(requestId);
+    result[key].events.push({ requestId, at: atMs, reason, orderNumber });
+    if (atMs > result[key].lastCancelAt) result[key].lastCancelAt = atMs;
   };
 
   snap.forEach((d) => {
@@ -2594,13 +2597,15 @@ export const getProviderCancellationCounts = async (days = 7) => {
         h?.status === 'canceled_by_provider_with_reason';
       if (!isProviderCancel || !h?.providerId) return;
       if (toMs(h.timestamp) && toMs(h.timestamp) < cutoffMs) return;
-      add(h.providerId, d.id);
+      add(h.providerId, d.id, toMs(h.timestamp), h.cancelReason || null, data.orderNumber ?? null);
       found = true;
     });
     // احتياط لطلبات بلا سجل: الحالة الحالية إلغاء من المزود
     if (!found && (data.status === 'canceled_by_provider' || data.status === 'canceled_by_provider_with_reason')) {
       const at = toMs(data.cancelledAt) || toMs(data.updatedAt);
-      if (!at || at >= cutoffMs) add(data.cancelledBy || data.providerId, d.id);
+      if (!at || at >= cutoffMs) {
+        add(data.cancelledBy || data.providerId, d.id, at, data.cancelReason || null, data.orderNumber ?? null);
+      }
     }
   });
 

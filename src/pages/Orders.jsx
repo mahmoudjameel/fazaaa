@@ -2077,6 +2077,8 @@ export const Orders = () => {
               <option value="completed">مكتملة</option>
               <option value="low_rating">تقييم ٣ نجوم أو أقل</option>
               <option value="cancelled">ملغاة (الكل)</option>
+              <option value="cancelled_by_customer">ملغاة من العميل</option>
+              <option value="cancelled_by_provider">ملغاة من المزود</option>
               <option value="no_providers_timeout">فشل العثور على مزود</option>
             </select>
             <ChevronDown size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />

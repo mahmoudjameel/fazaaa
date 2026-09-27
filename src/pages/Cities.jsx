@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Search, Plus, Edit2, Trash2, MapPin, Users as UsersIcon, CheckCircle, XCircle, Settings, ArrowUp, ArrowDown } from 'lucide-react';
+import { Search, Plus, Edit2, Trash2, MapPin, Users as UsersIcon, CheckCircle, XCircle, Settings, ArrowUp, ArrowDown, BellRing, BellOff } from 'lucide-react';
 import { collection, getDocs, doc, updateDoc, deleteDoc, addDoc, setDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import SAUDI_CITIES_DEFAULTS from '../services/cities.json';
@@ -152,6 +152,19 @@ export const Cities = () => {
       setCities(cities.map(c => c.id === cityId ? { ...c, isActive, updatedAt: new Date().toISOString() } : c));
     } catch (error) {
       console.error('Error updating city status:', error);
+    }
+  };
+
+  /** مدينة مستهدفة: تصعيداتها تُنبَّه بنغمة وأولوية في لوحة التحكم، والباقي تنبيه هادئ */
+  const toggleEscalationPriority = async (cityId, escalationPriority) => {
+    try {
+      await updateDoc(doc(db, 'cities', cityId), {
+        escalationPriority,
+        updatedAt: new Date().toISOString(),
+      });
+      setCities(cities.map(c => c.id === cityId ? { ...c, escalationPriority } : c));
+    } catch (error) {
+      console.error('Error updating city escalation priority:', error);
     }
   };
 
@@ -380,6 +393,12 @@ export const Cities = () => {
                           <MapPin className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
                           <span>نطاق الخدمة: {city.serviceRadius || 50} كم</span>
                         </div>
+                        {city.escalationPriority === true && (
+                          <div className="flex items-center gap-2 text-red-600 font-bold">
+                            <BellRing className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
+                            <span>مدينة مستهدفة — تصعيداتها بنغمة وأولوية</span>
+                          </div>
+                        )}
                         {city.coordinates && (
                           <div className="flex items-center gap-2">
                             <MapPin className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
@@ -416,6 +435,18 @@ export const Cities = () => {
                       aria-label="تعديل"
                     >
                       <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => toggleEscalationPriority(city.id, city.escalationPriority !== true)}
+                      className={`p-2 rounded-lg transition-all ${
+                        city.escalationPriority === true
+                          ? 'bg-red-500 text-white hover:bg-red-600'
+                          : 'bg-gray-50 text-gray-400 hover:bg-gray-100'
+                      }`}
+                      aria-label="مدينة مستهدفة للتصعيد"
+                      title={city.escalationPriority === true ? 'إلغاء الاستهداف (تنبيه هادئ)' : 'مدينة مستهدفة (تنبيه بنغمة)'}
+                    >
+                      {city.escalationPriority === true ? <BellRing className="w-4 h-4" /> : <BellOff className="w-4 h-4" />}
                     </button>
                     <button
                       onClick={() => toggleCityStatus(city.id, city.isActive === false)}

@@ -19,6 +19,7 @@ import {
   getTopUpStateMeta,
   WALLET_TOPUP_STATES,
 } from '../services/walletTopupsService';
+import { WalletPackagesManager } from '../components/WalletPackagesManager';
 
 const formatDt = (value) => {
   if (!value) return '—';
@@ -163,6 +164,8 @@ export default function WalletTopUps() {
           تحديث
         </button>
       </div>
+
+      <WalletPackagesManager />
 
       <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
         <StatCard label="إجمالي العمليات" value={stats.total} />

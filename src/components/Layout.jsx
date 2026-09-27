@@ -4,7 +4,8 @@ import {
   MessageSquare, MessageCircle, UserCheck, Sliders, MapPin,
   UserCog, CreditCard, Banknote, AlertCircle, Shield,
   ChevronLeft, UserPlus, Bell, ImageIcon, Ticket, Timer,
-  PanelRight, PanelLeft,   Route, Globe, AlertTriangle, Stethoscope, FlaskConical, Ban, FileText, BarChart3, Wallet
+  PanelRight, PanelLeft,   Route, Globe, AlertTriangle, Stethoscope, FlaskConical, Ban, FileText, BarChart3, Wallet,
+  UserX
 } from 'lucide-react';
 import { useState, useEffect, useRef, Fragment } from 'react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
@@ -17,6 +18,7 @@ import {
   ADMIN_SESSION_UPDATED_EVENT,
 } from '../utils/adminPermissions';
 import { SeoHead } from './SeoHead';
+import { playAlertTone, findPriorityCityForEscalation } from '../utils/adminAlerts';
 import { AdminRouteGuard } from './AdminRouteGuard';
 
 export const Layout = () => {
@@ -27,17 +29,45 @@ export const Layout = () => {
   const [pendingReviewCount, setPendingReviewCount] = useState(0);
   const [openTicketsCount, setOpenTicketsCount] = useState(0);
   const [newEscalationsCount, setNewEscalationsCount] = useState(0);
+  const [generalEscalationsCount, setGeneralEscalationsCount] = useState(0);
+  const [pendingComplaintsCount, setPendingComplaintsCount] = useState(0);
+  const [alertToasts, setAlertToasts] = useState([]);
   const [sessionVersion, setSessionVersion] = useState(0);
   const lastPendingReviewCountRef = useRef(0);
   const escalationsPrimedRef = useRef(false);
   const latestUnresolvedRef = useRef([]);
+  const priorityCitiesRef = useRef([]);
+  const ticketsPrimedRef = useRef(false);
+  const complaintsPrimedRef = useRef(false);
   const audioRef = useRef(new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3'));
 
+  // تصعيدات المدن المستهدفة = شارة برتقالية نابضة؛ الباقي = شارة رمادية هادئة
   const refreshUnreadBadge = () => {
     const unread = latestUnresolvedRef.current.filter((d) =>
       isUnreadEscalation(d.data(), d.id)
     );
-    setNewEscalationsCount(unread.length);
+    const priority = unread.filter((d) =>
+      findPriorityCityForEscalation(d.data(), priorityCitiesRef.current)
+    ).length;
+    setNewEscalationsCount(priority);
+    setGeneralEscalationsCount(unread.length - priority);
+  };
+
+  const dismissToast = (id) => setAlertToasts((list) => list.filter((t) => t.id !== id));
+
+  /** تنبيه واضح: بطاقة ملونة ثابتة أعلى الشاشة + نغمة مميزة + إشعار المتصفح */
+  const raiseAlert = ({ kind, title, body, path, tag }) => {
+    playAlertTone(kind);
+    const id = `${tag}-${Date.now()}`;
+    setAlertToasts((list) => [{ id, kind, title, body, path }, ...list.filter((t) => t.id !== id)].slice(0, 5));
+    if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification(`فزّاعين: ${title}`, {
+        body,
+        icon: '/fzaeen-logo.jpeg',
+        tag,
+        requireInteraction: kind === 'escalation_priority',
+      });
+    }
   };
 
   useEffect(() => {
@@ -63,6 +93,46 @@ export const Layout = () => {
     const unsubTickets = onSnapshot(tq, (snapshot) => {
       const count = snapshot.size;
       setOpenTicketsCount((prev) => (prev === count ? prev : count));
+      if (!ticketsPrimedRef.current) {
+        ticketsPrimedRef.current = true;
+        return;
+      }
+      const added = snapshot.docChanges().filter((c) => c.type === 'added');
+      if (added.length === 0) return;
+      const first = added[0].doc.data() || {};
+      raiseAlert({
+        kind: 'ticket',
+        title: added.length === 1 ? 'تذكرة دعم جديدة' : `${added.length} تذاكر دعم جديدة`,
+        body: [first.userName, first.subject].filter(Boolean).join(' — ') || 'تذكرة بانتظار الرد',
+        path: '/admin/support-tickets',
+        tag: `ticket-${added[0].doc.id}`,
+      });
+    });
+
+    const cq = query(collection(db, 'complaints'), where('status', '==', 'pending'));
+    const unsubComplaints = onSnapshot(cq, (snapshot) => {
+      const count = snapshot.size;
+      setPendingComplaintsCount((prev) => (prev === count ? prev : count));
+      if (!complaintsPrimedRef.current) {
+        complaintsPrimedRef.current = true;
+        return;
+      }
+      const added = snapshot.docChanges().filter((c) => c.type === 'added');
+      if (added.length === 0) return;
+      const first = added[0].doc.data() || {};
+      raiseAlert({
+        kind: 'complaint',
+        title: added.length === 1 ? 'شكوى جديدة' : `${added.length} شكاوى جديدة`,
+        body: [first.userName || first.providerName, first.subject].filter(Boolean).join(' — ') || 'شكوى بانتظار المراجعة',
+        path: '/admin/complaints',
+        tag: `complaint-${added[0].doc.id}`,
+      });
+    });
+
+    const pq = query(collection(db, 'cities'), where('escalationPriority', '==', true));
+    const unsubPriorityCities = onSnapshot(pq, (snapshot) => {
+      priorityCitiesRef.current = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+      refreshUnreadBadge();
     });
 
     // الشارة = تصعيدات غير مقروءة فقط؛ الصوت/الإشعار عند وصول تصعيد جديد بعد التحميل
@@ -86,25 +156,32 @@ export const Layout = () => {
       });
       if (newlyAdded.length === 0) return;
 
-      // لا تكرر الصوت إذا الأدمن على شاشة التصعيدات (ستُعلَّم مقروءة فوراً) — الصوت يبقى ليعرف بالتحديث
-      audioRef.current.play().catch(() => {});
-      if ('Notification' in window && Notification.permission === 'granted') {
-        const first = newlyAdded[0].doc.data() || {};
-        const label =
-          first.type === 'no_providers'
-            ? 'لا يوجد مزودون'
-            : first.type === 'all_rejected'
-              ? 'جميع المزودين رفضوا'
-              : 'انتهاء وقت البحث';
-        new Notification('فزّاعين: تصعيد جديد', {
-          body:
-            newlyAdded.length === 1
-              ? `${label} — طلب يحتاج مراجعة.`
-              : `${newlyAdded.length} تصعيدات جديدة تحتاج مراجعة.`,
-          icon: '/fzaeen-logo.jpeg',
-          tag: `escalation-${newlyAdded[0].doc.id}`,
-        });
-      }
+      // المدن المستهدفة فقط: نغمة + بطاقة + إشعار. التصعيدات العامة: الشارة الرمادية فقط بدون نغمة
+      const priorityAdded = newlyAdded
+        .map((change) => ({
+          change,
+          city: findPriorityCityForEscalation(change.doc.data(), priorityCitiesRef.current),
+        }))
+        .filter((x) => x.city);
+      if (priorityAdded.length === 0) return;
+
+      const { change, city } = priorityAdded[0];
+      const first = change.doc.data() || {};
+      const label =
+        first.type === 'no_providers'
+          ? 'لا يوجد مزودون'
+          : first.type === 'all_rejected'
+            ? 'جميع المزودين رفضوا'
+            : 'انتهاء وقت البحث';
+      raiseAlert({
+        kind: 'escalation_priority',
+        title: priorityAdded.length === 1
+          ? `تصعيد في ${city.name}`
+          : `${priorityAdded.length} تصعيدات في مدن مستهدفة`,
+        body: `${label} — ${first.serviceName || 'طلب'}${first.orderNumber ? ` #${first.orderNumber}` : ''}`,
+        path: '/admin/escalations',
+        tag: `escalation-${change.doc.id}`,
+      });
     });
 
     const onSeenUpdated = () => refreshUnreadBadge();
@@ -113,6 +190,8 @@ export const Layout = () => {
     return () => {
       unsubscribe();
       unsubTickets();
+      unsubComplaints();
+      unsubPriorityCities();
       unsubEscalations();
       window.removeEventListener(ESCALATIONS_SEEN_EVENT, onSeenUpdated);
     };
@@ -156,6 +235,7 @@ export const Layout = () => {
     { id: 'orders',                  path: '/admin/orders',                   icon: ShoppingBag,     label: 'الطلبات',                  category: 'management' },
     { id: 'sla_tracking',            path: '/admin/sla-tracking',             icon: Timer,           label: 'متابعة SLA',               category: 'management' },
     { id: 'escalations',             path: '/admin/escalations',              icon: AlertTriangle,   label: 'تصعيدات النظام',           category: 'management' },
+    { id: 'provider_cancellations',  path: '/admin/provider-cancellations',   icon: UserX,           label: 'متابعة إلغاءات المزودين',  category: 'management' },
     { id: 'users',                   path: '/admin/users',                    icon: UserCheck,       label: 'العملاء',                  category: 'management' },
     { id: 'blocked_phones',          path: '/admin/blocked-phones',           icon: Ban,             label: 'حظر الأرقام',              category: 'management' },
     { id: 'notifications',           path: '/admin/notifications',            icon: Bell,            label: 'الإشعارات',                category: 'management' },
@@ -230,12 +310,22 @@ export const Layout = () => {
               </span>
             )}
             {item.id === 'support_tickets' && openTicketsCount > 0 && (
-              <span className="bg-emerald-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
+              <span className="bg-blue-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full min-w-[18px] text-center animate-pulse">
                 {openTicketsCount}
               </span>
             )}
+            {item.id === 'complaints' && pendingComplaintsCount > 0 && (
+              <span className="bg-purple-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full min-w-[18px] text-center animate-pulse">
+                {pendingComplaintsCount}
+              </span>
+            )}
+            {item.id === 'escalations' && generalEscalationsCount > 0 && (
+              <span className="bg-white/15 text-white/70 text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center" title="تصعيدات عامة">
+                {generalEscalationsCount}
+              </span>
+            )}
             {item.id === 'escalations' && newEscalationsCount > 0 && (
-              <span className="bg-orange-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full min-w-[18px] text-center animate-pulse">
+              <span className="bg-orange-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full min-w-[18px] text-center animate-pulse" title="مدن مستهدفة">
                 {newEscalationsCount}
               </span>
             )}
@@ -247,6 +337,40 @@ export const Layout = () => {
 
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden" dir="rtl">
+      {/* بطاقات التنبيه — تبقى حتى الإغلاق أو الضغط */}
+      {alertToasts.length > 0 && (
+        <div className="fixed top-3 left-3 right-3 sm:right-auto sm:w-96 z-[60] space-y-2">
+          {alertToasts.map((t) => {
+            const tone = {
+              escalation_priority: { box: 'bg-red-600 border-red-700', Icon: AlertTriangle },
+              ticket: { box: 'bg-blue-600 border-blue-700', Icon: Ticket },
+              complaint: { box: 'bg-purple-600 border-purple-700', Icon: MessageSquare },
+            }[t.kind] || { box: 'bg-gray-800 border-gray-900', Icon: Bell };
+            const ToastIcon = tone.Icon;
+            return (
+              <div
+                key={t.id}
+                role="alert"
+                onClick={() => { navigate(t.path); dismissToast(t.id); }}
+                className={`${tone.box} ${t.kind === 'escalation_priority' ? 'animate-pulse' : ''} border-2 text-white rounded-2xl shadow-2xl p-4 flex items-start gap-3 cursor-pointer`}
+              >
+                <ToastIcon className="w-6 h-6 flex-shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <div className="font-black text-base leading-tight">{t.title}</div>
+                  <div className="text-sm text-white/90 mt-1 break-words">{t.body}</div>
+                </div>
+                <button
+                  onClick={(e) => { e.stopPropagation(); dismissToast(t.id); }}
+                  className="p-1 rounded-lg hover:bg-white/20 flex-shrink-0"
+                  aria-label="إغلاق"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
       <SeoHead
         title="لوحة التحكم | فزاعين"
         description="لوحة تحكم إدارة منصة فزاعين"

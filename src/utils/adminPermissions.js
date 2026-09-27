@@ -14,6 +14,7 @@ export const ADMIN_PERMISSION_DEFS = [
   { id: 'orders', path: '/admin/orders', category: 'management', label: 'الطلبات' },
   { id: 'sla_tracking', path: '/admin/sla-tracking', category: 'management', label: 'متابعة SLA' },
   { id: 'escalations', path: '/admin/escalations', category: 'management', label: 'تصعيدات النظام' },
+  { id: 'provider_cancellations', path: '/admin/provider-cancellations', category: 'management', label: 'متابعة إلغاءات المزودين' },
   { id: 'users', path: '/admin/users', category: 'management', label: 'العملاء' },
   { id: 'blocked_phones', path: '/admin/blocked-phones', category: 'management', label: 'حظر الأرقام' },
   { id: 'notifications', path: '/admin/notifications', category: 'management', label: 'الإشعارات' },

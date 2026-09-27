@@ -110,6 +110,12 @@ export const Providers = () => {
   const [cancelCounts, setCancelCounts] = useState({});
   const [loadingCancelCounts, setLoadingCancelCounts] = useState(false);
   const CANCEL_THRESHOLD = 3;
+  // فلاتر الأداء — تعمل معاً: ترتيب مركّب من المعايير المفعّلة
+  const [perfMostExecuted, setPerfMostExecuted] = useState(false);
+  const [perfLeastCancel, setPerfLeastCancel] = useState(false);
+  const [perfTopRated, setPerfTopRated] = useState(false);
+  const [perfCancelCounts, setPerfCancelCounts] = useState(null);
+  const [loadingPerfCancel, setLoadingPerfCancel] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState(null);
   const [selectedProvidersForGroup, setSelectedProvidersForGroup] = useState([]);
   const [lowBalanceFilter, setLowBalanceFilter] = useState(false);
@@ -291,7 +297,22 @@ export const Providers = () => {
 
   useEffect(() => {
     filterProviders();
-  }, [providers, mainServices, searchTerm, statusFilter, typeFilter, groupFilter, serviceFilter, cityFilter, nationalityFilter, lowBalanceFilter, pricingSettings, executedOrdersFilter, locationIssueFilter, providerIdsWithCompletedOrders, executedOrdersCounts, cancelFreqFilter, cancelCounts]);
+  }, [providers, mainServices, searchTerm, statusFilter, typeFilter, groupFilter, serviceFilter, cityFilter, nationalityFilter, lowBalanceFilter, pricingSettings, executedOrdersFilter, locationIssueFilter, providerIdsWithCompletedOrders, executedOrdersCounts, cancelFreqFilter, cancelCounts, perfMostExecuted, perfLeastCancel, perfTopRated, perfCancelCounts]);
+
+  // إلغاءات المزود (كل الوقت) — تُحمّل مرة واحدة عند تفعيل «الأقل إلغاءً»
+  useEffect(() => {
+    if (!perfLeastCancel || perfCancelCounts) return undefined;
+    let cancelled = false;
+    setLoadingPerfCancel(true);
+    getProviderCancellationCounts(3650)
+      .then((counts) => { if (!cancelled) setPerfCancelCounts(counts || {}); })
+      .catch((e) => {
+        console.error('Error loading all-time cancellation counts:', e);
+        if (!cancelled) setPerfCancelCounts({});
+      })
+      .finally(() => { if (!cancelled) setLoadingPerfCancel(false); });
+    return () => { cancelled = true; };
+  }, [perfLeastCancel, perfCancelCounts]);
 
   useEffect(() => {
     if (cancelFreqFilter === 'all') {
@@ -1001,7 +1022,44 @@ export const Providers = () => {
         .sort((a, b) => (cancelCounts[String(b.id)]?.count || 0) - (cancelCounts[String(a.id)]?.count || 0));
     }
 
+    // فلاتر الأداء: كل معيار مفعّل يعطي درجة ترتيب (0..1) والنتيجة مجموعها —
+    // مثلاً «الأكثر تنفيذاً + الأعلى تقييماً» يرفع الشغيل ذا التقييم العالي للأعلى
+    if (perfMostExecuted || perfLeastCancel || perfTopRated) {
+      if (perfMostExecuted) filtered = filtered.filter((p) => getExecutedCount(p) > 0);
+      if (perfTopRated) filtered = filtered.filter((p) => getProviderRatingAvg(p) > 0);
+      if (perfLeastCancel && !perfCancelCounts) {
+        filtered = [];
+      } else {
+        const criteria = [];
+        if (perfMostExecuted) criteria.push((p) => getExecutedCount(p));
+        if (perfTopRated) criteria.push((p) => getProviderRatingAvg(p));
+        if (perfLeastCancel) criteria.push((p) => -getProviderCancelRate(p));
+        const scores = new Map(filtered.map((p) => [p.id, 0]));
+        criteria.forEach((valueOf) => {
+          const values = filtered.map(valueOf);
+          const min = Math.min(...values);
+          const span = Math.max(...values) - min || 1;
+          filtered.forEach((p, i) => scores.set(p.id, scores.get(p.id) + (values[i] - min) / span));
+        });
+        filtered = [...filtered].sort((a, b) => scores.get(b.id) - scores.get(a.id));
+      }
+    }
+
     setFilteredProviders(filtered);
+  };
+
+  const getExecutedCount = (p) => executedOrdersCounts[String(p.id)] || 0;
+  const getProviderRatingAvg = (p) => {
+    const r = p?.rating;
+    const n = Number(typeof r === 'object' && r ? r.average : r);
+    return Number.isFinite(n) ? n : 0;
+  };
+  const getProviderCancelCount = (p) => perfCancelCounts?.[String(p.id)]?.count || 0;
+  /** نسبة الإلغاء من المزود = إلغاءات ÷ (منفّذ + إلغاءات) — أعدل من العدد الخام */
+  const getProviderCancelRate = (p) => {
+    const c = getProviderCancelCount(p);
+    const total = c + getExecutedCount(p);
+    return total > 0 ? c / total : 0;
   };
 
   const handleStatusChange = async (providerId, newStatus) => {
@@ -1623,6 +1681,33 @@ export const Providers = () => {
                     </span>
                   )}
                 </div>
+                <div className="sm:col-span-2 lg:col-span-3 xl:col-span-4 flex flex-wrap items-center gap-2 px-4 py-3 bg-indigo-50 rounded-lg border border-indigo-100 min-w-0">
+                  <span className="text-sm font-black text-indigo-900 ml-1">الأداء (تعمل معاً):</span>
+                  {[
+                    { id: 'perfMostExecuted', label: 'الأكثر تنفيذاً', on: perfMostExecuted, set: setPerfMostExecuted },
+                    { id: 'perfLeastCancel', label: 'الأقل إلغاءً (من المزود)', on: perfLeastCancel, set: setPerfLeastCancel },
+                    { id: 'perfTopRated', label: 'الأعلى تقييماً', on: perfTopRated, set: setPerfTopRated },
+                  ].map((f) => (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => f.set(!f.on)}
+                      className={`px-3 py-1.5 rounded-full text-sm font-bold border transition-all ${
+                        f.on ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-indigo-800 border-indigo-200 hover:bg-indigo-100'
+                      }`}
+                    >
+                      {f.on ? '✓ ' : ''}{f.label}
+                    </button>
+                  ))}
+                  {(loadingPerfCancel || (perfMostExecuted && loadingExecutedOrdersFilter)) && (
+                    <Loader2 size={14} className="animate-spin text-indigo-600" />
+                  )}
+                  {(perfMostExecuted || perfLeastCancel || perfTopRated) && (
+                    <span className="text-xs font-semibold text-indigo-700 bg-white px-2 py-0.5 rounded-full border border-indigo-100">
+                      {filteredProviders.length}
+                    </span>
+                  )}
+                </div>
                 <div className="flex items-center gap-2 px-4 py-3 bg-orange-50 rounded-lg border border-orange-100 sm:col-span-2 lg:col-span-1 xl:col-span-2 min-w-0">
                   <input
                     type="checkbox"
@@ -1718,6 +1803,16 @@ export const Providers = () => {
                                 {executedOrdersCount > 0 && (
                                   <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-teal-100 text-teal-800">
                                     نفّذ {executedOrdersCount} طلب
+                                  </span>
+                                )}
+                                {perfTopRated && getProviderRatingAvg(provider) > 0 && (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-amber-100 text-amber-800">
+                                    ★ {getProviderRatingAvg(provider).toFixed(1)}
+                                  </span>
+                                )}
+                                {perfLeastCancel && perfCancelCounts && (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-rose-50 text-rose-700">
+                                    ألغى {getProviderCancelCount(provider)} ({Math.round(getProviderCancelRate(provider) * 100)}٪)
                                   </span>
                                 )}
                                 {locationIssue && (
