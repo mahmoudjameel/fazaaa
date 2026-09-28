@@ -92,8 +92,16 @@ export default function WalletTopUps() {
     const term = searchTerm.trim().toLowerCase();
     if (term) {
       list = list.filter((r) => {
+        // رقم الجوال: مطابقة آخر 9 أرقام حتى يعمل 05… و 9665… و +966…
+        const termDigits = term.replace(/\D/g, '');
+        const phoneDigits = String(r.providerPhone || '').replace(/\D/g, '');
+        if (termDigits.length >= 6 && phoneDigits && phoneDigits.slice(-9).includes(termDigits.slice(-9))) {
+          return true;
+        }
         const hay = [
           r.id,
+          r.referenceNumber,
+          r.reason,
           r.providerName,
           r.providerPhone,
           r.providerId,
@@ -188,7 +196,7 @@ export default function WalletTopUps() {
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="بحث: اسم المزود، الهاتف، Track ID، Payment ID، الباقة..."
+            placeholder="بحث برقم الجوال أو رقم مرجع الشحن…"
             className="w-full pr-10 pl-4 py-2.5 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:border-teal-400 focus:ring-1 focus:ring-teal-400 outline-none text-sm"
           />
         </div>
@@ -239,7 +247,7 @@ export default function WalletTopUps() {
                   <th className="px-4 py-3 font-bold">المبلغ</th>
                   <th className="px-4 py-3 font-bold">الحالة</th>
                   <th className="px-4 py-3 font-bold">نتيجة البنك</th>
-                  <th className="px-4 py-3 font-bold">Track / Payment</th>
+                  <th className="px-4 py-3 font-bold">رقم المرجع</th>
                   <th className="px-4 py-3 font-bold">تفاصيل</th>
                 </tr>
               </thead>
@@ -262,7 +270,13 @@ export default function WalletTopUps() {
                       <div className="font-semibold text-gray-800">
                         {row.serviceCredits != null ? `${row.serviceCredits} خدمات` : '—'}
                       </div>
-                      <div className="text-[11px] text-gray-400">{row.packageId || '—'}</div>
+                      {row.source === 'admin_panel' ? (
+                        <span className="inline-block mt-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-700">
+                          {row.adjustmentType === 'compensation' ? 'تعويض من الإدارة' : 'شحن من الإدارة'}
+                        </span>
+                      ) : (
+                        <div className="text-[11px] text-gray-400">{row.packageId || '—'}</div>
+                      )}
                     </td>
                     <td className="px-4 py-3 font-black text-gray-900 whitespace-nowrap">
                       {row.amount != null ? `${Number(row.amount).toLocaleString('ar-SA')} ر.س` : '—'}
@@ -361,7 +375,14 @@ export default function WalletTopUps() {
                     label: 'المبلغ',
                     value: selected.amount != null ? `${selected.amount} ر.س` : '—',
                   },
-                  { label: 'Track ID', value: selected.trackId, mono: true, copy: true },
+                  { label: 'رقم المرجع', value: selected.referenceNumber || selected.trackId, mono: true, copy: true },
+                  ...(selected.source === 'admin_panel'
+                    ? [
+                        { label: 'نوع العملية', value: selected.adjustmentType === 'compensation' ? 'تعويض من الإدارة' : 'شحن من الإدارة' },
+                        { label: 'السبب', value: selected.reason || '—' },
+                        { label: 'بواسطة', value: selected.adminEmail || '—', ltr: true },
+                      ]
+                    : []),
                   { label: 'Payment ID', value: selected.paymentId, mono: true, copy: true },
                   { label: 'Trans ID', value: selected.transId, mono: true, copy: true },
                   { label: 'المرجع Ref', value: selected.ref, mono: true },
@@ -381,6 +402,18 @@ export default function WalletTopUps() {
                   { label: 'بوابة الدفع', value: selected.gateway || 'alrajhi' },
                 ]}
               />
+
+              {selected.attachment?.url ? (
+                <a
+                  href={selected.attachment.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 rounded-xl bg-teal-50 border border-teal-100 p-3 text-sm font-bold text-teal-700 hover:bg-teal-100"
+                >
+                  <CreditCard className="w-4 h-4" />
+                  {selected.attachment.type === 'pdf' ? 'عرض المستند المرفق (PDF)' : 'عرض الإيصال المرفق'}
+                </a>
+              ) : null}
 
               {selected.paymentUrl ? (
                 <div className="rounded-xl bg-slate-50 border border-slate-100 p-3">

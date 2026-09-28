@@ -17,6 +17,7 @@ import {
   onSnapshot,
   runTransaction,
   collectionGroup,
+  arrayUnion,
 } from 'firebase/firestore';
 import { auth, db, functions } from './firebase';
 import { httpsCallable } from 'firebase/functions';
@@ -723,6 +724,58 @@ export const removeProviderDocument = async (providerId, documentKey) => {
     console.error('Remove provider document error:', error);
     throw error;
   }
+};
+
+/**
+ * توثيق مزود خدمة — يفعّله الأدمن، مع ملفّين اختياريين (موافقة جهة العمل…) صورة أو PDF.
+ * الملفات خارج documents لأن تطبيق المزود يعيد كتابة documents كاملة عند تحديث مستنداته.
+ * isVerifiedProvider يُظهر شارة «موثّق» داخل تطبيق المزود فقط (لا تظهر للعميل).
+ */
+export const MAX_VERIFICATION_FILES = 2;
+
+/** ملفات التوثيق — يشمل الحقل القديم verificationDocument (ملف واحد) للتوافق */
+export const getProviderVerificationFiles = (provider) => [
+  ...(Array.isArray(provider?.verificationDocuments) ? provider.verificationDocuments : []),
+  ...(provider?.verificationDocument?.url ? [{ ...provider.verificationDocument, legacy: true }] : []),
+].filter((f) => f?.url);
+
+export const setProviderVerified = async (providerId, verified) => {
+  const now = new Date().toISOString();
+  await updateDoc(doc(db, 'providers', providerId), {
+    isVerifiedProvider: verified === true,
+    verifiedProviderAt: verified === true ? now : null,
+    updatedAt: now,
+  });
+  return { success: true };
+};
+
+export const addProviderVerificationFile = async (providerId, file) => {
+  const snap = await getDoc(doc(db, 'providers', providerId));
+  if (!snap.exists()) throw new Error('المزود غير موجود');
+  const current = getProviderVerificationFiles(snap.data());
+  if (current.length >= MAX_VERIFICATION_FILES) {
+    throw new Error(`الحد الأقصى ${MAX_VERIFICATION_FILES} ملفات للتوثيق`);
+  }
+  await updateDoc(doc(db, 'providers', providerId), {
+    verificationDocuments: arrayUnion({ ...file, uploadedAt: new Date().toISOString() }),
+    updatedAt: new Date().toISOString(),
+  });
+  return { success: true };
+};
+
+export const removeProviderVerificationFile = async (providerId, file) => {
+  const ref = doc(db, 'providers', providerId);
+  if (file?.legacy) {
+    await updateDoc(ref, { verificationDocument: null, updatedAt: new Date().toISOString() });
+    return { success: true };
+  }
+  const snap = await getDoc(ref);
+  const list = Array.isArray(snap.data()?.verificationDocuments) ? snap.data().verificationDocuments : [];
+  await updateDoc(ref, {
+    verificationDocuments: list.filter((f) => f?.url !== file?.url),
+    updatedAt: new Date().toISOString(),
+  });
+  return { success: true };
 };
 
 /**
@@ -2336,7 +2389,18 @@ export const getProviderLoginSessions = async (providerId, maxResults = 50) => {
  * @param {string} reason - السبب
  * @returns {Promise<Object>}
  */
-export const adjustProviderWallet = async (providerId, amount, type, reason) => {
+/** رقم مرجعي لعمليات الإدارة — بنفس نمط Track ID البنكي (FZ…) مع A للتمييز */
+const generateAdminReferenceNumber = () => {
+  const ts = Date.now().toString(36).toUpperCase();
+  const rnd = Array.from(crypto.getRandomValues(new Uint8Array(3)))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
+    .toUpperCase();
+  return `FZA${ts}${rnd}`;
+};
+
+/** attachment (اختياري): إيصال/مستند مرجعي { url, type, name } يُحفظ مع العملية */
+export const adjustProviderWallet = async (providerId, amount, type, reason, attachment = null) => {
   try {
     const pricingSnap = await getDoc(doc(db, 'settings', 'distribution'));
     const pricing = normalizePricing(pricingSnap.exists() ? pricingSnap.data()?.pricing : null);
@@ -2420,24 +2484,52 @@ export const adjustProviderWallet = async (providerId, amount, type, reason) => 
       return { newBalance, walletAfter };
     });
 
+    const referenceNumber = generateAdminReferenceNumber();
     const transactionsRef = collection(db, 'providers', providerId, 'transactions');
     const txPayload = {
       type,
       amount: Number(amount),
       balance: result.newBalance,
       reason,
+      referenceNumber,
       timestamp: serverTimestamp(),
       createdAt: new Date().toISOString(),
       source: 'admin_panel',
     };
+    if (attachment?.url) txPayload.attachment = attachment;
     if (serviceCreditsAdded > 0) {
       txPayload.serviceCreditsAdded = serviceCreditsAdded;
       txPayload.unitValue = unitValue;
     }
     await addDoc(transactionsRef, txPayload);
 
+    // الشحن/التعويض اليدوي يظهر في «عمليات شحن المزودين» بجانب الشحن البنكي بنفس رقم المرجع
+    if (type === 'addition' || type === 'compensation') {
+      try {
+        await setDoc(doc(db, 'wallet_topups', referenceNumber), {
+          uid: providerId,
+          source: 'admin_panel',
+          adjustmentType: type,
+          trackId: referenceNumber,
+          referenceNumber,
+          amount: Number(amount),
+          serviceCredits: serviceCreditsAdded || null,
+          state: 'PAID',
+          reason: reason || null,
+          attachment: attachment?.url ? attachment : null,
+          adminEmail: localStorage.getItem('admin_email') || auth.currentUser?.email || null,
+          createdAt: serverTimestamp(),
+          paidAt: serverTimestamp(),
+        });
+      } catch (mirrorErr) {
+        // لا نُفشل العملية — الرصيد أُضيف والمرجع محفوظ في سجل المزود
+        console.warn('wallet_topups admin mirror failed:', mirrorErr?.message || mirrorErr);
+      }
+    }
+
     return {
       success: true,
+      referenceNumber,
       newBalance: result.newBalance,
       serviceCreditsAdded,
       wallet: result.walletAfter || walletAfter,

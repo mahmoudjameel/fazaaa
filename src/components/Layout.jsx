@@ -228,6 +228,8 @@ export const Layout = () => {
 
   const menuItems = [
     { id: 'dashboard',               path: '/admin',                          icon: LayoutDashboard, label: 'لوحة التحكم',             category: 'main' },
+    { id: 'complaints',              path: '/admin/complaints',               icon: MessageSquare,   label: 'الشكاوي',                  category: 'main' },
+    { id: 'support_tickets',         path: '/admin/support-tickets',          icon: Ticket,          label: 'تذاكر الدعم',              category: 'main' },
     { id: 'emergency_services',      path: '/admin/emergency-services',       icon: AlertCircle,     label: 'خدمات الطوارئ',           category: 'services' },
     { id: 'providers',               path: '/admin/providers',                icon: Users,           label: 'المزودون',                 category: 'management' },
     { id: 'providers_map',           path: '/admin/providers-map',            icon: MapPin,          label: 'خريطة المزودين',           category: 'management' },
@@ -239,8 +241,6 @@ export const Layout = () => {
     { id: 'users',                   path: '/admin/users',                    icon: UserCheck,       label: 'العملاء',                  category: 'management' },
     { id: 'blocked_phones',          path: '/admin/blocked-phones',           icon: Ban,             label: 'حظر الأرقام',              category: 'management' },
     { id: 'notifications',           path: '/admin/notifications',            icon: Bell,            label: 'الإشعارات',                category: 'management' },
-    { id: 'support_tickets',         path: '/admin/support-tickets',          icon: Ticket,          label: 'تذاكر الدعم',              category: 'management' },
-    { id: 'complaints',              path: '/admin/complaints',               icon: MessageSquare,   label: 'الشكاوي',                  category: 'management' },
     { id: 'marketing_insights',      path: '/admin/marketing-insights',       icon: BarChart3,       label: 'تحليلات التسويق',          category: 'management' },
     { id: 'chats',                   path: '/admin/chats',                    icon: MessageCircle,   label: 'المحادثات',                category: 'management' },
     { id: 'withdrawal_requests',     path: '/admin/withdrawal-requests',      icon: Banknote,        label: 'طلبات السحب',              category: 'financial' },

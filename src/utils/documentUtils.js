@@ -69,6 +69,7 @@ export const DOCUMENT_KEY_LABELS = {
   id_photo: 'الهوية / الإقامة',
   idPhoto: 'الهوية / الإقامة',
   equipmentPhoto: 'صورة العدة',
+  serviceProviderVerification: 'توثيق مزود خدمة',
   equipment_photo: 'صورة العدة',
   carPhotoFront: 'السيارة - أمام',
   car_front: 'السيارة - أمام',

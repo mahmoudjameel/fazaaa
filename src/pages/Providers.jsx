@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   Search, CheckCircle, XCircle, Clock, Eye, Phone, Mail, Star, Power,
-  UserCheck, Users, Plus, Edit2, Trash2, Tag, X, FileText, ShieldBan, ShieldOff, ShieldCheck, Loader2,
+  UserCheck, Users, Plus, Edit2, Trash2, Tag, X, FileText, Copy, ShieldBan, ShieldOff, ShieldCheck, Loader2,
   MapPin, Globe, Smartphone, RefreshCw, ExternalLink, Navigation, ShieldAlert,
 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -20,6 +20,11 @@ import {
   approveProviderWithAllServices,
   removeProviderService,
   removeProviderDocument,
+  setProviderVerified,
+  addProviderVerificationFile,
+  removeProviderVerificationFile,
+  getProviderVerificationFiles,
+  MAX_VERIFICATION_FILES,
   addOrUpdateProviderDocument,
   getProviderOrderStats,
   PROVIDER_OUTCOME_LABELS,
@@ -91,6 +96,14 @@ const DOCUMENT_TYPE_OPTIONS = [
   { key: 'equipmentPhoto', label: 'صورة العدة' },
 ];
 
+/**
+ * رقم مرجعي موحّد لأي حركة محفظة — نفسه في تطبيق المزود.
+ * FZ… شحن بنكي · FZA… إدارة · FZC… عمولة طلب · FZT… حركات قديمة قبل نظام المرجع (مشتق من معرّف السجل)
+ */
+const resolveTransactionReference = (tx) =>
+  tx?.referenceNumber || tx?.trackId || (tx?.id ? `FZT${String(tx.id).slice(-8).toUpperCase()}` : null);
+
+
 export const Providers = () => {
   const location = useLocation();
   const [providers, setProviders] = useState([]);
@@ -153,6 +166,8 @@ export const Providers = () => {
   const [loadingStats, setLoadingStats] = useState(false);
   const [ordersFilter, setOrdersFilter] = useState('all');
   const [walletAdjustment, setWalletAdjustment] = useState({ amount: '', type: 'addition', reason: '' });
+  // إيصال/مستند مرجعي اختياري لعملية الرصيد (صورة أو PDF) — مثال: إيصال إرجاع مبلغ لمزود
+  const [walletReceiptFile, setWalletReceiptFile] = useState(null);
   const [walletAmountError, setWalletAmountError] = useState('');
   const [pricingSettings, setPricingSettings] = useState({ ...DEFAULT_PRICING });
   const [isAdjustingWallet, setIsAdjustingWallet] = useState(false);
@@ -165,6 +180,7 @@ export const Providers = () => {
   const [deletingDocKey, setDeletingDocKey] = useState(null);
   const [removingServiceId, setRemovingServiceId] = useState(null);
   const [uploadingDocument, setUploadingDocument] = useState(false);
+  const [verifyBusy, setVerifyBusy] = useState(false);
   const [addDocType, setAddDocType] = useState(DOCUMENT_TYPE_OPTIONS[0].key);
   const [addDocFile, setAddDocFile] = useState(null);
   const [showDeleteProviderModal, setShowDeleteProviderModal] = useState(false);
@@ -761,6 +777,62 @@ export const Providers = () => {
     return 'image';
   };
 
+  // ── توثيق مزود خدمة: تفعيل/إلغاء + حتى ملفين اختياريين ──
+  const handleToggleVerified = async () => {
+    if (!selectedProvider) return;
+    const next = selectedProvider.isVerifiedProvider !== true;
+    if (!next && !window.confirm('إلغاء توثيق المزود؟ ستختفي شارة «موثّق» من تطبيقه.')) return;
+    setVerifyBusy(true);
+    try {
+      await setProviderVerified(selectedProvider.id, next);
+      await refreshSelectedProvider();
+    } catch (error) {
+      alert('تعذّر الحفظ: ' + (error.message || ''));
+    } finally {
+      setVerifyBusy(false);
+    }
+  };
+
+  const handleAddVerificationFiles = async (fileList) => {
+    if (!selectedProvider || !fileList?.length) return;
+    const room = MAX_VERIFICATION_FILES - getProviderVerificationFiles(selectedProvider).length;
+    const files = Array.from(fileList).slice(0, Math.max(0, room));
+    if (!files.length) {
+      alert(`الحد الأقصى ${MAX_VERIFICATION_FILES} ملفات — احذف ملفاً أولاً`);
+      return;
+    }
+    setVerifyBusy(true);
+    try {
+      for (const file of files) {
+        const storageRef = ref(storage, `providers/${selectedProvider.id}/verification/${Date.now()}_${file.name}`);
+        await uploadBytes(storageRef, file);
+        await addProviderVerificationFile(selectedProvider.id, {
+          url: await getDownloadURL(storageRef),
+          type: getFileType(file),
+          name: file.name,
+        });
+      }
+      await refreshSelectedProvider();
+    } catch (error) {
+      alert('فشل رفع الملف: ' + (error.message || ''));
+    } finally {
+      setVerifyBusy(false);
+    }
+  };
+
+  const handleRemoveVerificationFile = async (file) => {
+    if (!selectedProvider || !window.confirm('حذف هذا الملف من التوثيق؟')) return;
+    setVerifyBusy(true);
+    try {
+      await removeProviderVerificationFile(selectedProvider.id, file);
+      await refreshSelectedProvider();
+    } catch (error) {
+      alert('فشل الحذف: ' + (error.message || ''));
+    } finally {
+      setVerifyBusy(false);
+    }
+  };
+
   const handleAddDocument = async (e) => {
     e.preventDefault();
     if (!selectedProvider || !addDocFile) {
@@ -845,20 +917,36 @@ export const Providers = () => {
 
     setIsAdjustingWallet(true);
     try {
+      let attachment = null;
+      if (walletReceiptFile) {
+        const receiptRef = ref(
+          storage,
+          `providers/${selectedProvider.id}/wallet_receipts/${Date.now()}_${walletReceiptFile.name}`
+        );
+        await uploadBytes(receiptRef, walletReceiptFile);
+        attachment = {
+          url: await getDownloadURL(receiptRef),
+          type: getFileType(walletReceiptFile),
+          name: walletReceiptFile.name,
+        };
+      }
       const result = await adjustProviderWallet(
         selectedProvider.id,
         walletAdjustment.amount,
         walletAdjustment.type,
-        walletAdjustment.reason
+        walletAdjustment.reason,
+        attachment
       );
 
       if (result.success) {
         alert(
-          result.serviceCreditsAdded > 0
+          (result.serviceCreditsAdded > 0
             ? `تم الشحن بنجاح — أُضيفت ${result.serviceCreditsAdded} خدمة`
-            : 'تم تحديث الرصيد بنجاح'
+            : 'تم تحديث الرصيد بنجاح')
+          + (result.referenceNumber ? `\nرقم المرجع: ${result.referenceNumber}` : '')
         );
         setWalletAdjustment({ amount: '', type: 'addition', reason: '' });
+        setWalletReceiptFile(null);
         const updatedProvider = { ...selectedProvider };
         if (!updatedProvider.wallet) updatedProvider.wallet = {};
         updatedProvider.wallet.balance = result.newBalance;
@@ -2779,9 +2867,62 @@ export const Providers = () => {
                             ))}
                           </div>
                         )}
-                        {selectedProvider.documents && listDocumentsForDisplay(selectedProvider.documents).length > 0 && (
+                        {(() => {
+                          const verified = selectedProvider.isVerifiedProvider === true;
+                          const vFiles = getProviderVerificationFiles(selectedProvider);
+                          return (
+                            <div className={`mb-6 rounded-xl border-2 p-4 ${verified ? 'border-blue-300 bg-blue-50' : 'border-gray-200 bg-white'}`}>
+                              <div className="flex flex-wrap items-center justify-between gap-3">
+                                <div className="flex items-center gap-2">
+                                  <ShieldCheck size={22} className={verified ? 'text-blue-600' : 'text-gray-400'} />
+                                  <div>
+                                    <div className="font-black text-gray-900">توثيق مزود خدمة</div>
+                                    <div className="text-xs text-gray-500">
+                                      {verified ? 'موثّق — تظهر له شارة «موثّق» داخل تطبيقه فقط' : 'غير موثّق'}
+                                    </div>
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={handleToggleVerified}
+                                  disabled={verifyBusy}
+                                  className={`px-4 py-2 rounded-xl text-sm font-bold disabled:opacity-50 ${verified ? 'bg-white text-red-600 border border-red-200 hover:bg-red-50' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
+                                >
+                                  {verifyBusy ? '...' : verified ? 'إلغاء التوثيق' : 'توثيق المزود'}
+                                </button>
+                              </div>
+                              <div className="mt-3 flex flex-wrap items-center gap-2">
+                                {vFiles.map((f) => (
+                                  <div key={f.url} className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white border border-gray-200 text-sm">
+                                    <FileText size={16} className="text-teal-600" />
+                                    <a href={f.url} target="_blank" rel="noopener noreferrer" className="font-semibold text-gray-700 hover:text-teal-700 max-w-[160px] truncate">
+                                      {f.name || (f.type === 'pdf' ? 'مستند PDF' : 'صورة')}
+                                    </a>
+                                    <button type="button" onClick={() => handleRemoveVerificationFile(f)} disabled={verifyBusy} className="text-gray-400 hover:text-red-500" aria-label="حذف">
+                                      <X size={14} />
+                                    </button>
+                                  </div>
+                                ))}
+                                {vFiles.length < MAX_VERIFICATION_FILES && (
+                                  <label className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border-2 border-dashed border-gray-300 text-sm font-semibold text-gray-600 hover:border-teal-400 cursor-pointer ${verifyBusy ? 'opacity-50 pointer-events-none' : ''}`}>
+                                    <Plus size={16} />
+                                    إرفاق ملف (صورة / PDF) — اختياري ({vFiles.length}/{MAX_VERIFICATION_FILES})
+                                    <input
+                                      type="file"
+                                      accept="image/*,application/pdf"
+                                      multiple
+                                      className="hidden"
+                                      onChange={(e) => { handleAddVerificationFiles(e.target.files); e.target.value = ''; }}
+                                    />
+                                  </label>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })()}
+                        {listDocumentsForDisplay(selectedProvider.documents || {}).length > 0 && (
                           <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
-                            {listDocumentsForDisplay(selectedProvider.documents).map(({ key, url, type, label: docLabel }) => {
+                            {listDocumentsForDisplay(selectedProvider.documents || {}).map(({ key, url, type, label: docLabel }) => {
                               const isImage = type === 'image';
                               return (
                                 <div key={`${key}-${url}`} className="relative group rounded-xl overflow-hidden border-2 border-gray-100 hover:border-teal-400 transition-all bg-gray-50">
@@ -3108,6 +3249,28 @@ export const Providers = () => {
                               onChange={(e) => setWalletAdjustment({ ...walletAdjustment, reason: e.target.value })}
                               className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-teal-400 focus:outline-none min-h-[80px]"
                             ></textarea>
+                            <label className="flex items-center gap-3 px-4 py-3 rounded-xl border-2 border-dashed border-gray-200 hover:border-teal-400 cursor-pointer bg-white">
+                              <FileText size={20} className="text-teal-600 flex-shrink-0" />
+                              <span className="flex-1 min-w-0 text-sm font-semibold text-gray-600 truncate">
+                                {walletReceiptFile ? walletReceiptFile.name : 'إرفاق إيصال أو مستند (صورة / PDF) — اختياري'}
+                              </span>
+                              {walletReceiptFile && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.preventDefault(); setWalletReceiptFile(null); }}
+                                  className="p-1 rounded-lg text-gray-400 hover:text-red-500"
+                                  aria-label="إزالة المرفق"
+                                >
+                                  <X size={16} />
+                                </button>
+                              )}
+                              <input
+                                type="file"
+                                accept="image/*,application/pdf"
+                                className="hidden"
+                                onChange={(e) => setWalletReceiptFile(e.target.files?.[0] || null)}
+                              />
+                            </label>
                             <button
                               disabled={isAdjustingWallet}
                               type="submit"
@@ -3143,6 +3306,29 @@ export const Providers = () => {
                                       ) : (item.requestId ? (
                                         <p className="text-[10px] font-mono text-gray-400">الطلب: {item.requestId.slice(-8)}</p>
                                       ) : null)}
+                                      {resolveTransactionReference(item) && (
+                                        <button
+                                          type="button"
+                                          onClick={() => navigator.clipboard?.writeText(resolveTransactionReference(item)).then(() => alert('تم نسخ رقم المرجع'))}
+                                          className="inline-flex items-center gap-1 text-[10px] font-mono text-gray-500 hover:text-teal-600"
+                                          title="نسخ رقم المرجع"
+                                          dir="ltr"
+                                        >
+                                          مرجع: {resolveTransactionReference(item)}
+                                          <Copy size={11} />
+                                        </button>
+                                      )}
+                                      {item.attachment?.url && (
+                                        <a
+                                          href={item.attachment.url}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="inline-flex items-center gap-1 text-[11px] font-bold text-teal-700 hover:underline"
+                                        >
+                                          <FileText size={12} />
+                                          {item.attachment.type === 'pdf' ? 'عرض المستند (PDF)' : 'عرض الإيصال'}
+                                        </a>
+                                      )}
                                       <p className="text-[10px] text-gray-500">
                                         {item.timestamp ? format(item.timestamp.toDate ? item.timestamp.toDate() : new Date(item.timestamp), 'dd MMM yyyy, HH:mm', { locale: ar }) : '-'}
                                       </p>
