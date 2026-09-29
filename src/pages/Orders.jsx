@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import {
   resolveProviderAppArrival,
   formatProviderAppArrivalLabel,
@@ -37,7 +37,8 @@ import {
   Stethoscope,
 } from 'lucide-react';
 import {
-  listenToRecentRequests,
+  listenToAllRequests,
+  listenToRequestsSince,
   getAllProviders,
   getProviderById,
   getUsersBySearch,
@@ -237,9 +238,6 @@ export const Orders = () => {
   const location = useLocation();
   const [requests, setRequests] = useState([]);
   const [filteredRequests, setFilteredRequests] = useState([]);
-  const REQUESTS_BATCH = 300;
-  const [requestsLimit, setRequestsLimit] = useState(REQUESTS_BATCH);
-  const [loadingOlder, setLoadingOlder] = useState(false);
   // عرض تدريجي — رسم آلاف البطاقات دفعة واحدة يبطئ الصفحة ويُسقطها على الجوال
   const ORDERS_PAGE_SIZE = 50;
   const [visibleCount, setVisibleCount] = useState(ORDERS_PAGE_SIZE);
@@ -345,12 +343,28 @@ export const Orders = () => {
     fetchServices();
   }, []);
 
-  // real-time listener لأحدث requestsLimit طلب فقط (وليس المجموعة كاملة)
+  // بداية الفترة المختارة — تُحسب عند تغيير الفلتر فقط (ثابتة حتى لا يُعاد الاشتراك كل render)
+  const rangeCutoffMs = useMemo(() => {
+    const rangeMs = {
+      '24h': 24 * 60 * 60 * 1000,
+      '7d': 7 * 24 * 60 * 60 * 1000,
+      '30d': 30 * 24 * 60 * 60 * 1000,
+      '90d': 90 * 24 * 60 * 60 * 1000,
+    }[dateRangeFilter];
+    return rangeMs ? Math.floor((Date.now() - rangeMs) / 60000) * 60000 : null;
+  }, [dateRangeFilter]);
+
+  // كل الطلبات بلا سقف — «كل الفترات» يقرأ الكل، والفترة المحددة تُجلب من السيرفر مباشرة.
+  // سابقاً كانت الصفحة تحمّل آخر 300 فقط وتطبّق عليها الفلاتر والبطاقات، فتتوقف الأعداد عند 300.
   // نحدّث الواجهة فقط عند تغيّر حقول العرض المهمة (تجنب قفز التمرير
   // بسبب تحديثات البحث المتدرج مثل providerIdsToNotify كل بضع ثوانٍ)
   useEffect(() => {
     let lastSig = '';
-    const unsubscribe = listenToRecentRequests(requestsLimit, (reqs) => {
+    setLoading(true);
+    const subscribe = rangeCutoffMs != null
+      ? (cb) => listenToRequestsSince(rangeCutoffMs, cb)
+      : (cb) => listenToAllRequests(cb);
+    const unsubscribe = subscribe((reqs) => {
       const sig = (reqs || [])
         .map((r) => `${r.id}:${r.status}:${r.providerId || ''}:${r.assignedAt?.seconds || r.assignedAt || ''}:${r.rating ?? ''}`)
         .join('|');
@@ -358,10 +372,9 @@ export const Orders = () => {
       lastSig = sig;
       setRequests(reqs);
       setLoading(false);
-      setLoadingOlder(false);
     });
     return () => unsubscribe();
-  }, [requestsLimit]);
+  }, [rangeCutoffMs]);
 
   // Deep linking من لوحة التحكم — منفصل حتى لا يُعاد اشتراك المستمع مع كل تغيير في الـ URL
   useEffect(() => {
@@ -2422,15 +2435,6 @@ export const Orders = () => {
               </div>
             );
           })
-        )}
-        {filteredRequests.length <= visibleCount && requests.length >= requestsLimit && (
-          <button
-            onClick={() => { setLoadingOlder(true); setRequestsLimit((n) => n + REQUESTS_BATCH); }}
-            disabled={loadingOlder}
-            className="w-full py-3 bg-white rounded-2xl border border-dashed border-gray-300 text-sm font-bold text-gray-600 hover:bg-gray-50 disabled:opacity-60"
-          >
-            {loadingOlder ? 'جاري التحميل…' : `تحميل طلبات أقدم (المحمّل الآن: آخر ${requests.length} طلب)`}
-          </button>
         )}
         {filteredRequests.length > visibleCount && (
           <button

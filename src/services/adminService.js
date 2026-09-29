@@ -1494,6 +1494,35 @@ export const listenToRecentRequests = (max, callback) => {
   return recentRequestsListeners.get(max)(callback);
 };
 
+/**
+ * كل الطلبات منذ تاريخ معيّن (فلتر الفترة في صفحة الطلبات) — بدون حد 300،
+ * حتى تطابق أعداد «أسبوع / شهر / ٩٠ يوم» الواقع.
+ */
+const requestsSinceListeners = new Map();
+export const listenToRequestsSince = (sinceMs, callback) => {
+  const key = String(sinceMs);
+  if (!requestsSinceListeners.has(key)) {
+    requestsSinceListeners.set(key, createSharedSnapshotListener({
+      key: `requestsSince:${key}`,
+      keepAliveMs: 120_000,
+      throttleMs: 3000,
+      setup: (emit) => onSnapshot(
+        query(
+          collection(db, 'requests'),
+          where('createdAt', '>=', Timestamp.fromMillis(sinceMs)),
+          orderBy('createdAt', 'desc')
+        ),
+        (snapshot) => emit(snapshot.docs.map((d) => ({ id: d.id, ...d.data() }))),
+        (error) => {
+          console.error('Error listening to requests since:', error);
+          emit([]);
+        }
+      ),
+    }));
+  }
+  return requestsSinceListeners.get(key)(callback);
+};
+
 export const listenToAllRequests = createSharedSnapshotListener({
   key: 'allRequests',
   keepAliveMs: 120_000,
