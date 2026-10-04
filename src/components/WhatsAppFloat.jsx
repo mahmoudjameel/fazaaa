@@ -22,14 +22,14 @@ export const WhatsAppFloat = () => {
         if (snap.exists()) {
           const data = snap.data();
           setPhone({
-            number: data.whatsappNumber || '966551780608',
-            display: data.whatsappDisplay || '+966 55 178 0608',
+            number: data.whatsappNumber || '966539741002',
+            display: data.whatsappDisplay || '+966 53 974 1002',
           });
         } else {
-          setPhone({ number: '966551780608', display: '+966 55 178 0608' });
+          setPhone({ number: '966539741002', display: '+966 53 974 1002' });
         }
       } catch {
-        setPhone({ number: '966551780608', display: '+966 55 178 0608' });
+        setPhone({ number: '966539741002', display: '+966 53 974 1002' });
       } finally {
         setLoading(false);
         setTimeout(() => setVisible(true), 600);

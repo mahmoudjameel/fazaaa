@@ -53,8 +53,8 @@ export default function AppSettings() {
   const [about, setAbout] = useState({ title: 'من نحن', content: '', lastUpdated: null });
   const [privacy, setPrivacy] = useState({ title: 'سياسة الخصوصية', content: '', lastUpdated: null });
   const [support, setSupport] = useState({
-    whatsappNumber: '966551780608',
-    whatsappDisplay: '+966 55 178 0608',
+    whatsappNumber: '966539741002',
+    whatsappDisplay: '+966 53 974 1002',
     providerChargeWhatsappNumber: '966539741002',
     providerChargeWhatsappDisplay: '+966 53 974 1002',
   });
@@ -285,11 +285,11 @@ export default function AppSettings() {
                   value={support.whatsappNumber}
                   onChange={(e) => setSupport((p) => ({ ...p, whatsappNumber: e.target.value }))}
                   className={inputClass}
-                  placeholder="966551780608"
+                  placeholder="966539741002"
                   dir="ltr"
                   style={{ textAlign: 'left' }}
                 />
-                <p className="text-xs text-gray-400 mt-1">مثال: 966551780608</p>
+                <p className="text-xs text-gray-400 mt-1">مثال: 966539741002</p>
               </div>
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">الرقم كما يظهر للعميل</label>
@@ -298,7 +298,7 @@ export default function AppSettings() {
                   value={support.whatsappDisplay}
                   onChange={(e) => setSupport((p) => ({ ...p, whatsappDisplay: e.target.value }))}
                   className={inputClass}
-                  placeholder="+966 55 178 0608"
+                  placeholder="+966 53 974 1002"
                   dir="ltr"
                   style={{ textAlign: 'left' }}
                 />

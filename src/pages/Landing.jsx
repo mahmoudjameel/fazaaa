@@ -241,8 +241,8 @@ export const Landing = () => {
   const [landingContent, setLandingContent] = useState(DEFAULT_LANDING_CONTENT);
   const [activeNav, setActiveNav] = useState('#hero');
   const [supportInfo, setSupportInfo] = useState({
-    whatsappNumber: '966551780608',
-    whatsappDisplay: '+966 55 178 0608',
+    whatsappNumber: '966539741002',
+    whatsappDisplay: '+966 53 974 1002',
   });
   const [contactForm, setContactForm] = useState({
     name: '',
@@ -327,8 +327,8 @@ export const Landing = () => {
         if (supportSnap.exists()) {
           const s = supportSnap.data() || {};
           setSupportInfo({
-            whatsappNumber: s.whatsappNumber || '966551780608',
-            whatsappDisplay: s.whatsappDisplay || '+966 55 178 0608',
+            whatsappNumber: s.whatsappNumber || '966539741002',
+            whatsappDisplay: s.whatsappDisplay || '+966 53 974 1002',
           });
         }
       } catch (error) {

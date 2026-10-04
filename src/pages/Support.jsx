@@ -17,8 +17,8 @@ import { PAGE_SEO } from '../seo/config';
 import { db } from '../services/firebase';
 
 const DEFAULT_SUPPORT = {
-  whatsappNumber: '966551780608',
-  whatsappDisplay: '+966 55 178 0608',
+  whatsappNumber: '966539741002',
+  whatsappDisplay: '+966 53 974 1002',
   email: 'fzaeen@fzaeen.com',
 };
 
