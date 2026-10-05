@@ -14,7 +14,7 @@ const TABS = [
   { id: 'support', label: 'إعدادات الدعم', icon: Phone },
   { id: 'appVersion', label: 'تحديث التطبيق', icon: RefreshCw },
   { id: 'dualPhones', label: 'أرقام مزدوجة', icon: UserCog },
-  { id: 'locationGuide', label: 'فيديو شرح الموقع', icon: MapPin },
+  { id: 'locationGuide', label: 'شرح الموقع', icon: MapPin },
 ];
 
 const normalizeExceptionPhone = (phone) => {
