@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Save, FileText, Info, Phone, Loader2, ShieldCheck, RefreshCw, Smartphone, UserCog } from 'lucide-react';
+import { Save, FileText, Info, Phone, Loader2, ShieldCheck, RefreshCw, Smartphone, UserCog, MapPin } from 'lucide-react';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
+import LocationGuideVideos from '../components/LocationGuideVideos';
 
 const inputClass =
   'w-full px-4 py-3 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:border-amber-400 focus:ring-1 focus:ring-amber-400 outline-none transition-all text-gray-800 placeholder-gray-400';
@@ -13,6 +14,7 @@ const TABS = [
   { id: 'support', label: 'إعدادات الدعم', icon: Phone },
   { id: 'appVersion', label: 'تحديث التطبيق', icon: RefreshCw },
   { id: 'dualPhones', label: 'أرقام مزدوجة', icon: UserCog },
+  { id: 'locationGuide', label: 'فيديو شرح الموقع', icon: MapPin },
 ];
 
 const normalizeExceptionPhone = (phone) => {
@@ -512,7 +514,10 @@ export default function AppSettings() {
           </div>
         )}
 
-        {/* Footer */}
+        {activeTab === 'locationGuide' && <LocationGuideVideos />}
+
+        {/* Footer — تبويب الفيديو يحفظ تلقائياً بعد الرفع */}
+        {activeTab !== 'locationGuide' && (
         <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex items-center justify-between">
           {currentLastUpdated ? (
             <p className="text-xs text-gray-400">
@@ -537,10 +542,11 @@ export default function AppSettings() {
             {saving ? 'جاري الحفظ...' : 'حفظ التغييرات'}
           </button>
         </div>
+        )}
       </div>
 
       {/* Preview - only for terms and about */}
-      {activeTab !== 'support' && activeTab !== 'appVersion' && activeTab !== 'dualPhones' && (
+      {activeTab !== 'support' && activeTab !== 'appVersion' && activeTab !== 'dualPhones' && activeTab !== 'locationGuide' && (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-100">
             <h2 className="font-semibold text-gray-800 text-sm">معاينة المحتوى</h2>
