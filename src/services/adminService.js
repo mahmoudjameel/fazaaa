@@ -28,6 +28,27 @@ import { diagnoseProviderForRequest, evaluateProviderEligibility } from '../util
 import { getCached, setCached, createSharedSnapshotListener } from '../utils/adminQueryCache';
 
 // Providers Management
+
+/** createdAt قد يكون نصاً ISO أو Timestamp — أو مفقوداً في بعض المستندات */
+const providerTimeMs = (v) => {
+  if (!v) return 0;
+  if (typeof v.toMillis === 'function') return v.toMillis();
+  if (typeof v.seconds === 'number') return v.seconds * 1000;
+  const t = Date.parse(v);
+  return Number.isFinite(t) ? t : 0;
+};
+
+/**
+ * ترتيب الأحدث أولاً على العميل بدل orderBy('createdAt') في الاستعلام:
+ * Firestore يستبعد بصمت أي مستند بلا createdAt، فيختفي المزود من اللوحة والبحث.
+ */
+const sortProvidersNewestFirst = (list) =>
+  list.sort(
+    (a, b) =>
+      (providerTimeMs(b.createdAt) || providerTimeMs(b.updatedAt)) -
+      (providerTimeMs(a.createdAt) || providerTimeMs(a.updatedAt))
+  );
+
 export const getAllProviders = async ({ force = false } = {}) => {
   try {
     const cacheKey = 'getAllProviders';
@@ -35,9 +56,7 @@ export const getAllProviders = async ({ force = false } = {}) => {
       const cached = getCached(cacheKey, 45_000);
       if (cached) return cached;
     }
-    const providersRef = collection(db, 'providers');
-    const q = query(providersRef, orderBy('createdAt', 'desc'));
-    const querySnapshot = await getDocs(q);
+    const querySnapshot = await getDocs(collection(db, 'providers'));
     const providers = [];
     querySnapshot.forEach((doc) => {
       const data = doc.data();
@@ -47,6 +66,7 @@ export const getAllProviders = async ({ force = false } = {}) => {
       // وعدم تجاوزه بحقل id داخل بيانات المستند
       providers.push(withNormalizedProviderWallet({ ...data, id: doc.id }));
     });
+    sortProvidersNewestFirst(providers);
     return setCached(cacheKey, { success: true, providers });
   } catch (error) {
     console.error('Get providers error:', error);
@@ -1554,11 +1574,11 @@ export const listenToPendingProviders = createSharedSnapshotListener({
   keepAliveMs: 90_000,
   setup: (emit) => {
     const providersRef = collection(db, 'providers');
-    const q = query(providersRef, where('status', '==', 'pending'), orderBy('createdAt', 'desc'));
+    const q = query(providersRef, where('status', '==', 'pending'));
     return onSnapshot(
       q,
       (snapshot) => {
-        emit(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })));
+        emit(sortProvidersNewestFirst(snapshot.docs.map((d) => ({ id: d.id, ...d.data() }))));
       },
       (error) => {
         console.error('Error listening to pending providers:', error);
@@ -1579,15 +1599,15 @@ export const listenToAllProviders = createSharedSnapshotListener({
   // نبضات GPS للمزودين كثيرة — throttle يمنع وميض الخريطة/القوائم
   throttleMs: 5000,
   setup: (emit) => {
-    const providersRef = collection(db, 'providers');
-    const q = query(providersRef, orderBy('createdAt', 'desc'));
     return onSnapshot(
-      q,
+      collection(db, 'providers'),
       (snapshot) => {
         emit(
-          snapshot.docs
-            .map((d) => withNormalizedProviderWallet({ ...d.data(), id: d.id }))
-            .filter((p) => !p?.mergedInto)
+          sortProvidersNewestFirst(
+            snapshot.docs
+              .map((d) => withNormalizedProviderWallet({ ...d.data(), id: d.id }))
+              .filter((p) => !p?.mergedInto)
+          )
         );
       },
       (error) => {
