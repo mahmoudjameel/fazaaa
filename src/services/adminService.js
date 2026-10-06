@@ -1622,7 +1622,7 @@ export const listenToAllProviders = createSharedSnapshotListener({
  * إرسال تنبيه Push لمزودين محددين عبر admin_notifications (Cloud Function).
  * @param {{ title: string, message: string, providerIds: string[], templateId?: string }} params
  */
-export const sendAdminPushToProviders = async ({ title, message, providerIds, templateId = null }) => {
+export const sendAdminPushToProviders = async ({ title, message, providerIds, templateId = null, source = 'providers_map' }) => {
   const ids = Array.isArray(providerIds)
     ? [...new Set(providerIds.map((id) => String(id || '').trim()).filter(Boolean))]
     : [];
@@ -1641,7 +1641,7 @@ export const sendAdminPushToProviders = async ({ title, message, providerIds, te
     providerCities: [],
     providerCityNames: [],
     templateId: templateId || null,
-    source: 'providers_map',
+    source,
     createdAt: serverTimestamp(),
     type: 'admin_broadcast',
   });
