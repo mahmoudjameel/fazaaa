@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   WifiOff, Loader2, ChevronDown, ChevronUp, Phone, MapPin, Clock, RefreshCw, Search,
-  MessageCircle, Bell, Copy, Download, CheckSquare, Square, X, Send, Smartphone, Wallet, AlertTriangle,
+  MessageCircle, Bell, Copy, Download, CheckSquare, Square, X, Send, Smartphone, Wallet, AlertTriangle, MessageSquare,
 } from 'lucide-react';
 import { collection, getDocs } from 'firebase/firestore';
 import { formatDistanceToNow, format } from 'date-fns';
 import { ar } from 'date-fns/locale';
 import { db } from '../services/firebase';
-import { sendAdminPushToProviders } from '../services/adminService';
+import { sendAdminPushToProviders, sendAdminBulkSmsToProviders } from '../services/adminService';
 
 /** السيرفر يستبعد المزود من التوزيع إذا كان موقعه أقدم من 30 دقيقة (functions: MAX_PROVIDER_LOCATION_AGE_MINUTES) */
 const DISPATCH_STALE_MIN = 30;
@@ -60,6 +60,23 @@ const PUSH_TEMPLATES = [
     message: 'العملاء يطلبون في منطقتك الآن — افتح فزاعين واضغط متاح لتصلك الطلبات',
   },
 ];
+
+const SMS_TEMPLATES = [
+  { id: 'stale', label: 'توقف التطبيق', text: 'فزاعين: توقفت عن استقبال الطلبات لأن جوالك أوقف التطبيق. افتح التطبيق واضغط متاح' },
+  { id: 'battery', label: 'إعدادات البطارية', text: 'فزاعين: لتصلك الطلبات دائماً اجعل البطارية للتطبيق بدون قيود والموقع مسموح طوال الوقت، ثم افتح التطبيق واضغط متاح' },
+  { id: 'demand', label: 'طلبات قريبة', text: 'فزاعين: فيه طلبات قريبة منك الآن. افتح التطبيق واضغط متاح لتصلك' },
+];
+const SMS_MAX_LENGTH = 600;
+
+/** عدد أجزاء الرسالة: عربي (Unicode) 70 حرف لجزء واحد ثم 67 لكل جزء، لاتيني 160 ثم 153 */
+const smsSegments = (text) => {
+  const len = [...text].length;
+  if (!len) return 0;
+  const unicode = /[^\u0000-\u007F]/.test(text);
+  const single = unicode ? 70 : 160;
+  const multi = unicode ? 67 : 153;
+  return len <= single ? 1 : Math.ceil(len / multi);
+};
 
 const DEFAULT_WA_TEXT =
   'السلام عليكم {name}، معك فريق فزاعين. لاحظنا أن التطبيق متوقف عندك ولا تصلك الطلبات.\n' +
@@ -135,6 +152,11 @@ export const InactiveProviders = () => {
   const [pushMessage, setPushMessage] = useState(PUSH_TEMPLATES[0].message);
   const [pushSending, setPushSending] = useState(false);
   const [toast, setToast] = useState(null);
+
+  const [smsOpen, setSmsOpen] = useState(false);
+  const [smsTargets, setSmsTargets] = useState([]);
+  const [smsText, setSmsText] = useState(SMS_TEMPLATES[0].text);
+  const [smsSending, setSmsSending] = useState(false);
 
   const [waText, setWaText] = useState(() => {
     try { return localStorage.getItem(WA_TEXT_KEY) || DEFAULT_WA_TEXT; } catch (_) { return DEFAULT_WA_TEXT; }
@@ -259,6 +281,35 @@ export const InactiveProviders = () => {
       setToast({ type: 'err', text: e?.message || 'فشل الإرسال' });
     } finally {
       setPushSending(false);
+    }
+  };
+
+  const openSms = (targets) => {
+    setSmsTargets(targets);
+    setSmsOpen(true);
+  };
+
+  const sendSms = async () => {
+    const count = smsTargets.length;
+    if (!window.confirm(`إرسال SMS إلى ${count} مزود؟ الرسائل تُخصم من رصيد تقنيات.`)) return;
+    setSmsSending(true);
+    try {
+      const res = await sendAdminBulkSmsToProviders({
+        message: smsText.trim(),
+        providerIds: smsTargets.map((r) => r.id),
+        source: 'inactive_providers',
+      });
+      const extra = [
+        res.failed ? `فشل ${res.failed}` : '',
+        res.invalidPhones ? `${res.invalidPhones} رقم غير صالح` : '',
+      ].filter(Boolean).join(' · ');
+      setToast({ type: 'ok', text: `تم إرسال SMS إلى ${res.sent} مزود${extra ? ` (${extra})` : ''}` });
+      setSmsOpen(false);
+      setSelected(new Set());
+    } catch (e) {
+      setToast({ type: 'err', text: e?.message || 'فشل إرسال الرسائل' });
+    } finally {
+      setSmsSending(false);
     }
   };
 
@@ -401,6 +452,13 @@ export const InactiveProviders = () => {
           </button>
           <button
             disabled={selectedRows.length === 0}
+            onClick={() => openSms(selectedRows)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-600 text-white text-sm font-bold disabled:opacity-40"
+          >
+            <MessageSquare className="w-4 h-4" /> SMS للمحددين ({selectedRows.length})
+          </button>
+          <button
+            disabled={selectedRows.length === 0}
             onClick={() => copyText(selectedRows.map((r) => localPhone(r.phone)).join('\n'), `تم نسخ ${selectedRows.length} رقم`)}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white border border-gray-200 text-sm font-bold text-gray-700 disabled:opacity-40"
           >
@@ -470,6 +528,9 @@ export const InactiveProviders = () => {
                     <a href={`tel:+${intlPhone(r.phone)}`} className="p-2 rounded-xl bg-sky-50 text-sky-700 hover:bg-sky-100" title="اتصال">
                       <Phone className="w-4 h-4" />
                     </a>
+                    <button onClick={() => openSms([r])} className="p-2 rounded-xl bg-indigo-50 text-indigo-700 hover:bg-indigo-100" title="SMS">
+                      <MessageSquare className="w-4 h-4" />
+                    </button>
                     <button onClick={() => openPush([r])} className="p-2 rounded-xl bg-teal-50 text-teal-700 hover:bg-teal-100" title="إشعار">
                       <Bell className="w-4 h-4" />
                     </button>
@@ -582,6 +643,52 @@ export const InactiveProviders = () => {
             >
               {pushSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
               إرسال
+            </button>
+          </div>
+        </div>
+      )}
+
+      {smsOpen && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => !smsSending && setSmsOpen(false)}>
+          <div className="bg-white rounded-2xl w-full max-w-lg p-5 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-black text-gray-900">رسالة SMS</h2>
+              <button onClick={() => !smsSending && setSmsOpen(false)} className="p-1.5 text-gray-400 hover:text-gray-700"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="text-sm text-gray-600">
+              إلى <span className="font-black text-gray-900">{smsTargets.length}</span> مزود
+              {smsTargets.length === 1 && <> — {providerName(smsTargets[0])} <span dir="ltr">({localPhone(smsTargets[0].phone)})</span></>}
+              <div className="text-xs text-gray-500 mt-1">عبر تقنيات (نفس مزود رسائل التحقق) — تُخصم من رصيد الرسائل</div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {SMS_TEMPLATES.map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => setSmsText(t.text)}
+                  className="px-3 py-1.5 rounded-full bg-gray-100 text-xs font-bold text-gray-700 hover:bg-indigo-50 hover:text-indigo-700"
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+            <textarea
+              value={smsText}
+              onChange={(e) => setSmsText(e.target.value.slice(0, SMS_MAX_LENGTH))}
+              rows={5}
+              placeholder="نص الرسالة"
+              className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-indigo-400"
+            />
+            <div className="flex items-center justify-between text-xs text-gray-500">
+              <span>{[...smsText].length} حرف · {smsSegments(smsText)} جزء لكل رسالة</span>
+              <span className="font-bold text-gray-700">الإجمالي ≈ {smsSegments(smsText) * smsTargets.length} رسالة</span>
+            </div>
+            <button
+              onClick={sendSms}
+              disabled={smsSending || !smsText.trim()}
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-indigo-600 text-white font-black disabled:opacity-50"
+            >
+              {smsSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              {smsSending ? 'جارٍ الإرسال…' : 'إرسال SMS'}
             </button>
           </div>
         </div>

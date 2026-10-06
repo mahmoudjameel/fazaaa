@@ -1650,6 +1650,17 @@ export const sendAdminPushToProviders = async ({ title, message, providerIds, te
 };
 
 /**
+ * رسالة SMS جماعية للمزودين عبر Taqnyat (Cloud Function — الأرقام تُقرأ من السيرفر).
+ * @param {{ message: string, providerIds: string[], source?: string }} params
+ * @returns {Promise<{ sent: number, failed: number, invalidPhones: number, cost: number }>}
+ */
+export const sendAdminBulkSmsToProviders = async ({ message, providerIds, source = 'dashboard' }) => {
+  const fn = httpsCallable(functions, 'adminSendBulkSms', { timeout: 300000 });
+  const res = await fn({ message, providerIds, source });
+  return res.data;
+};
+
+/**
  * طلبات نشطة على الخريطة (مواقع العملاء) — حالة البحث + التتبع الحي
  */
 export const listenToActiveMapRequests = (callback) => {
