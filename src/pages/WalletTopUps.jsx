@@ -47,6 +47,15 @@ const StateBadge = ({ state }) => {
   );
 };
 
+/** شحن الإدارة (رصيد يدوي/تعويض) يُسجَّل بـ source='admin_panel' — الباقي دفع فعلي عبر بوابة البنك */
+const isAdminTopUp = (r) => r?.source === 'admin_panel';
+
+const SOURCE_FILTERS = [
+  { key: 'all', label: 'كل المصادر' },
+  { key: 'bank', label: 'عبر البنك (دفع فعلي)' },
+  { key: 'admin', label: 'من الإدارة' },
+];
+
 const copyText = async (text) => {
   if (!text) return;
   try {
@@ -61,6 +70,7 @@ export default function WalletTopUps() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const [stateFilter, setStateFilter] = useState('all');
+  const [sourceFilter, setSourceFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [selected, setSelected] = useState(null);
 
@@ -84,8 +94,14 @@ export default function WalletTopUps() {
     load();
   }, [load]);
 
+  const sourceRows = useMemo(() => {
+    if (sourceFilter === 'bank') return rows.filter((r) => !isAdminTopUp(r));
+    if (sourceFilter === 'admin') return rows.filter(isAdminTopUp);
+    return rows;
+  }, [rows, sourceFilter]);
+
   const filtered = useMemo(() => {
-    let list = rows;
+    let list = sourceRows;
     if (stateFilter !== 'all') {
       list = list.filter((r) => String(r.state || '').toUpperCase() === stateFilter);
     }
@@ -121,9 +137,11 @@ export default function WalletTopUps() {
       });
     }
     return list;
-  }, [rows, stateFilter, searchTerm]);
+  }, [sourceRows, stateFilter, searchTerm]);
 
+  // الإحصائيات تتبع فلتر المصدر — «مبالغ ناجحة» مع «عبر البنك» = ما دفعه المزودون فعلاً
   const stats = useMemo(() => {
+    const rows = sourceRows;
     const paid = rows.filter((r) => String(r.state).toUpperCase() === 'PAID');
     const failed = rows.filter((r) =>
       ['FAILED', 'CANCELLED', 'VOIDED'].includes(String(r.state || '').toUpperCase())
@@ -141,7 +159,7 @@ export default function WalletTopUps() {
       paidAmount,
       paidCredits,
     };
-  }, [rows]);
+  }, [sourceRows]);
 
   const FILTERS = [
     { key: 'all', label: 'الكل' },
@@ -201,6 +219,22 @@ export default function WalletTopUps() {
           />
         </div>
         <div className="flex flex-wrap gap-2">
+          {SOURCE_FILTERS.map((f) => (
+            <button
+              key={f.key}
+              type="button"
+              onClick={() => setSourceFilter(f.key)}
+              className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
+                sourceFilter === f.key
+                  ? f.key === 'admin' ? 'bg-indigo-600 text-white' : 'bg-emerald-600 text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex flex-wrap gap-2 border-t border-gray-100 pt-3">
           {FILTERS.map((f) => (
             <button
               key={f.key}
