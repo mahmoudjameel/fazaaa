@@ -3,7 +3,7 @@ import {
   WifiOff, Loader2, ChevronDown, ChevronUp, Phone, MapPin, Clock, RefreshCw, Search,
   MessageCircle, Bell, Copy, Download, CheckSquare, Square, X, Send, Smartphone, Wallet, AlertTriangle,
 } from 'lucide-react';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { collection, getDocs } from 'firebase/firestore';
 import { formatDistanceToNow, format } from 'date-fns';
 import { ar } from 'date-fns/locale';
 import { db } from '../services/firebase';
@@ -28,6 +28,17 @@ const STATUS_META = {
   balance: { label: 'متوقف — رصيد غير كافٍ', cls: 'bg-purple-100 text-purple-700 border-purple-200' },
   never: { label: 'لم يرسل موقعاً أبداً', cls: 'bg-slate-200 text-slate-700 border-slate-300' },
 };
+
+/** حالات تظهر في البحث فقط (البحث يشمل كل المزودين) */
+const SEARCH_ONLY_STATUS_META = {
+  active: { label: 'نشط — تصله الطلبات', cls: 'bg-green-100 text-green-700 border-green-200' },
+  not_approved: { label: 'غير معتمد', cls: 'bg-orange-100 text-orange-700 border-orange-200' },
+  disabled: { label: 'حساب معطّل', cls: 'bg-red-100 text-red-700 border-red-200' },
+};
+const ALL_STATUS_META = { ...STATUS_META, ...SEARCH_ONLY_STATUS_META };
+
+const approvalOf = (p) =>
+  p.approvalStatus || (['pending', 'approved', 'rejected'].includes(p.status) ? p.status : null);
 
 const PUSH_TEMPLATES = [
   {
@@ -92,7 +103,10 @@ function classify(p, now) {
   const lastSeenMs = Math.max(locationMs, heartbeatMs);
   const staleMin = locationMs ? (now - locationMs) / 60000 : Infinity;
   let status;
-  if (!locationMs) status = 'never';
+  if (approvalOf(p) !== 'approved') status = 'not_approved';
+  else if (p.isActive === false) status = 'disabled';
+  else if (!locationMs) status = 'never';
+  else if (staleMin <= DISPATCH_STALE_MIN) status = 'active';
   else if (p.availabilityStatus === 'available' || (!p.availabilityStatus && p.isOnline === true)) status = 'ghost';
   else if (p.offlineReason === 'stale_heartbeat') status = 'auto';
   else if (p.offlineReason === 'insufficient_balance') status = 'balance';
@@ -132,13 +146,10 @@ export const InactiveProviders = () => {
     setLoading(true);
     (async () => {
       try {
-        const snap = await getDocs(query(collection(db, 'providers'), where('approvalStatus', '==', 'approved')));
+        // كل المزودين — البحث يشملهم جميعاً، والقائمة الافتراضية تُفلتر للمعتمدين غير النشطين
+        const snap = await getDocs(collection(db, 'providers'));
         if (cancelled) return;
-        setProviders(
-          snap.docs
-            .map((d) => ({ id: d.id, ...d.data() }))
-            .filter((p) => p.isActive !== false)
-        );
+        setProviders(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
         setLoadedAt(Date.now());
       } catch (e) {
         console.error('InactiveProviders load:', e);
@@ -156,12 +167,11 @@ export const InactiveProviders = () => {
     return () => clearTimeout(t);
   }, [toast]);
 
-  const rows = useMemo(
-    () => providers
-      .map((p) => ({ ...p, ...classify(p, loadedAt) }))
-      .filter((r) => r.staleMin > DISPATCH_STALE_MIN),
+  const allRows = useMemo(
+    () => providers.map((p) => ({ ...p, ...classify(p, loadedAt) })),
     [providers, loadedAt]
   );
+  const rows = useMemo(() => allRows.filter((r) => STATUS_META[r.status]), [allRows]);
 
   const counts = useMemo(() => {
     const c = { all: rows.length, ghost: 0, auto: 0, manual: 0, balance: 0, never: 0 };
@@ -171,20 +181,24 @@ export const InactiveProviders = () => {
 
   const cityOptions = useMemo(() => [...new Set(rows.map((r) => providerCityLabel(r)))].sort(), [rows]);
 
+  const searchQuery = search.trim().toLowerCase();
+  const searching = searchQuery.length > 0;
+
   const visible = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = searchQuery;
     const qDigits = q.replace(/\D/g, '').replace(/^0/, '');
-    const list = rows.filter((r) => {
+    const matches = (r) => {
+      const nameHit = providerName(r).toLowerCase().includes(q);
+      const phoneHit = qDigits.length >= 3 && String(r.phone || '').includes(qDigits);
+      return nameHit || phoneHit;
+    };
+    // البحث يتجاهل كل الفلاتر ويشمل كل المزودين (نشط، غير نشط، غير معتمد، معطّل)
+    const list = searching ? allRows.filter(matches) : rows.filter((r) => {
       if (r.staleMin < period) return false;
       if (statusFilter === 'actionable' && !['ghost', 'auto'].includes(r.status)) return false;
       if (!['all', 'actionable'].includes(statusFilter) && r.status !== statusFilter) return false;
       if (cityFilter !== 'all' && providerCityLabel(r) !== cityFilter) return false;
       if (platformFilter !== 'all' && (r.pushPlatform || 'unknown') !== platformFilter) return false;
-      if (q) {
-        const nameHit = providerName(r).toLowerCase().includes(q);
-        const phoneHit = qDigits.length >= 3 && String(r.phone || '').includes(qDigits);
-        if (!nameHit && !phoneHit) return false;
-      }
       return true;
     });
     return list.sort((a, b) => {
@@ -192,7 +206,7 @@ export const InactiveProviders = () => {
       if (sortBy === 'balance') return (Number(b.wallet?.balance) || 0) - (Number(a.wallet?.balance) || 0);
       return b.locationMs - a.locationMs;
     });
-  }, [rows, period, statusFilter, cityFilter, platformFilter, search, sortBy]);
+  }, [allRows, rows, searching, searchQuery, period, statusFilter, cityFilter, platformFilter, sortBy]);
 
   const visibleIds = visible.map((r) => r.id);
   const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selected.has(id));
@@ -251,7 +265,7 @@ export const InactiveProviders = () => {
   const exportCsv = () => {
     const header = ['الاسم', 'الجوال', 'المدينة', 'الجهاز', 'الحالة', 'آخر تحديث موقع', 'آخر اتصال للتطبيق', 'آخر تغيير حالة', 'آخر تسجيل دخول', 'الرصيد', 'تذكيرات تلقائية'];
     const lines = visible.map((r) => [
-      providerName(r), localPhone(r.phone), providerCityLabel(r), platformLabel(r), STATUS_META[r.status].label,
+      providerName(r), localPhone(r.phone), providerCityLabel(r), platformLabel(r), ALL_STATUS_META[r.status].label,
       fullDate(r.locationMs), fullDate(r.heartbeatMs), fullDate(toMs(r.statusUpdatedAt)), fullDate(toMs(r.lastLoginAt)),
       Number(r.wallet?.balance) || 0, Number(r.staleLocationPushCount) || 0,
     ].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','));
@@ -320,10 +334,20 @@ export const InactiveProviders = () => {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="بحث بالاسم أو رقم الجوال"
-            className="w-full pr-9 pl-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-teal-400"
+            className="w-full pr-9 pl-9 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-teal-400"
           />
+          {searching && (
+            <button onClick={() => setSearch('')} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700" aria-label="مسح البحث">
+              <X className="w-4 h-4" />
+            </button>
+          )}
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
+        {searching && (
+          <div className="text-xs font-bold text-teal-700 bg-teal-50 rounded-xl px-3 py-2">
+            البحث يشمل كل المزودين ({allRows.length}) بكل الحالات — الفلاتر لا تُطبّق أثناء البحث
+          </div>
+        )}
+        <div className={`grid grid-cols-1 sm:grid-cols-5 gap-3 ${searching ? 'opacity-40 pointer-events-none' : ''}`}>
           <div className="relative">
             <select value={period} onChange={(e) => setPeriod(Number(e.target.value))} className={selectCls}>
               {PERIODS.map((p) => <option key={p.value} value={p.value}>آخر موقع: {p.label}</option>)}
@@ -397,14 +421,14 @@ export const InactiveProviders = () => {
         </div>
       ) : visible.length === 0 ? (
         <div className="bg-white rounded-2xl border border-gray-100 py-16 text-center text-gray-500 font-semibold">
-          لا يوجد مزودون بهذه الفلاتر 👍
+          {searching ? 'لا يوجد مزود بهذا الاسم أو الرقم' : 'لا يوجد مزودون بهذه الفلاتر 👍'}
         </div>
       ) : (
         <div className="space-y-3">
           <div className="text-sm text-gray-500">يعرض <span className="font-black text-gray-900">{visible.length}</span> مزود</div>
           {visible.map((r) => {
             const open = expanded === r.id;
-            const meta = STATUS_META[r.status];
+            const meta = ALL_STATUS_META[r.status];
             const checked = selected.has(r.id);
             const lat = r.location?.latitude;
             const lng = r.location?.longitude;
@@ -433,7 +457,7 @@ export const InactiveProviders = () => {
                       <span className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5" />{providerCityLabel(r)}</span>
                       <span className="flex items-center gap-1"><Smartphone className="w-3.5 h-3.5" />{platformLabel(r)}</span>
                       <span className="flex items-center gap-1"><Wallet className="w-3.5 h-3.5" />{Number(r.wallet?.balance) || 0} ر.س</span>
-                      <span className="flex items-center gap-1 text-rose-600 font-bold">
+                      <span className={`flex items-center gap-1 font-bold ${r.status === 'active' ? 'text-green-700' : 'text-rose-600'}`}>
                         <Clock className="w-3.5 h-3.5" />
                         آخر موقع {r.locationMs ? ago(r.locationMs) : 'لا يوجد'}
                       </span>
