@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  FileText, Image as ImageIcon, Upload, Trash2, ExternalLink, Loader2, Search, CheckSquare, Square,
-  MessageCircle, ChevronDown, ArrowRight, SkipForward, Check, History,
+  FileText, Image as ImageIcon, Plus, Trash2, ExternalLink, Loader2, Search, CheckSquare, Square,
+  MessageCircle, ChevronDown, ChevronUp, ArrowRight, Check, RotateCcw,
 } from 'lucide-react';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { format } from 'date-fns';
@@ -18,6 +18,10 @@ import {
 } from '../services/providerDocumentsService';
 
 const DISPATCH_STALE_MIN = 30;
+
+/** على الجوال نفتح تطبيق واتساب مباشرة؛ على الكمبيوتر نعيد استخدام نفس التبويب لكل مزود */
+const IS_MOBILE = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+const POPUP_BLOCKED_MSG = 'المتصفح منع فتح واتساب — اسمح بالنوافذ المنبثقة (Pop-ups) لهذا الموقع ثم أعد المحاولة';
 
 const DEFAULT_MANUAL_MESSAGE =
   'السلام عليكم {name}، معك فريق فزاعين.\n{title}\nالملف: {link}';
@@ -56,28 +60,17 @@ const fmtDate = (v) => {
   return ms ? format(new Date(ms), 'yyyy/MM/dd HH:mm') : '—';
 };
 
-const Card = ({ step, title, children, right }) => (
-  <div className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-5 space-y-4">
-    <div className="flex items-center justify-between gap-3">
-      <div className="flex items-center gap-2">
-        {step && <span className="w-7 h-7 rounded-full bg-teal-600 text-white text-sm font-black flex items-center justify-center">{step}</span>}
-        <h2 className="text-lg font-black text-gray-900">{title}</h2>
-      </div>
-      {right}
-    </div>
-    {children}
-  </div>
-);
-
 export const ProviderDocuments = () => {
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
 
   const [documents, setDocuments] = useState([]);
   const [selectedDocId, setSelectedDocId] = useState(null);
-  const [uploadFile, setUploadFile] = useState(null);
-  const [uploadTitle, setUploadTitle] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [showList, setShowList] = useState(false);
+  const [showMessage, setShowMessage] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [lastOpened, setLastOpened] = useState(null);
 
   const [providers, setProviders] = useState([]);
   const [loadingProviders, setLoadingProviders] = useState(true);
@@ -143,14 +136,13 @@ export const ProviderDocuments = () => {
     return next;
   });
 
-  const handleUpload = async () => {
-    if (!uploadFile) return;
+  // اختيار الملف يرفعه مباشرة — العنوان = اسم الملف بدون الامتداد
+  const handleUpload = async (file) => {
+    if (!file) return;
     setUploading(true);
     try {
-      const id = await uploadProviderDocument(uploadFile, uploadTitle || uploadFile.name.replace(/\.[^.]+$/, ''));
+      const id = await uploadProviderDocument(file, file.name.replace(/\.[^.]+$/, ''));
       setSelectedDocId(id);
-      setUploadFile(null);
-      setUploadTitle('');
       if (fileInputRef.current) fileInputRef.current.value = '';
       setToast({ type: 'ok', text: 'تم رفع الملف' });
     } catch (e) {
@@ -175,8 +167,23 @@ export const ProviderDocuments = () => {
     .replace(/\{title\}/g, docItem?.title || '')
     .replace(/\{link\}/g, docItem?.url || '');
 
+  const whatsAppUrl = (p, docItem, template) =>
+    `https://wa.me/${intlPhone(p.phone)}?text=${encodeURIComponent(buildManualText(p, docItem, template))}`;
+
+  // يجب أن يُستدعى مباشرة داخل الضغطة (قبل أي await) وإلا يمنعه المتصفح كنافذة منبثقة
+  const openWhatsAppWindow = (url) => {
+    const win = window.open(url, IS_MOBILE ? '_blank' : 'fz_whatsapp');
+    if (!win) {
+      setToast({ type: 'err', text: POPUP_BLOCKED_MSG });
+      return false;
+    }
+    return true;
+  };
+
   const startManualCampaign = async () => {
     if (!selectedDoc || recipients.length === 0) return;
+    const first = recipients[0];
+    const opened = openWhatsAppWindow(whatsAppUrl(first, selectedDoc, manualMessage));
     try {
       const ids = recipients.map((p) => p.id);
       const id = await createManualCampaign({
@@ -186,6 +193,10 @@ export const ProviderDocuments = () => {
         providerIds: ids,
       });
       setManualCampaign({ id, documentId: selectedDoc.id, message: manualMessage, providerIds: ids, results: {} });
+      if (opened) {
+        setLastOpened(first);
+        await markManualCampaignResult(id, first.id, 'sent');
+      }
     } catch (e) {
       setToast({ type: 'err', text: e?.message || 'تعذر بدء الحملة' });
     }
@@ -201,9 +212,16 @@ export const ProviderDocuments = () => {
   const manualCurrent = manualPending[0] || null;
   const manualDone = manualQueue.length - manualPending.length;
 
-  const openManualWhatsApp = (p) => {
-    const text = buildManualText(p, manualDoc, liveManual.message || DEFAULT_MANUAL_MESSAGE);
-    window.open(`https://wa.me/${intlPhone(p.phone)}?text=${encodeURIComponent(text)}`, 'fz_whatsapp');
+  const sendManualTo = (p) => {
+    const opened = openWhatsAppWindow(whatsAppUrl(p, manualDoc, liveManual.message || DEFAULT_MANUAL_MESSAGE));
+    if (!opened) return;
+    setLastOpened(p);
+    markManual(p, 'sent');
+  };
+
+  const reopenLast = () => {
+    if (!lastOpened) return;
+    openWhatsAppWindow(whatsAppUrl(lastOpened, manualDoc || selectedDoc, liveManual?.message || manualMessage));
   };
 
   const markManual = async (p, status) => {
@@ -214,222 +232,237 @@ export const ProviderDocuments = () => {
     }
   };
 
-  const selectCls =
-    'w-full appearance-none pr-3 pl-7 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-700 focus:outline-none focus:border-teal-400 cursor-pointer';
   const inputCls = 'w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-teal-400';
+  const sectionTitle = 'text-sm font-black text-gray-900 mb-3';
+  const pendingCampaigns = campaigns.filter((c) => Object.keys(c.results || {}).length < (c.providerIds || []).length);
 
   return (
-    <div className="space-y-5">
+    <div className="max-w-3xl mx-auto space-y-4">
       <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-2xl bg-green-100 text-green-600 flex items-center justify-center">
-            <MessageCircle className="w-6 h-6" />
-          </div>
-          <div>
-            <h1 className="text-xl sm:text-2xl font-black text-gray-900">إرسال الوثائق للمزودين</h1>
-            <p className="text-sm text-gray-500">ارفع PDF أو صورة وأرسلها للمزودين عبر واتساب</p>
-          </div>
+        <div>
+          <h1 className="text-xl sm:text-2xl font-black text-gray-900">إرسال ملف للمزودين</h1>
+          <p className="text-sm text-gray-500">صورة أو PDF عبر واتساب — مزود مزود</p>
         </div>
-        <button
-          onClick={() => navigate('/admin/providers')}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white border border-gray-200 text-sm font-bold text-gray-600 hover:text-teal-600"
-        >
+        <button onClick={() => navigate('/admin/providers')} className="flex items-center gap-1 text-sm font-bold text-gray-500 hover:text-teal-600">
           <ArrowRight className="w-4 h-4" /> المزودون
         </button>
       </div>
 
-      <Card step="1" title="الملف">
-        <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-3">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept={ACCEPTED_TYPES.join(',')}
-            onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
-            className="text-sm file:ml-3 file:px-3 file:py-2 file:rounded-xl file:border-0 file:bg-teal-50 file:text-teal-700 file:font-bold"
-          />
-          <input value={uploadTitle} onChange={(e) => setUploadTitle(e.target.value)} placeholder="عنوان الملف (مثال: نموذج التعهد)" className={inputCls} />
-          <button
-            onClick={handleUpload}
-            disabled={!uploadFile || uploading}
-            className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-teal-600 text-white text-sm font-black disabled:opacity-40"
-          >
-            {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} رفع
-          </button>
-        </div>
-        <p className="text-xs text-gray-400">PDF حتى 16MB · صورة JPG/PNG حتى 5MB</p>
-        {documents.length === 0 ? (
-          <div className="text-sm text-gray-400 text-center py-6">لا توجد ملفات بعد — ارفع أول ملف</div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {documents.map((d) => {
-              const active = d.id === selectedDocId;
-              const Icon = d.kind === 'image' ? ImageIcon : FileText;
-              return (
-                <div
-                  key={d.id}
-                  onClick={() => setSelectedDocId(d.id)}
-                  className={`cursor-pointer rounded-xl border p-3 flex items-center gap-3 transition ${active ? 'border-teal-400 ring-2 ring-teal-100 bg-teal-50/40' : 'border-gray-100 hover:border-gray-200'}`}
-                >
-                  {d.kind === 'image'
-                    ? <img src={d.url} alt="" className="w-12 h-12 rounded-lg object-cover flex-shrink-0" />
-                    : <div className="w-12 h-12 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center flex-shrink-0"><Icon className="w-6 h-6" /></div>}
-                  <div className="flex-1 min-w-0">
-                    <div className="font-bold text-gray-900 truncate">{d.title}</div>
-                    <div className="text-xs text-gray-400">{d.kind === 'image' ? 'صورة' : 'PDF'} · {formatSize(d.size)} · {fmtDate(d.createdAt)}</div>
-                  </div>
-                  <a href={d.url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="p-1.5 text-gray-400 hover:text-teal-600" title="فتح">
-                    <ExternalLink className="w-4 h-4" />
-                  </a>
-                  <button onClick={(e) => { e.stopPropagation(); handleDelete(d); }} className="p-1.5 text-gray-400 hover:text-rose-600" title="حذف">
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              );
-            })}
+      {liveManual ? (
+        /* ── وضع الإرسال: مزود واحد في الشاشة وزر واحد ── */
+        <div className="bg-white rounded-2xl border border-gray-100 p-5 sm:p-6 space-y-5">
+          <div className="flex items-center justify-between text-sm">
+            <span className="font-bold text-gray-500 truncate">«{liveManual.documentTitle || manualDoc?.title}»</span>
+            <span className="font-black text-gray-900">{manualDone} من {manualQueue.length}</span>
           </div>
-        )}
-      </Card>
+          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+            <div className="h-full bg-green-500 transition-all" style={{ width: `${manualQueue.length ? (manualDone / manualQueue.length) * 100 : 0}%` }} />
+          </div>
 
-      <Card
-        step="2"
-        title="المستلمون"
-        right={<span className="text-sm text-gray-500"><span className="font-black text-gray-900">{recipients.length}</span> / {audienceList.length} مزود</span>}
-      >
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div className="flex gap-1 bg-gray-50 border border-gray-200 rounded-xl p-1">
-            {AUDIENCES.map((a) => (
+          {manualCurrent ? (
+            <div className="text-center space-y-4 py-2">
+              <div>
+                <div className="text-2xl font-black text-gray-900">{providerName(manualCurrent)}</div>
+                <div className="text-sm text-gray-500 mt-1"><span dir="ltr">{localPhone(manualCurrent.phone)}</span> · {providerCityLabel(manualCurrent)}</div>
+              </div>
               <button
-                key={a.value}
-                onClick={() => { setAudience(a.value); setExcluded(new Set()); }}
-                className={`flex-1 py-1.5 rounded-lg text-xs font-bold ${audience === a.value ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-500'}`}
+                onClick={() => sendManualTo(manualCurrent)}
+                className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl bg-green-600 hover:bg-green-700 text-white text-lg font-black"
               >
-                {a.label}
+                <MessageCircle className="w-5 h-5" /> إرسال عبر واتساب
               </button>
-            ))}
-          </div>
-          <div className="relative">
-            <select value={cityFilter} onChange={(e) => { setCityFilter(e.target.value); setExcluded(new Set()); }} className={selectCls}>
-              <option value="all">كل المدن</option>
-              {cityOptions.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
-            <ChevronDown size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-          </div>
-          <div className="relative">
-            <Search className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="بحث بالاسم أو الرقم" className={`${inputCls} pr-9`} />
+              <button onClick={() => markManual(manualCurrent, 'skipped')} className="text-sm font-bold text-gray-400 hover:text-gray-700">
+                تخطي هذا المزود
+              </button>
+            </div>
+          ) : (
+            <div className="text-center py-6 space-y-1">
+              <div className="w-12 h-12 mx-auto rounded-full bg-green-100 text-green-600 flex items-center justify-center"><Check className="w-6 h-6" /></div>
+              <div className="text-lg font-black text-gray-900">تم الإرسال للجميع</div>
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-4 text-xs font-bold">
+            {lastOpened ? (
+              <button onClick={reopenLast} className="flex items-center gap-1 text-green-700">
+                <RotateCcw className="w-3.5 h-3.5" /> لم يفتح واتساب لـ {providerName(lastOpened).split(' ')[0]}؟ أعد الفتح
+              </button>
+            ) : <span />}
+            <button onClick={() => { setManualCampaign(null); setLastOpened(null); }} className="text-gray-500 hover:text-gray-800">
+              {manualCurrent ? 'إيقاف مؤقت' : 'إنهاء'}
+            </button>
           </div>
         </div>
-        <div className="flex gap-2 text-xs font-bold">
-          <button onClick={() => setExcluded(new Set())} className="px-3 py-1.5 rounded-lg bg-gray-100 text-gray-700">تحديد الكل</button>
-          <button onClick={() => setExcluded(new Set(audienceList.map((p) => p.id)))} className="px-3 py-1.5 rounded-lg bg-gray-100 text-gray-700">إلغاء الكل</button>
-        </div>
-        {loadingProviders ? (
-          <div className="flex justify-center py-8 text-gray-400"><Loader2 className="w-5 h-5 animate-spin" /></div>
-        ) : (
-          <div className="max-h-72 overflow-y-auto divide-y divide-gray-50 border border-gray-100 rounded-xl">
-            {audienceList.map((p) => {
-              const on = !excluded.has(p.id);
-              return (
-                <button key={p.id} onClick={() => toggleRecipient(p.id)} className="w-full flex items-center gap-3 px-3 py-2 text-right hover:bg-gray-50">
-                  {on ? <CheckSquare className="w-4 h-4 text-teal-600 flex-shrink-0" /> : <Square className="w-4 h-4 text-gray-300 flex-shrink-0" />}
-                  <span className="flex-1 min-w-0 truncate text-sm font-bold text-gray-800">{providerName(p)}</span>
-                  <span className="text-xs text-gray-400">{providerCityLabel(p)}</span>
-                  <span className="text-xs text-gray-500 w-24 text-left" dir="ltr">{localPhone(p.phone)}</span>
-                </button>
-              );
-            })}
-            {audienceList.length === 0 && <div className="text-sm text-gray-400 text-center py-6">لا يوجد مزودون بهذه الفلاتر</div>}
-          </div>
-        )}
-      </Card>
+      ) : (
+        /* ── التجهيز: ملف ← مستلمون ← إرسال ── */
+        <div className="bg-white rounded-2xl border border-gray-100 divide-y divide-gray-100">
+          <section className="p-5">
+            <h2 className={sectionTitle}>1. الملف</h2>
+            <div className="space-y-2">
+              {documents.map((d) => {
+                const active = d.id === selectedDocId;
+                return (
+                  <div
+                    key={d.id}
+                    onClick={() => setSelectedDocId(d.id)}
+                    className={`cursor-pointer rounded-xl border px-3 py-2.5 flex items-center gap-3 ${active ? 'border-green-500 bg-green-50/50' : 'border-gray-100 hover:border-gray-200'}`}
+                  >
+                    <span className={`w-4 h-4 rounded-full border-2 flex-shrink-0 ${active ? 'border-green-600 bg-green-600 ring-2 ring-white ring-inset' : 'border-gray-300'}`} />
+                    {d.kind === 'image'
+                      ? <ImageIcon className="w-5 h-5 text-sky-500 flex-shrink-0" />
+                      : <FileText className="w-5 h-5 text-rose-500 flex-shrink-0" />}
+                    <span className="flex-1 min-w-0 truncate text-sm font-bold text-gray-800">{d.title}</span>
+                    <span className="text-xs text-gray-400 hidden sm:inline">{formatSize(d.size)}</span>
+                    <a href={d.url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="p-1 text-gray-400 hover:text-teal-600" title="عرض">
+                      <ExternalLink className="w-4 h-4" />
+                    </a>
+                    <button onClick={(e) => { e.stopPropagation(); handleDelete(d); }} className="p-1 text-gray-400 hover:text-rose-600" title="حذف">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                );
+              })}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={ACCEPTED_TYPES.join(',')}
+                onChange={(e) => handleUpload(e.target.files?.[0])}
+                className="hidden"
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-gray-200 text-sm font-bold text-gray-500 hover:border-green-400 hover:text-green-700 disabled:opacity-50"
+              >
+                {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                {uploading ? 'جارٍ الرفع…' : 'رفع ملف جديد (صورة أو PDF)'}
+              </button>
+            </div>
+          </section>
 
-      <div id="fz-send-card" />
-      <Card step="3" title="الإرسال عبر واتساب">
-        {!selectedDoc && <div className="text-sm text-amber-700 font-bold">اختر ملفاً من الخطوة 1</div>}
+          <section className="p-5">
+            <h2 className={sectionTitle}>2. إلى مين؟</h2>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <div className="flex flex-1 gap-1 bg-gray-50 rounded-xl p-1">
+                {AUDIENCES.map((a) => (
+                  <button
+                    key={a.value}
+                    onClick={() => { setAudience(a.value); setExcluded(new Set()); }}
+                    className={`flex-1 py-2 rounded-lg text-xs sm:text-sm font-bold ${audience === a.value ? 'bg-white text-green-700 shadow-sm' : 'text-gray-500'}`}
+                  >
+                    {a.label}
+                  </button>
+                ))}
+              </div>
+              <div className="relative sm:w-44">
+                <select
+                  value={cityFilter}
+                  onChange={(e) => { setCityFilter(e.target.value); setExcluded(new Set()); }}
+                  className="w-full appearance-none pr-3 pl-7 py-2.5 bg-gray-50 rounded-xl text-sm font-bold text-gray-700 focus:outline-none cursor-pointer"
+                >
+                  <option value="all">كل المدن</option>
+                  {cityOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+                <ChevronDown size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+              </div>
+            </div>
+            <div className="flex items-center justify-between mt-3">
+              <span className="text-sm text-gray-600">
+                {loadingProviders ? 'جارٍ التحميل…' : <><span className="font-black text-gray-900">{recipients.length}</span> مزود</>}
+              </span>
+              <button onClick={() => setShowList((v) => !v)} className="flex items-center gap-1 text-xs font-bold text-teal-700">
+                {showList ? 'إخفاء القائمة' : 'اختيار مزودين محددين'}
+                {showList ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+            {showList && (
+              <div className="mt-3 space-y-2">
+                <div className="relative">
+                  <Search className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="بحث بالاسم أو الرقم" className={`${inputCls} pr-9`} />
+                </div>
+                <div className="flex gap-3 text-xs font-bold text-gray-500">
+                  <button onClick={() => setExcluded(new Set())}>تحديد الكل</button>
+                  <button onClick={() => setExcluded(new Set(audienceList.map((p) => p.id)))}>إلغاء الكل</button>
+                </div>
+                <div className="max-h-64 overflow-y-auto rounded-xl border border-gray-100 divide-y divide-gray-50">
+                  {audienceList.map((p) => {
+                    const on = !excluded.has(p.id);
+                    return (
+                      <button key={p.id} onClick={() => toggleRecipient(p.id)} className="w-full flex items-center gap-3 px-3 py-2 text-right hover:bg-gray-50">
+                        {on ? <CheckSquare className="w-4 h-4 text-green-600 flex-shrink-0" /> : <Square className="w-4 h-4 text-gray-300 flex-shrink-0" />}
+                        <span className="flex-1 min-w-0 truncate text-sm font-bold text-gray-800">{providerName(p)}</span>
+                        <span className="text-xs text-gray-400" dir="ltr">{localPhone(p.phone)}</span>
+                      </button>
+                    );
+                  })}
+                  {audienceList.length === 0 && <div className="text-sm text-gray-400 text-center py-6">لا يوجد مزودون</div>}
+                </div>
+              </div>
+            )}
+          </section>
 
-        {!liveManual && (
-          <div className="space-y-3">
-            <p className="text-xs text-gray-500">
-              يفتح محادثة كل مزود بالرسالة جاهزة ومعها رابط الملف — تضغط إرسال في واتساب ثم «التالي». المتغيرات:
-              <span dir="ltr" className="font-mono"> {'{name} {title} {link}'}</span>
-            </p>
-            <textarea value={manualMessage} onChange={(e) => setManualMessage(e.target.value)} rows={4} className={inputCls} />
+          <section className="p-5 space-y-3">
+            <button onClick={() => setShowMessage((v) => !v)} className="flex items-center gap-1 text-xs font-bold text-teal-700">
+              {showMessage ? 'إخفاء نص الرسالة' : 'تعديل نص الرسالة'}
+              {showMessage ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            </button>
+            {showMessage && (
+              <div className="space-y-1">
+                <textarea value={manualMessage} onChange={(e) => setManualMessage(e.target.value)} rows={4} className={inputCls} />
+                <p className="text-xs text-gray-400">
+                  <span dir="ltr">{'{name}'}</span> الاسم · <span dir="ltr">{'{title}'}</span> عنوان الملف · <span dir="ltr">{'{link}'}</span> رابط الملف
+                </p>
+              </div>
+            )}
             <button
               onClick={startManualCampaign}
               disabled={!selectedDoc || recipients.length === 0}
-              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-green-600 text-white font-black disabled:opacity-40"
+              className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl bg-green-600 hover:bg-green-700 text-white text-lg font-black disabled:opacity-40"
             >
-              <MessageCircle className="w-4 h-4" /> ابدأ الإرسال لـ {recipients.length} مزود
+              <MessageCircle className="w-5 h-5" /> ابدأ الإرسال عبر واتساب
             </button>
-          </div>
-        )}
+            <p className="text-xs text-gray-400 text-center">
+              {selectedDoc ? 'يفتح واتساب لكل مزود والرسالة جاهزة مع رابط الملف — اضغط إرسال داخل واتساب' : 'ارفع ملفاً أو اختر واحداً أولاً'}
+            </p>
+          </section>
+        </div>
+      )}
 
-        {liveManual && (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between text-sm">
-              <span className="font-bold text-gray-700">«{liveManual.documentTitle || manualDoc?.title}»</span>
-              <span className="text-gray-500">{manualDone} / {manualQueue.length}</span>
-            </div>
-            <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-              <div className="h-full bg-green-500 transition-all" style={{ width: `${manualQueue.length ? (manualDone / manualQueue.length) * 100 : 0}%` }} />
-            </div>
-            {manualCurrent ? (
-              <div className="rounded-xl border border-green-200 bg-green-50/50 p-4 space-y-3">
-                <div>
-                  <div className="font-black text-gray-900">{providerName(manualCurrent)}</div>
-                  <div className="text-xs text-gray-500"><span dir="ltr">{localPhone(manualCurrent.phone)}</span> · {providerCityLabel(manualCurrent)}</div>
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                  <button onClick={() => openManualWhatsApp(manualCurrent)} className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-green-600 text-white text-sm font-black">
-                    <MessageCircle className="w-4 h-4" /> فتح واتساب
-                  </button>
-                  <button onClick={() => markManual(manualCurrent, 'sent')} className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-gray-900 text-white text-sm font-black">
-                    <Check className="w-4 h-4" /> أُرسل — التالي
-                  </button>
-                  <button onClick={() => markManual(manualCurrent, 'skipped')} className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-white border border-gray-200 text-gray-600 text-sm font-bold">
-                    <SkipForward className="w-4 h-4" /> تخطي
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="rounded-xl bg-green-50 text-green-700 font-black text-center py-4">اكتملت الحملة ✓</div>
-            )}
-            <button onClick={() => setManualCampaign(null)} className="text-xs font-bold text-gray-500 hover:text-gray-800">إغلاق الحملة (يمكن متابعتها لاحقاً من السجل)</button>
-          </div>
-        )}
-      </Card>
+      {pendingCampaigns.length > 0 && !liveManual && (
+        <div className="bg-amber-50 border border-amber-100 rounded-2xl px-4 py-3 flex items-center justify-between gap-3 text-sm">
+          <span className="font-bold text-amber-800 truncate">
+            إرسال غير مكتمل: «{pendingCampaigns[0].documentTitle}» ({Object.keys(pendingCampaigns[0].results || {}).length} من {(pendingCampaigns[0].providerIds || []).length})
+          </span>
+          <button onClick={() => setManualCampaign(pendingCampaigns[0])} className="font-black text-amber-900 whitespace-nowrap">متابعة</button>
+        </div>
+      )}
 
-      <Card title="سجل الإرسال" right={<History className="w-5 h-5 text-gray-400" />}>
-        {campaigns.length === 0 ? (
-          <div className="text-sm text-gray-400 text-center py-4">لا توجد حملات بعد</div>
-        ) : (
-          <div className="divide-y divide-gray-100">
-            {campaigns.map((c) => {
-              const total = (c.providerIds || []).length;
-              const done = Object.keys(c.results || {}).length;
-              return (
-                <div key={c.id} className="py-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-                  <span className="font-bold text-gray-800 flex-1 min-w-0 truncate">{c.documentTitle || '—'}</span>
-                  <span className="text-green-700 font-bold">أُرسل {Number(c.sent) || 0}</span>
-                  <span className="text-gray-500">{done} / {total}</span>
-                  <span className="text-xs text-gray-400" dir="ltr">{fmtDate(c.createdAt)}</span>
-                  {done < total && (
-                    <button
-                      onClick={() => {
-                        setManualCampaign(c);
-                        document.getElementById('fz-send-card')?.scrollIntoView({ behavior: 'smooth' });
-                      }}
-                      className="text-xs font-black text-teal-700"
-                    >
-                      متابعة
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </Card>
+      {campaigns.length > 0 && (
+        <div className="text-center">
+          <button onClick={() => setShowHistory((v) => !v)} className="text-xs font-bold text-gray-400 hover:text-gray-700">
+            {showHistory ? 'إخفاء السجل' : `الإرسالات السابقة (${campaigns.length})`}
+          </button>
+          {showHistory && (
+            <div className="mt-2 bg-white rounded-2xl border border-gray-100 divide-y divide-gray-50 text-right">
+              {campaigns.map((c) => {
+                const total = (c.providerIds || []).length;
+                const done = Object.keys(c.results || {}).length;
+                return (
+                  <div key={c.id} className="px-4 py-2.5 flex items-center gap-3 text-sm">
+                    <span className="flex-1 min-w-0 truncate font-bold text-gray-800">{c.documentTitle || '—'}</span>
+                    <span className="text-gray-500">{done} / {total}</span>
+                    <span className="text-xs text-gray-400" dir="ltr">{fmtDate(c.createdAt)}</span>
+                    {done < total && (
+                      <button onClick={() => setManualCampaign(c)} className="text-xs font-black text-teal-700">متابعة</button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {toast && (
         <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-xl text-sm font-bold shadow-lg ${toast.type === 'ok' ? 'bg-gray-900 text-white' : 'bg-rose-600 text-white'}`}>
