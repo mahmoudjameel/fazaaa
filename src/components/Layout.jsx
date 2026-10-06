@@ -5,7 +5,7 @@ import {
   UserCog, CreditCard, Banknote, AlertCircle, Shield,
   ChevronLeft, UserPlus, Bell, ImageIcon, Ticket, Timer,
   PanelRight, PanelLeft,   Route, Globe, AlertTriangle, Stethoscope, FlaskConical, Ban, FileText, BarChart3, Wallet,
-  UserX, WifiOff
+  UserX, WifiOff, FileUp
 } from 'lucide-react';
 import { useState, useEffect, useRef, Fragment } from 'react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
@@ -239,6 +239,7 @@ export const Layout = () => {
     { id: 'escalations',             path: '/admin/escalations',              icon: AlertTriangle,   label: 'تصعيدات النظام',           category: 'management' },
     { id: 'provider_cancellations',  path: '/admin/provider-cancellations',   icon: UserX,           label: 'متابعة إلغاءات المزودين',  category: 'management' },
     { id: 'inactive_providers',      path: '/admin/inactive-providers',       icon: WifiOff,         label: 'المزودون غير النشطين',     category: 'management' },
+    { id: 'provider_documents',      path: '/admin/provider-documents',       icon: FileUp,          label: 'إرسال الوثائق للمزودين',   category: 'management' },
     { id: 'users',                   path: '/admin/users',                    icon: UserCheck,       label: 'العملاء',                  category: 'management' },
     { id: 'blocked_phones',          path: '/admin/blocked-phones',           icon: Ban,             label: 'حظر الأرقام',              category: 'management' },
     { id: 'notifications',           path: '/admin/notifications',            icon: Bell,            label: 'الإشعارات',                category: 'management' },

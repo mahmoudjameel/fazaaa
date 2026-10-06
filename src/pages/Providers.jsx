@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   Search, CheckCircle, XCircle, Clock, Eye, Phone, Mail, Star, Power,
   UserCheck, Users, Plus, Edit2, Trash2, Tag, X, FileText, Copy, ShieldBan, ShieldOff, ShieldCheck, Loader2,
-  MapPin, Globe, Smartphone, RefreshCw, ExternalLink, Navigation, ShieldAlert,
+  MapPin, Globe, Smartphone, RefreshCw, ExternalLink, Navigation, ShieldAlert, MessageCircle,
 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -1463,6 +1463,13 @@ export const Providers = () => {
           >
             <MapPin size={20} />
             خريطة المزودين
+          </button>
+          <button
+            onClick={() => navigate('/admin/provider-documents')}
+            className="flex items-center gap-2 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-all font-semibold shadow-md"
+          >
+            <MessageCircle size={20} />
+            إرسال وثائق واتساب
           </button>
           {hasAddPermission && (
             <button

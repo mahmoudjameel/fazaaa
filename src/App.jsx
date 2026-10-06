@@ -38,6 +38,7 @@ const SLATracking = lazy(() => import('./pages/SLATracking').then((m) => ({ defa
 const Escalations = lazy(() => import('./pages/Escalations').then((m) => ({ default: m.Escalations })));
 const ProviderCancellations = lazy(() => import('./pages/ProviderCancellations').then((m) => ({ default: m.ProviderCancellations })));
 const InactiveProviders = lazy(() => import('./pages/InactiveProviders').then((m) => ({ default: m.InactiveProviders })));
+const ProviderDocuments = lazy(() => import('./pages/ProviderDocuments').then((m) => ({ default: m.ProviderDocuments })));
 const ProviderDrawerSections = lazy(() => import('./pages/ProviderDrawerSections'));
 const CustomerDrawerSections = lazy(() => import('./pages/CustomerDrawerSections'));
 const LandingSettings = lazy(() => import('./pages/LandingSettings'));
@@ -138,6 +139,7 @@ function App() {
             <Route path="escalations" element={<Escalations />} />
             <Route path="provider-cancellations" element={<ProviderCancellations />} />
             <Route path="inactive-providers" element={<InactiveProviders />} />
+            <Route path="provider-documents" element={<ProviderDocuments />} />
             <Route path="complaints" element={<Complaints />} />
             <Route path="chats" element={<Chats />} />
             <Route path="bank-settings" element={<BankSettings />} />
