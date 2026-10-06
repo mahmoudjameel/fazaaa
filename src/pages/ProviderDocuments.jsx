@@ -7,6 +7,7 @@ import {
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { format } from 'date-fns';
 import { db } from '../services/firebase';
+import { getProviderIdsWithCompletedOrders } from '../services/adminService';
 import {
   ACCEPTED_TYPES,
   listenToProviderDocuments,
@@ -31,6 +32,28 @@ const AUDIENCES = [
   { value: 'active', label: 'النشطون الآن' },
   { value: 'inactive', label: 'غير النشطين' },
 ];
+
+const ORDER_FILTERS = [
+  { value: 'all', label: 'كل المزودين (الطلبات)' },
+  { value: '2', label: 'نفّذ أكثر من طلب' },
+  { value: '1', label: 'نفّذ طلباً واحداً على الأقل' },
+  { value: '0', label: 'لم ينفّذ أي طلب' },
+];
+
+const NATIONALITY_FILTERS = [
+  { value: 'all', label: 'كل الجنسيات' },
+  { value: 'non_saudi', label: 'غير سعودي' },
+  { value: 'saudi', label: 'سعودي' },
+];
+
+/** الجنسية مخزنة بأشكال مختلفة: nationality = sa | سعودي | ye…، و providerType = saudi | non_saudi */
+const SAUDI_VALUES = new Set(['sa', 'saudi', 'سعودي', 'السعودية', 'سعودية']);
+const providerNationalityGroup = (p) => {
+  const nat = String(p.nationality || '').trim().toLowerCase();
+  if (p.providerType === 'saudi' || SAUDI_VALUES.has(nat)) return 'saudi';
+  if (p.providerType === 'non_saudi' || nat) return 'non_saudi';
+  return 'unknown';
+};
 
 const toMs = (v) => {
   if (!v) return 0;
@@ -78,6 +101,10 @@ export const ProviderDocuments = () => {
   const [cityFilter, setCityFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [excluded, setExcluded] = useState(() => new Set());
+  const [ordersFilter, setOrdersFilter] = useState('all');
+  const [nationalityFilter, setNationalityFilter] = useState('all');
+  const [completedCounts, setCompletedCounts] = useState({});
+  const [loadingCounts, setLoadingCounts] = useState(true);
 
   const [manualMessage, setManualMessage] = useState(DEFAULT_MANUAL_MESSAGE);
   const [manualCampaign, setManualCampaign] = useState(null);
@@ -97,6 +124,12 @@ export const ProviderDocuments = () => {
         setLoadingProviders(false);
       }
     })();
+  }, []);
+  useEffect(() => {
+    getProviderIdsWithCompletedOrders()
+      .then((res) => setCompletedCounts(res?.counts || {}))
+      .catch((e) => console.error('ProviderDocuments completed counts:', e))
+      .finally(() => setLoadingCounts(false));
   }, []);
   useEffect(() => {
     if (!toast) return undefined;
@@ -120,6 +153,11 @@ export const ProviderDocuments = () => {
       if (audience === 'active' && !fresh) return false;
       if (audience === 'inactive' && fresh) return false;
       if (cityFilter !== 'all' && providerCityLabel(p) !== cityFilter) return false;
+      if (nationalityFilter !== 'all' && providerNationalityGroup(p) !== nationalityFilter) return false;
+      if (ordersFilter !== 'all') {
+        const done = completedCounts[String(p.id)] || 0;
+        if (ordersFilter === '0' ? done !== 0 : done < Number(ordersFilter)) return false;
+      }
       if (q) {
         const nameHit = providerName(p).toLowerCase().includes(q);
         const phoneHit = qDigits.length >= 3 && String(p.phone).includes(qDigits);
@@ -127,7 +165,7 @@ export const ProviderDocuments = () => {
       }
       return true;
     });
-  }, [providers, audience, cityFilter, search]);
+  }, [providers, audience, cityFilter, nationalityFilter, ordersFilter, completedCounts, search]);
 
   const recipients = audienceList.filter((p) => !excluded.has(p.id));
   const toggleRecipient = (id) => setExcluded((prev) => {
@@ -366,9 +404,28 @@ export const ProviderDocuments = () => {
                 <ChevronDown size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
               </div>
             </div>
+            <div className="grid grid-cols-2 gap-2 mt-2">
+              {[
+                [ordersFilter, setOrdersFilter, ORDER_FILTERS],
+                [nationalityFilter, setNationalityFilter, NATIONALITY_FILTERS],
+              ].map(([value, setValue, options], idx) => (
+                <div key={idx} className="relative">
+                  <select
+                    value={value}
+                    onChange={(e) => { setValue(e.target.value); setExcluded(new Set()); }}
+                    className={`w-full appearance-none pr-3 pl-7 py-2.5 rounded-xl text-sm font-bold focus:outline-none cursor-pointer ${value !== 'all' ? 'bg-green-50 text-green-800' : 'bg-gray-50 text-gray-700'}`}
+                  >
+                    {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                  <ChevronDown size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                </div>
+              ))}
+            </div>
             <div className="flex items-center justify-between mt-3">
               <span className="text-sm text-gray-600">
-                {loadingProviders ? 'جارٍ التحميل…' : <><span className="font-black text-gray-900">{recipients.length}</span> مزود</>}
+                {loadingProviders || (ordersFilter !== 'all' && loadingCounts)
+                  ? 'جارٍ التحميل…'
+                  : <><span className="font-black text-gray-900">{recipients.length}</span> مزود</>}
               </span>
               <button onClick={() => setShowList((v) => !v)} className="flex items-center gap-1 text-xs font-bold text-teal-700">
                 {showList ? 'إخفاء القائمة' : 'اختيار مزودين محددين'}
@@ -392,6 +449,7 @@ export const ProviderDocuments = () => {
                       <button key={p.id} onClick={() => toggleRecipient(p.id)} className="w-full flex items-center gap-3 px-3 py-2 text-right hover:bg-gray-50">
                         {on ? <CheckSquare className="w-4 h-4 text-green-600 flex-shrink-0" /> : <Square className="w-4 h-4 text-gray-300 flex-shrink-0" />}
                         <span className="flex-1 min-w-0 truncate text-sm font-bold text-gray-800">{providerName(p)}</span>
+                        <span className="text-xs text-gray-400 whitespace-nowrap">{completedCounts[String(p.id)] || 0} طلب</span>
                         <span className="text-xs text-gray-400" dir="ltr">{localPhone(p.phone)}</span>
                       </button>
                     );
