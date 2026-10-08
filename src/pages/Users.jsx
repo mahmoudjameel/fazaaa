@@ -390,11 +390,19 @@ export const Users = () => {
 
     if (searchTerm) {
       const searchLower = searchTerm.toLowerCase().trim();
+      // أرقام فقط (مع تحويل الأرقام العربية) وآخر 9 أرقام: 05… / 9665… / +9665… كلها تتطابق
+      const toDigits = (v) =>
+        String(v || '')
+          .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
+          .replace(/\D/g, '');
+      const searchDigits = toDigits(searchTerm);
+      const phoneKey = searchDigits.length >= 9 ? searchDigits.slice(-9) : searchDigits;
       filtered = filtered.filter(
         (u) =>
           u.name?.toLowerCase().includes(searchLower) ||
           u.email?.toLowerCase().includes(searchLower) ||
           u.phone?.includes(searchTerm) ||
+          (phoneKey.length >= 3 && toDigits(u.phone || u.phoneNumber).includes(phoneKey)) ||
           u.firstName?.toLowerCase().includes(searchLower) ||
           u.lastName?.toLowerCase().includes(searchLower)
       );
