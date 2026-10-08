@@ -1,3 +1,4 @@
+import { providerCityName } from '../utils/cityLabel';
 import { useEffect, useMemo, useState } from 'react';
 import { UserX, Loader2, ChevronDown, ChevronUp, Phone, MapPin, Clock, RefreshCw } from 'lucide-react';
 import { doc, getDoc } from 'firebase/firestore';
@@ -15,7 +16,7 @@ const PERIODS = [
   { value: 30, label: 'خلال شهر' },
 ];
 
-const providerCityLabel = (p) => p?.cityName || p?.city || 'غير محدد';
+const providerCityLabel = providerCityName;
 
 export const ProviderCancellations = () => {
   const [period, setPeriod] = useState(7);

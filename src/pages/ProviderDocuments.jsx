@@ -1,3 +1,4 @@
+import { providerCityName } from '../utils/cityLabel';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -65,7 +66,7 @@ const toMs = (v) => {
 };
 const providerName = (p) =>
   [p.firstName, p.lastName].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim() || p.name || 'بدون اسم';
-const providerCityLabel = (p) => p.cityName || p.city || 'غير محدد';
+const providerCityLabel = providerCityName;
 const localPhone = (phone) => {
   const d = String(phone || '').replace(/\D/g, '');
   if (!d) return '';
@@ -142,7 +143,7 @@ export const ProviderDocuments = () => {
 
   const selectedDoc = documents.find((d) => d.id === selectedDocId) || null;
 
-  const cityOptions = useMemo(() => [...new Set(providers.map(providerCityLabel))].sort(), [providers]);
+  const cityOptions = useMemo(() => [...new Set(providers.map(providerCityLabel))].sort((a, b) => a.localeCompare(b, 'ar')), [providers]);
 
   const audienceList = useMemo(() => {
     const now = Date.now();

@@ -1,3 +1,4 @@
+import { providerCityName } from '../utils/cityLabel';
 import { useEffect, useMemo, useState } from 'react';
 import {
   WifiOff, Loader2, ChevronDown, ChevronUp, Phone, MapPin, Clock, RefreshCw, Search,
@@ -97,7 +98,7 @@ const toMs = (v) => {
 
 const providerName = (p) =>
   [p.firstName, p.lastName].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim() || p.name || 'بدون اسم';
-const providerCityLabel = (p) => p.cityName || p.city || 'غير محدد';
+const providerCityLabel = providerCityName;
 const localPhone = (phone) => {
   const digits = String(phone || '').replace(/\D/g, '');
   if (!digits) return '';
@@ -201,7 +202,7 @@ export const InactiveProviders = () => {
     return c;
   }, [rows]);
 
-  const cityOptions = useMemo(() => [...new Set(rows.map((r) => providerCityLabel(r)))].sort(), [rows]);
+  const cityOptions = useMemo(() => [...new Set(rows.map((r) => providerCityLabel(r)))].sort((a, b) => a.localeCompare(b, 'ar')), [rows]);
 
   const searchQuery = search.trim().toLowerCase();
   const searching = searchQuery.length > 0;
