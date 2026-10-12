@@ -53,7 +53,20 @@ export async function getWalletTopUps({ state = 'all', max = DEFAULT_PAGE_SIZE }
     );
   }
 
-  const rows = snap.docs.map((d) => {
+  const byId = new Map();
+  snap.docs.forEach((d) => byId.set(d.id, d));
+  try {
+    const openSnap = await getDocs(query(
+      collection(db, TOPUPS_COLLECTION),
+      where('state', 'in', ['PENDING_PAYMENT', 'PROCESSING', 'CREATED']),
+      limit(50)
+    ));
+    openSnap.docs.forEach((d) => byId.set(d.id, d));
+  } catch (e) {
+    console.warn('getWalletTopUps open-state query failed:', e?.message || e);
+  }
+
+  const rows = [...byId.values()].map((d) => {
     const data = d.data() || {};
     return {
       id: d.id,
@@ -62,6 +75,11 @@ export async function getWalletTopUps({ state = 'all', max = DEFAULT_PAGE_SIZE }
       updatedAt: toDate(data.updatedAt),
       paidAt: toDate(data.paidAt),
     };
+  });
+  rows.sort((a, b) => {
+    const aMs = a.createdAt?.getTime?.() || a.updatedAt?.getTime?.() || 0;
+    const bMs = b.createdAt?.getTime?.() || b.updatedAt?.getTime?.() || 0;
+    return bMs - aMs;
   });
 
   const filtered =
