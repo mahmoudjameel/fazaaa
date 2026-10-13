@@ -1,6 +1,7 @@
-/** عتبات حداثة الموقع (نفس منطق صفحة المزودين) */
-export const FRESH_MS = 2 * 60 * 1000;
-export const OK_MS = 15 * 60 * 1000;
+/** عتبات حداثة الموقع — نفس التوزيع في السيرفر (functions/lib/dispatchCoverage.js):
+ * حديث ≤30د يستلم أولاً · بديل ≤24س يستلم كبديل · قديم >24س لا يستلم */
+export const FRESH_MS = 30 * 60 * 1000;
+export const OK_MS = 24 * 60 * 60 * 1000;
 
 export const ACTIVE_REQUEST_STATUSES = [
   'assigned',
@@ -154,7 +155,7 @@ export function inferLocationTrackingIssue(provider, nowMs = Date.now()) {
     return {
       type: 'stale_while_online',
       label: 'متصل وموقع قديم',
-      hint: 'المزود يظهر متصلاً لكن الموقع لم يُحدَّث منذ أكثر من 15 دقيقة.',
+      hint: 'المزود يظهر متصلاً لكن الموقع لم يُحدَّث منذ أكثر من 24 ساعة — لا يستلم طلبات.',
     };
   }
 

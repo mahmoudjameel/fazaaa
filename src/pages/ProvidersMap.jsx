@@ -862,7 +862,7 @@ export const ProvidersMap = () => {
           </div>
           <div className="bg-gray-50 rounded-xl p-2.5 border border-gray-100">
             <p className="text-[10px] text-gray-500">حداثة الموقع</p>
-            <p className="font-bold text-sm">{freshness === 'fresh' ? 'حديث' : freshness === 'ok' ? 'مقبول' : freshness === 'stale' ? 'قديم' : '—'}</p>
+            <p className="font-bold text-sm">{freshness === 'fresh' ? 'حديث' : freshness === 'ok' ? 'بديل' : freshness === 'stale' ? 'قديم' : '—'}</p>
           </div>
           <div className="bg-gray-50 rounded-xl p-2.5 border border-gray-100">
             <p className="text-[10px] text-gray-500">الرصيد</p>

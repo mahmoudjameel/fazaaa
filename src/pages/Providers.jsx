@@ -63,7 +63,7 @@ import {
   countProviderRemainingServices,
   LOW_BALANCE_SERVICE_THRESHOLD,
 } from '../utils/providerWallet';
-import { hasLocationTrackingIssue, inferLocationTrackingIssue } from '../utils/providerLocation';
+import { hasLocationTrackingIssue, inferLocationTrackingIssue, FRESH_MS, OK_MS } from '../utils/providerLocation';
 import { PhoneWithActions } from '../components/PhoneWithActions';
 import { normalizePricing, validateTopUpAmount, DEFAULT_PRICING, resolveNextDeductionAmount } from '../utils/providerPricing';
 import SAUDI_CITIES_RAW from '../services/cities.json';
@@ -2556,12 +2556,12 @@ export const Providers = () => {
                             })();
                             const freshness =
                               ageMs == null ? 'unknown'
-                                : ageMs <= 2 * 60 * 1000 ? 'fresh'
-                                  : ageMs <= 15 * 60 * 1000 ? 'ok'
+                                : ageMs <= FRESH_MS ? 'fresh'
+                                  : ageMs <= OK_MS ? 'ok'
                                     : 'stale';
                             const freshnessUi = {
                               fresh: { label: 'حديث', className: 'bg-green-100 text-green-700 border-green-200' },
-                              ok: { label: 'مقبول', className: 'bg-amber-100 text-amber-800 border-amber-200' },
+                              ok: { label: 'بديل', className: 'bg-amber-100 text-amber-800 border-amber-200' },
                               stale: { label: 'قديم', className: 'bg-red-100 text-red-700 border-red-200' },
                               unknown: { label: 'غير معروف', className: 'bg-gray-100 text-gray-600 border-gray-200' },
                             }[freshness];
