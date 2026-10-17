@@ -6,7 +6,7 @@
   "framework": "vite",
   "rewrites": [
     {
-      "source": "/q",
+      "source": "/go",
       "destination": "https://us-central1-fazaproject-c5059.cloudfunctions.net/openQrLink"
     },
     {
