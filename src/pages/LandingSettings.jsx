@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Save, Loader2, LayoutTemplate, Link2, Mail, Wrench, ShieldCheck, FileText, ExternalLink } from 'lucide-react';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
+import { DEFAULT_APP_LINK_COPY, appLinkCopy } from '../utils/appLink';
 
 const inputClass =
   'w-full px-4 py-3 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:border-amber-400 focus:ring-1 focus:ring-amber-400 outline-none transition-all text-gray-800 placeholder-gray-400';
@@ -80,6 +81,7 @@ const DEFAULT_CONTENT = {
     googleHref: 'https://play.google.com',
     providerGoogleHref: 'https://play.google.com/store/apps/details?id=com.fazaa.provider',
     providerAppleHref: 'https://apps.apple.com/sa/app/%D9%81%D8%B2%D8%A7%D8%B9%D9%8A%D9%86-%D8%A7%D9%84%D9%85%D8%B2%D9%88%D8%AF-fzaeen-provider/id6761298718',
+    appLink: { ...DEFAULT_APP_LINK_COPY },
   },
   stats: {
     items: [
@@ -164,6 +166,7 @@ export default function LandingSettings() {
               }
               return href;
             })(),
+            appLink: appLinkCopy(d.apps?.appLink),
           },
           stats: { ...DEFAULT_CONTENT.stats, ...(d.stats || {}) },
           why: {
@@ -537,6 +540,15 @@ export default function LandingSettings() {
           <input className={inputClass} value={content.apps.googleHref || ''} onChange={(e) => setApps({ googleHref: e.target.value })} placeholder="Google Play — العملاء" />
           <input className={inputClass} value={content.apps.providerAppleHref || ''} onChange={(e) => setApps({ providerAppleHref: e.target.value })} placeholder="App Store — المزودين" />
           <input className={inputClass} value={content.apps.providerGoogleHref || ''} onChange={(e) => setApps({ providerGoogleHref: e.target.value })} placeholder="Google Play — المزودين" />
+        </div>
+        <p className="text-xs text-gray-500">رابط fzaeen.com/app يستخدم روابط تطبيق العملاء فوق. النصوص التالية تظهر على صفحة الرابط.</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <input className={inputClass} value={content.apps.appLink?.eyebrow || ''} onChange={(e) => setApps({ appLink: { ...content.apps.appLink, eyebrow: e.target.value } })} placeholder="سطر صغير" />
+          <input className={inputClass} value={content.apps.appLink?.title || ''} onChange={(e) => setApps({ appLink: { ...content.apps.appLink, title: e.target.value } })} placeholder="العنوان" />
+          <input className={inputClass} value={content.apps.appLink?.desktopText || ''} onChange={(e) => setApps({ appLink: { ...content.apps.appLink, desktopText: e.target.value } })} placeholder="نص الكمبيوتر" />
+          <input className={inputClass} value={content.apps.appLink?.redirectText || ''} onChange={(e) => setApps({ appLink: { ...content.apps.appLink, redirectText: e.target.value } })} placeholder="نص التحويل للجوال" />
+          <input className={inputClass} value={content.apps.appLink?.linkTitle || ''} onChange={(e) => setApps({ appLink: { ...content.apps.appLink, linkTitle: e.target.value } })} placeholder="عنوان بوكس الرابط" />
+          <input className={inputClass} value={content.apps.appLink?.linkText || ''} onChange={(e) => setApps({ appLink: { ...content.apps.appLink, linkText: e.target.value } })} placeholder="وصف بوكس الرابط" />
         </div>
       </div>
 

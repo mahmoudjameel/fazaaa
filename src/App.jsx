@@ -50,6 +50,7 @@ const BlockedPhones = lazy(() => import('./pages/BlockedPhones'));
 const MarketingInsights = lazy(() => import('./pages/MarketingInsights'));
 const QrLink = lazy(() => import('./pages/QrLink'));
 const SiteQr = lazy(() => import('./pages/SiteQr'));
+const AppLinkPage = lazy(() => import('./pages/AppLinkPage'));
 
 function PageFallback() {
   return (
@@ -114,6 +115,7 @@ function App() {
           <Route path="/support" element={<Support />} />
           <Route path="/delete-account" element={<DeleteAccount />} />
           <Route path="/q" element={<SiteQr />} />
+          <Route path="/app" element={<AppLinkPage />} />
 
           {/* Admin login */}
           <Route path="/login" element={<Login onLogin={() => setIsAuthenticated(true)} />} />

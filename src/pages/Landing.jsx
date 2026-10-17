@@ -16,6 +16,8 @@ import { buildHomeJsonLd, PAGE_SEO } from '../seo/config';
 import { db } from '../services/firebase';
 import { useMarketingPageView } from '../hooks/useMarketingPageView';
 import { useLandingDownloadTracking } from '../hooks/useLandingDownloadTracking';
+import { AppOneLink } from '../components/AppOneLink';
+import { DEFAULT_APP_LINK_COPY, appLinkCopy } from '../utils/appLink';
 
 const SCROLL_LINKS = [
   { label: 'الرئيسية', href: '#hero' },
@@ -126,6 +128,7 @@ const DEFAULT_LANDING_CONTENT = {
     googleHref: 'https://play.google.com/store/apps/details?id=com.londonerazooz.app',
     providerGoogleHref: 'https://play.google.com/store/apps/details?id=com.fazaa.provider',
     providerAppleHref: 'https://apps.apple.com/sa/app/%D9%81%D8%B2%D8%A7%D8%B9%D9%8A%D9%86-%D8%A7%D9%84%D9%85%D8%B2%D9%88%D8%AF-fzaeen-provider/id6761298718',
+    appLink: { ...DEFAULT_APP_LINK_COPY },
   },
   stats: {
     items: [
@@ -293,6 +296,7 @@ export const Landing = () => {
           mergedApps.providerTitle = String(
             mergedApps.providerTitle || DEFAULT_LANDING_CONTENT.apps.providerTitle
           ).replace(/المزودون/g, 'مزود الخدمة');
+          mergedApps.appLink = appLinkCopy(data.apps?.appLink);
 
           setLandingContent((prev) => ({
             ...prev,
@@ -872,6 +876,12 @@ export const Landing = () => {
               {landingContent.apps?.subtitle || DEFAULT_LANDING_CONTENT.apps.subtitle}
             </p>
           </div>
+
+          <AppOneLink
+            copy={appLinkCopy(landingContent.apps?.appLink)}
+            appStoreUrl={appleHref}
+            playStoreUrl={googleHref}
+          />
 
           <div className="grid md:grid-cols-2 gap-5 sm:gap-6 max-w-4xl mx-auto">
             {[
