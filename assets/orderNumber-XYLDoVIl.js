@@ -1,0 +1,1 @@
+function u(r,n){if(r==null||r==="")return"—";let t=String(r).trim();return t.startsWith("#")&&(t=t.slice(1)),/^\d+$/.test(t)?t.padStart(9,"0"):"—"}function e(r,n={}){const t=(r==null?void 0:r.orderNumber)??(r!=null&&r.requestId?n[r.requestId]:null);return t!=null&&t!==""?a(t):"—"}function a(r,n){const t=u(r);return t==="—"?"—":`#${t}`}export{e as a,a as f};
