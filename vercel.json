@@ -6,6 +6,10 @@
   "framework": "vite",
   "rewrites": [
     {
+      "source": "/q",
+      "destination": "https://us-central1-fazaproject-c5059.cloudfunctions.net/openQrLink"
+    },
+    {
       "source": "/((?!robots\\.txt|sitemap\\.xml|favicon\\.ico|favicon-.*\\.png|apple-touch-icon\\.png|site\\.webmanifest|fzaeen-logo\\.jpeg|landing-hero\\.jpg).*)",
       "destination": "/index.html"
     }

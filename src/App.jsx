@@ -48,6 +48,7 @@ const ArticleDetail = lazy(() => import('./pages/ArticleDetail').then((m) => ({ 
 const DeleteAccount = lazy(() => import('./pages/DeleteAccount').then((m) => ({ default: m.DeleteAccount })));
 const BlockedPhones = lazy(() => import('./pages/BlockedPhones'));
 const MarketingInsights = lazy(() => import('./pages/MarketingInsights'));
+const QrLink = lazy(() => import('./pages/QrLink'));
 
 function PageFallback() {
   return (
@@ -155,6 +156,7 @@ function App() {
             <Route path="support-tickets" element={<SupportTickets />} />
             <Route path="admins" element={<Admins />} />
             <Route path="marketing-insights" element={<MarketingInsights />} />
+            <Route path="qr-link" element={<QrLink />} />
             {/* مسار داخلي غير معروف: ابقَ داخل اللوحة بدل الرجوع للصفحة العامة */}
             <Route path="*" element={<Navigate to="/admin" replace />} />
           </Route>

@@ -5,7 +5,7 @@ import {
   UserCog, CreditCard, Banknote, AlertCircle, Shield,
   ChevronLeft, UserPlus, Bell, ImageIcon, Ticket, Timer,
   PanelRight, PanelLeft,   Route, Globe, AlertTriangle, Stethoscope, FlaskConical, Ban, FileText, BarChart3, Wallet,
-  UserX, WifiOff, FileUp
+  UserX, WifiOff, FileUp, QrCode
 } from 'lucide-react';
 import { useState, useEffect, useRef, Fragment } from 'react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
@@ -244,6 +244,7 @@ export const Layout = () => {
     { id: 'blocked_phones',          path: '/admin/blocked-phones',           icon: Ban,             label: 'حظر الأرقام',              category: 'management' },
     { id: 'notifications',           path: '/admin/notifications',            icon: Bell,            label: 'الإشعارات',                category: 'management' },
     { id: 'marketing_insights',      path: '/admin/marketing-insights',       icon: BarChart3,       label: 'تحليلات التسويق',          category: 'management' },
+    { id: 'qr_link',                 path: '/admin/qr-link',                  icon: QrCode,          label: 'باركود الموقع',            category: 'management' },
     { id: 'chats',                   path: '/admin/chats',                    icon: MessageCircle,   label: 'المحادثات',                category: 'management' },
     { id: 'withdrawal_requests',     path: '/admin/withdrawal-requests',      icon: Banknote,        label: 'طلبات السحب',              category: 'financial' },
     { id: 'wallet_topups',           path: '/admin/wallet-topups',            icon: Wallet,          label: 'عمليات شحن المزودين',      category: 'financial' },
