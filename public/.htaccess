@@ -19,6 +19,10 @@
   RewriteRule \.(js|mjs|css|map|json|webmanifest|ico|png|jpe?g|gif|svg|webp|woff2?|ttf|eot|txt|xml)$ - [L]
 
   RewriteRule ^index\.html$ - [L]
+
+  # مسح الباركود: يعدّ الفتحة ثم يحوّل للصفحة الرئيسية
+  RewriteRule ^go/?$ https://us-central1-fazaproject-c5059.cloudfunctions.net/openQrLink [R=302,L]
+
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteCond %{REQUEST_FILENAME} !-d
   RewriteRule . /index.html [L]
