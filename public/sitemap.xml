@@ -41,6 +41,26 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://fzaeen.com/services/battery-check</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://fzaeen.com/services/tire-change</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://fzaeen.com/services/car-key</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://fzaeen.com/services/fuel-delivery</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://fzaeen.com/blog</loc>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
@@ -86,6 +106,26 @@
     <priority>0.7</priority>
   </url>
   <url>
+    <loc>https://fzaeen.com/blog/out-of-fuel</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://fzaeen.com/blog/battery-check-guide</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://fzaeen.com/blog/blown-tire</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://fzaeen.com/blog/lost-car-key</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
     <loc>https://fzaeen.com/tags/battery-jump</loc>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
@@ -117,6 +157,26 @@
   </url>
   <url>
     <loc>https://fzaeen.com/tags/roadside</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://fzaeen.com/tags/battery-check</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://fzaeen.com/tags/tire-change</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://fzaeen.com/tags/car-key</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://fzaeen.com/tags/fuel-delivery</loc>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>

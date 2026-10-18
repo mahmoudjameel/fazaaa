@@ -7,6 +7,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SERVICE_PAGES, servicePath } from '../src/seo/servicePages.js';
 import { SEO_ARTICLES, SEO_HASHTAGS, articlesForHashtag } from '../src/seo/seoContent.js';
+import { SEARCH_PHRASES } from '../src/seo/searchPhrases.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const site = 'https://fzaeen.com';
@@ -140,6 +141,10 @@ function tagHtml(hashtag) {
   <main>
     <h2>مقالات</h2>
     ${cards || '<p>لا توجد مقالات بعد.</p>'}
+    <h2>عبارات البحث</h2>
+    <ul>
+      ${(SEARCH_PHRASES[hashtag.slug] || []).map((phrase) => `<li>${esc(phrase)}</li>`).join('\n      ')}
+    </ul>
     <p style="margin-top:24px"><a class="cta" href="/app">اطلب الخدمة من التطبيق</a></p>
   </main>
   <footer><a href="/blog">كل المقالات</a> · <a href="/services">الخدمات</a></footer>`;

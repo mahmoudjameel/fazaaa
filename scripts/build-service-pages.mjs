@@ -7,6 +7,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SERVICE_PAGES, servicePath } from '../src/seo/servicePages.js';
 import { articlesForService } from '../src/seo/seoContent.js';
+import { SEARCH_PHRASES } from '../src/seo/searchPhrases.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const site = 'https://fzaeen.com';
@@ -114,10 +115,10 @@ function pageHtml(page) {
     <ol>
       ${page.steps.map((step) => `<li>${esc(step)}</li>`).join('\n      ')}
     </ol>
-    <div class="card">
-      <h2>كلمات يبحث عنها الناس</h2>
-      <p>${esc(keywords)}</p>
-    </div>
+    <h2>إذا كنت تبحث عن</h2>
+    <ul>
+      ${(SEARCH_PHRASES[page.slug] || page.keywords).map((phrase) => `<li>${esc(phrase)}</li>`).join('\n      ')}
+    </ul>
     <h2>أسئلة شائعة</h2>
     ${page.faqs
       .map(
