@@ -19,6 +19,40 @@ import {
 } from '../services/adminService';
 import SAUDI_CITIES_FALLBACK from '../services/cities.json';
 
+const SERVICE_TOKENS = ['بطار', 'إطار', 'اطار', 'بنشر', 'قفال', 'فتح', 'سطح', 'ونش', 'وقود'];
+
+/** يربط الطلب بالخدمة الرئيسية (بطارية، بنشر، فتح سيارة…) */
+function matchRequestServiceIds(req, services) {
+  const sid = String(req.serviceId || '');
+  const parentId = String(req.parentServiceId || '');
+  const name = String(req.serviceName || '').trim().toLowerCase();
+  const category = String(req.category || req.serviceCategory || '').trim().toLowerCase();
+  const ids = [];
+
+  services.forEach((svc) => {
+    const parentName = String(svc.name || '').trim().toLowerCase();
+    const subIds = (svc.subServices || []).map((sub) => String(sub.id || ''));
+    const subNames = (svc.subServices || []).map((sub) => String(sub.name || '').trim().toLowerCase()).filter(Boolean);
+    if (
+      sid === svc.id ||
+      parentId === svc.id ||
+      subIds.includes(sid) ||
+      (parentName && (name === parentName || category === parentName || name.includes(parentName) || category.includes(parentName))) ||
+      subNames.some((subName) => subName === name || subName === category)
+    ) {
+      ids.push(svc.id);
+      return;
+    }
+    for (const token of SERVICE_TOKENS) {
+      if (parentName.includes(token) && (name.includes(token) || category.includes(token))) {
+        ids.push(svc.id);
+        return;
+      }
+    }
+  });
+
+  return ids;
+}
 
 export const Users = () => {
   const [usersList, setUsersList] = useState([]);
@@ -27,6 +61,8 @@ export const Users = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [cityFilter, setCityFilter] = useState('all');
+  const [serviceFilter, setServiceFilter] = useState('all');
+  const [serviceOptions, setServiceOptions] = useState([]);
   const [behaviorFilter, setBehaviorFilter] = useState('all');
   const [sortBy, setSortBy] = useState('registered_newest');
   const [cities, setCities] = useState(SAUDI_CITIES_FALLBACK);
@@ -67,7 +103,7 @@ export const Users = () => {
 
   useEffect(() => {
     filterUsers();
-  }, [usersList, searchTerm, statusFilter, cityFilter, behaviorFilter, sortBy]);
+  }, [usersList, searchTerm, statusFilter, cityFilter, serviceFilter, behaviorFilter, sortBy]);
 
   // جلب طلبات المستخدم عند فتح Modal
   useEffect(() => {
@@ -187,11 +223,22 @@ export const Users = () => {
 
   const fetchUsers = async () => {
     try {
-      const [customerDocs, legacyUserDocs, requestDocs] = await Promise.all([
+      const [customerDocs, legacyUserDocs, requestDocs, serviceDocs] = await Promise.all([
         fetchCollectionDocs('customers'),
         fetchCollectionDocs('users'),
         fetchCollectionDocs('requests'),
+        fetchCollectionDocs('emergency-services').catch(() => []),
       ]);
+
+      const catalog = serviceDocs.map((d) => {
+        const data = d.data();
+        return {
+          id: d.id,
+          name: data.name || '',
+          subServices: Array.isArray(data.subServices) ? data.subServices : [],
+        };
+      }).filter((s) => s.name);
+      setServiceOptions(catalog);
 
       const orderStats = buildCustomerOrderStats(
         requestDocs.map((d) => ({ id: d.id, ...d.data() }))
@@ -226,6 +273,18 @@ export const Users = () => {
       customerDocs.forEach((d) => addEntry(d, 'customers'));
       legacyUserDocs.forEach((d) => addEntry(d, 'users'));
 
+      const serviceIdsByCustomer = new Map();
+      requestDocs.forEach((d) => {
+        const req = d.data();
+        const customerId = req.customerId || req.userId;
+        if (!customerId) return;
+        const matched = matchRequestServiceIds(req, catalog);
+        if (!matched.length) return;
+        const bucket = serviceIdsByCustomer.get(customerId) || new Set();
+        matched.forEach((id) => bucket.add(id));
+        serviceIdsByCustomer.set(customerId, bucket);
+      });
+
       const usersData = Array.from(merged.values()).map((user) => {
         const stats = orderStats.get(user.id) || { total: 0, completed: 0, lastOrderMs: 0 };
         return {
@@ -233,6 +292,7 @@ export const Users = () => {
           orderCount: stats.total,
           completedOrderCount: stats.completed,
           lastOrderAt: stats.lastOrderMs || null,
+          serviceIds: Array.from(serviceIdsByCustomer.get(user.id) || []),
         };
       }).sort((a, b) => getUserCreatedMs(b) - getUserCreatedMs(a));
 
@@ -382,6 +442,10 @@ export const Users = () => {
           u.city === cityFilter ||
           u.city === cityNameAr
       );
+    }
+
+    if (serviceFilter !== 'all') {
+      filtered = filtered.filter((u) => (u.serviceIds || []).includes(serviceFilter));
     }
 
     if (behaviorFilter !== 'all') {
@@ -616,6 +680,16 @@ export const Users = () => {
                 <option key={city.id} value={city.id}>{city.name}</option>
               ))}
             </select>
+            <select
+              value={serviceFilter}
+              onChange={(e) => setServiceFilter(e.target.value)}
+              className="w-full md:w-auto px-4 py-2.5 sm:py-3 border-2 border-teal-200 bg-teal-50 rounded-lg focus:border-teal-400 focus:outline-none text-sm sm:text-base text-right font-medium"
+            >
+              <option value="all">كل أنواع الخدمات</option>
+              {serviceOptions.map((service) => (
+                <option key={service.id} value={service.id}>{service.name}</option>
+              ))}
+            </select>
           </div>
           <div className="flex flex-col md:flex-row gap-3 sm:gap-4">
             <select
@@ -642,13 +716,23 @@ export const Users = () => {
               <option value="last_order_newest">آخر طلب (الأحدث)</option>
             </select>
           </div>
+          <p className="text-sm sm:text-base text-teal-900 bg-teal-50 border border-teal-100 rounded-lg px-3 py-2.5 font-bold">
+            عدد العملاء في هذا البحث: {filteredUsers.length}
+            <span className="font-medium text-teal-700"> من أصل {usersList.length}</span>
+            {cityFilter !== 'all' && (
+              <span className="font-medium"> — {cities.find((c) => c.id === cityFilter)?.name || 'المدينة'}</span>
+            )}
+            {serviceFilter !== 'all' && (
+              <span className="font-medium"> — {serviceOptions.find((s) => s.id === serviceFilter)?.name || 'الخدمة'}</span>
+            )}
+          </p>
           {behaviorFilter !== 'all' && (
             <p className="text-xs sm:text-sm text-purple-700 bg-purple-50 border border-purple-100 rounded-lg px-3 py-2 flex items-center gap-2">
               <ArrowUpDown className="w-4 h-4 shrink-0" />
               <span>
-                يُعرض {filteredUsers.length} عميل من أصل {usersList.length}
-                {behaviorFilter === 'no_orders' && ' — جاهزون لإشعار تحفيزي'}
-                {behaviorFilter === 'loyal_3plus' && ' — مرشّحون للمكافآت'}
+                {behaviorFilter === 'no_orders' && 'جاهزون لإشعار تحفيزي'}
+                {behaviorFilter === 'loyal_3plus' && 'مرشّحون للمكافآت'}
+                {behaviorFilter !== 'no_orders' && behaviorFilter !== 'loyal_3plus' && 'فلتر السلوك مفعّل'}
               </span>
             </p>
           )}

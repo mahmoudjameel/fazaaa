@@ -40,7 +40,9 @@ export function LandingSeoSection({ primaryColor = '#DC2626' }) {
               key={service.id}
               className="rounded-2xl border border-gray-100 bg-gray-50/80 p-6 hover:border-gray-200 hover:shadow-sm transition-all"
             >
-              <h3 className="text-lg font-black text-gray-900 mb-3">{service.name}</h3>
+              <h3 className="text-lg font-black text-gray-900 mb-3">
+                <a href={service.href} className="hover:underline">{service.name}</a>
+              </h3>
               <p className="text-gray-600 text-sm leading-relaxed mb-4">{service.description}</p>
               <ul className="flex flex-wrap gap-2">
                 {service.keywords.map((kw) => (

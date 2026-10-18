@@ -10,9 +10,12 @@ import {
   addSeoHashtag,
   updateSeoHashtag,
   deleteSeoHashtag,
+  publishReadySeoContent,
   slugifyArticleTitle,
+  slugifyServicePage,
   normalizeHashtag,
 } from '../services/articlesService';
+import { SERVICE_PAGES, servicePath } from '../seo/servicePages';
 import {
   FileText,
   Plus,
@@ -44,6 +47,11 @@ const emptyHashtag = {
   tag: '',
   label: '',
   keywords: '',
+  slug: '',
+  seoTitle: '',
+  seoDescription: '',
+  intro: '',
+  body: '',
   active: true,
 };
 
@@ -202,10 +210,21 @@ export default function Articles() {
     }
     setSaving(true);
     try {
+      const slug = slugifyServicePage(hashtagForm.slug);
+      if (slug && SERVICE_PAGES.some((page) => page.slug === slug)) {
+        alert('هذا الرابط مستخدم لصفحة خدمة جاهزة على الموقع. اختر رابطاً إنجليزياً مختلفاً.');
+        setSaving(false);
+        return;
+      }
       const payload = {
         tag,
         label: hashtagForm.label || tag,
         keywords: hashtagForm.keywords,
+        slug,
+        seoTitle: hashtagForm.seoTitle,
+        seoDescription: hashtagForm.seoDescription,
+        intro: hashtagForm.intro,
+        body: hashtagForm.body,
         active: hashtagForm.active !== false,
       };
       if (editingHashtagId) {
@@ -218,6 +237,19 @@ export default function Articles() {
       load();
     } catch (e) {
       alert(e.message || 'فشل حفظ الهاشتاق');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handlePublishReady = async () => {
+    setSaving(true);
+    try {
+      const result = await publishReadySeoContent();
+      alert(`تمت إضافة ${result.addedArticles} مقال و${result.addedHashtags} هاشتاق. الموجود مسبقاً ما تكرر.`);
+      load();
+    } catch (e) {
+      alert(e.message || 'فشل نشر المحتوى الجاهز');
     } finally {
       setSaving(false);
     }
@@ -246,8 +278,16 @@ export default function Articles() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">مقالات اللاندينغ (SEO)</h1>
         <p className="text-gray-600 mt-1">
-          أضف مقالات وهاشتاقات تظهر في صفحة الموقع العامة لتحسين الظهور في محركات البحث حسب الكلمات المفتاحية.
+          مقالات وهاشتاقات خدمات فزاعين. المحتوى الجاهز موجود كصفحات في الموقع، ونشره هنا يخليه ظاهر داخل اللوحة.
         </p>
+        <button
+          type="button"
+          onClick={handlePublishReady}
+          disabled={saving}
+          className="mt-3 px-4 py-2 bg-teal-600 text-white rounded-lg font-bold disabled:opacity-50"
+        >
+          نشر مقالات وهاشتاقات الخدمات
+        </button>
       </div>
 
       <div className="flex gap-2 border-b border-gray-200">
@@ -421,6 +461,54 @@ export default function Articles() {
                 className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg"
               />
             </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700">رابط الصفحة بالإنجليزي</label>
+              <input
+                value={hashtagForm.slug}
+                onChange={(e) => setHashtagForm((f) => ({ ...f, slug: e.target.value }))}
+                placeholder="fuel-delivery"
+                className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg"
+                dir="ltr"
+              />
+              <p className="text-xs text-gray-500 mt-1">تظهر الصفحة على /services/الرابط بعد ما تكتب وصفاً في الحقلين تحت.</p>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700">عنوان قوقل</label>
+              <input
+                value={hashtagForm.seoTitle}
+                onChange={(e) => setHashtagForm((f) => ({ ...f, seoTitle: e.target.value }))}
+                placeholder="توصيل بنزين في موقعك | فزاعين"
+                className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700">وصف قوقل</label>
+              <textarea
+                value={hashtagForm.seoDescription}
+                onChange={(e) => setHashtagForm((f) => ({ ...f, seoDescription: e.target.value }))}
+                rows={2}
+                className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700">مقدمة الصفحة</label>
+              <textarea
+                value={hashtagForm.intro}
+                onChange={(e) => setHashtagForm((f) => ({ ...f, intro: e.target.value }))}
+                rows={2}
+                className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700">نص الصفحة</label>
+              <textarea
+                value={hashtagForm.body}
+                onChange={(e) => setHashtagForm((f) => ({ ...f, body: e.target.value }))}
+                rows={6}
+                placeholder="اكتب فقرة واضحة عن الخدمة، المدن، وكيف يطلبها العميل من التطبيق."
+                className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg"
+              />
+            </div>
             <label className="flex items-center gap-2 text-sm text-gray-700">
               <input
                 type="checkbox"
@@ -454,8 +542,32 @@ export default function Articles() {
             </div>
           </div>
 
-          <div className="lg:col-span-3 bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden">
-            <div className="p-4 border-b border-gray-200 font-bold text-gray-800">قائمة الهاشتاقات</div>
+          <div className="lg:col-span-3 space-y-4">
+            <div className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden">
+              <div className="p-4 border-b border-gray-200">
+                <div className="font-bold text-gray-800">صفحات الخدمات الجاهزة</div>
+                <p className="text-xs text-gray-500 mt-1">هذي الصفحات على الموقع، وكل واحدة بعنوان يطابق بحث الناس في السعودية.</p>
+              </div>
+              <div className="divide-y divide-gray-100">
+                {SERVICE_PAGES.map((page) => (
+                  <a
+                    key={page.slug}
+                    href={servicePath(page.slug)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="p-4 flex items-center justify-between gap-3 hover:bg-gray-50"
+                  >
+                    <div>
+                      <div className="font-bold text-gray-900">{page.title}</div>
+                      <div className="text-xs text-teal-700 mt-1" dir="ltr">{servicePath(page.slug)}</div>
+                    </div>
+                    <ExternalLink className="w-4 h-4 text-gray-400 shrink-0" />
+                  </a>
+                ))}
+              </div>
+            </div>
+            <div className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden">
+            <div className="p-4 border-b border-gray-200 font-bold text-gray-800">صفحات تضيفها أنت</div>
             <div className="divide-y divide-gray-100">
               {hashtags.length === 0 ? (
                 <div className="p-10 text-center text-gray-500">أضف هاشتاقات لتقوية مواضيع SEO.</div>
@@ -465,6 +577,11 @@ export default function Articles() {
                     <div>
                       <div className="font-bold text-teal-800">#{h.tag}</div>
                       <div className="text-sm text-gray-600">{h.label}</div>
+                      {h.slug && (h.body || h.intro) ? (
+                        <a href={servicePath(h.slug)} target="_blank" rel="noreferrer" className="text-xs text-teal-700" dir="ltr">
+                          {servicePath(h.slug)}
+                        </a>
+                      ) : null}
                       <div className="mt-1 flex flex-wrap gap-1">
                         {(h.keywords || []).map((k) => (
                           <span key={k} className="text-[10px] px-1.5 py-0.5 bg-gray-100 rounded text-gray-600">
@@ -482,6 +599,11 @@ export default function Articles() {
                             tag: h.tag,
                             label: h.label || '',
                             keywords: (h.keywords || []).join(', '),
+                            slug: h.slug || '',
+                            seoTitle: h.seoTitle || '',
+                            seoDescription: h.seoDescription || '',
+                            intro: h.intro || '',
+                            body: h.body || '',
                             active: h.active !== false,
                           });
                         }}
@@ -501,6 +623,7 @@ export default function Articles() {
                 ))
               )}
             </div>
+          </div>
           </div>
         </div>
       )}

@@ -13,6 +13,7 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 import { db } from './firebase';
+import { SEO_ARTICLES, SEO_HASHTAGS } from '../seo/seoContent';
 
 const ARTICLES_COLLECTION = 'articles';
 const HASHTAGS_COLLECTION = 'seo_hashtags';
@@ -221,9 +222,25 @@ function mapHashtagDoc(d) {
     tag: normalizeHashtag(data.tag),
     label: data.label || data.tag || '',
     keywords: Array.isArray(data.keywords) ? data.keywords : [],
+    slug: String(data.slug || '').trim(),
+    seoTitle: data.seoTitle || '',
+    seoDescription: data.seoDescription || '',
+    intro: data.intro || '',
+    body: data.body || '',
     active: data.active !== false,
     ...data,
   };
+}
+
+export function slugifyServicePage(text) {
+  const latin = String(text || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '-')
+    .replace(/[^a-z0-9\-]/g, '')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+  return latin;
 }
 
 export async function getSeoHashtags({ activeOnly = false } = {}) {
@@ -252,6 +269,11 @@ export async function addSeoHashtag(data) {
     tag,
     label: String(data.label || tag).trim(),
     keywords: parseTagsInput(data.keywords).map((k) => k.replace(/_/g, ' ')),
+    slug: slugifyServicePage(data.slug),
+    seoTitle: String(data.seoTitle || '').trim(),
+    seoDescription: String(data.seoDescription || '').trim(),
+    intro: String(data.intro || '').trim(),
+    body: String(data.body || '').trim(),
     active: data.active !== false,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
@@ -266,6 +288,11 @@ export async function updateSeoHashtag(id, data) {
   if (data.keywords !== undefined) {
     updateData.keywords = parseTagsInput(data.keywords).map((k) => k.replace(/_/g, ' '));
   }
+  if (data.slug !== undefined) updateData.slug = slugifyServicePage(data.slug);
+  if (data.seoTitle !== undefined) updateData.seoTitle = String(data.seoTitle).trim();
+  if (data.seoDescription !== undefined) updateData.seoDescription = String(data.seoDescription).trim();
+  if (data.intro !== undefined) updateData.intro = String(data.intro).trim();
+  if (data.body !== undefined) updateData.body = String(data.body).trim();
   if (data.active !== undefined) updateData.active = !!data.active;
   await updateDoc(doc(db, HASHTAGS_COLLECTION, id), updateData);
   return { success: true };
@@ -274,4 +301,38 @@ export async function updateSeoHashtag(id, data) {
 export async function deleteSeoHashtag(id) {
   await deleteDoc(doc(db, HASHTAGS_COLLECTION, id));
   return { success: true };
+}
+
+/** ينشر مقالات وهاشتاقات فزاعين الجاهزة في اللوحة، ويتخطى الموجود. */
+export async function publishReadySeoContent() {
+  const [articles, hashtags] = await Promise.all([getAllArticles(), getSeoHashtags()]);
+  const articleSlugs = new Set(articles.map((item) => item.slug));
+  const tags = new Set(hashtags.map((item) => item.tag));
+  let addedArticles = 0;
+  let addedHashtags = 0;
+
+  for (const hashtag of SEO_HASHTAGS) {
+    if (tags.has(hashtag.tag)) continue;
+    await addSeoHashtag(hashtag);
+    addedHashtags += 1;
+  }
+  for (const article of SEO_ARTICLES) {
+    if (articleSlugs.has(article.slug)) continue;
+    await addArticle({ ...article, published: true, showOnLanding: true });
+    addedArticles += 1;
+  }
+  return { addedArticles, addedHashtags };
+}
+
+export async function getSeoPageBySlug(slug) {
+  const clean = slugifyServicePage(slug);
+  if (!clean) return null;
+  const snap = await getDocs(
+    query(collection(db, HASHTAGS_COLLECTION), where('slug', '==', clean), limit(1))
+  );
+  if (snap.empty) return null;
+  const page = mapHashtagDoc(snap.docs[0]);
+  if (page.active === false) return null;
+  if (!page.body && !page.intro) return null;
+  return page;
 }

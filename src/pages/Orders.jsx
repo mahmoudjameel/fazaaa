@@ -74,6 +74,38 @@ function formatCancelReasonLabel(reason) {
   return CANCEL_REASON_LABELS_AR[reason] || reason;
 }
 
+/** سبب إلغاء الطلب الحالي، أو null إن لم يُلغَ */
+function extractOrderCancelReason(order) {
+  const status = order?.status || '';
+  const isProvider = status === 'canceled_by_provider' || status === 'canceled_by_provider_with_reason';
+  const isClient = status === 'canceled_by_client' || status === 'canceled_by_client_with_reason';
+  const isAdmin = status === 'canceled_by_admin';
+  if (!isProvider && !isClient && !isAdmin) return null;
+
+  let raw = order.cancelReason;
+  if (isProvider && Array.isArray(order.history)) {
+    for (let i = order.history.length - 1; i >= 0; i -= 1) {
+      const event = order.history[i];
+      const isCancel =
+        event?.action === 'provider_cancellation' ||
+        event?.status === 'canceled_by_provider' ||
+        event?.status === 'canceled_by_provider_with_reason';
+      if (!isCancel) continue;
+      raw =
+        event.cancelReason ||
+        event.reason ||
+        (typeof event.message === 'string' && event.message.includes('السبب:')
+          ? event.message.split('السبب:').slice(1).join('السبب:')
+          : null) ||
+        raw;
+      break;
+    }
+  }
+
+  const label = formatCancelReasonLabel(String(raw || '').trim());
+  return label || 'بدون سبب';
+}
+
 const MapPickerWidget = ({ coordinates, onLocationSelect }) => {
   const mapContainerRef = useRef(null);
   const mapInstanceRef = useRef(null);
@@ -249,6 +281,18 @@ export const Orders = () => {
   const [cityFilter, setCityFilter] = useState('all');
   const [slaFilter, setSlaFilter] = useState('all');
   const [serviceFilter, setServiceFilter] = useState('all');
+  const [cancelReasonFilter, setCancelReasonFilter] = useState('all');
+  const cancelReasonOptions = useMemo(() => {
+    const counts = new Map();
+    requests.forEach((order) => {
+      const label = extractOrderCancelReason(order);
+      if (!label) return;
+      counts.set(label, (counts.get(label) || 0) + 1);
+    });
+    return Array.from(counts.entries())
+      .map(([label, count]) => ({ label, count }))
+      .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, 'ar'));
+  }, [requests]);
   const [cities, setCities] = useState(SAUDI_CITIES_FALLBACK);
   /** يحدّث شارة «جاري البحث» فور انتهاء مهلة 3 دقائق بدون انتظار Firestore */
   const [nowTick, setNowTick] = useState(() => Date.now());
@@ -495,11 +539,11 @@ export const Orders = () => {
 
   useEffect(() => {
     setVisibleCount(ORDERS_PAGE_SIZE);
-  }, [searchTerm, statusFilter, cityFilter, serviceFilter, slaFilter, executedProviderFilter, dateRangeFilter]);
+  }, [searchTerm, statusFilter, cityFilter, serviceFilter, slaFilter, executedProviderFilter, dateRangeFilter, cancelReasonFilter]);
 
   useEffect(() => {
     filterOrders();
-  }, [requests, searchTerm, statusFilter, cityFilter, serviceFilter, slaFilter, executedProviderFilter, executedProviderIds, dateRangeFilter, matchedUids, providersDict, mainServices, services, cities, nowTick]);
+  }, [requests, searchTerm, statusFilter, cityFilter, serviceFilter, slaFilter, executedProviderFilter, executedProviderIds, dateRangeFilter, cancelReasonFilter, matchedUids, providersDict, mainServices, services, cities, nowTick]);
 
   // معرفات المزودين الذين نفّذوا طلباً مكتملاً واحداً على الأقل
   useEffect(() => {
@@ -957,6 +1001,10 @@ export const Orders = () => {
         const hasExecuted = executedProviderIds.has(providerId);
         return executedProviderFilter === 'executed' ? hasExecuted : !hasExecuted;
       });
+    }
+
+    if (cancelReasonFilter !== 'all') {
+      filtered = filtered.filter((req) => extractOrderCancelReason(req) === cancelReasonFilter);
     }
 
     // 6. فلتر الفترة الزمنية حسب تاريخ إنشاء الطلب
@@ -2141,6 +2189,27 @@ export const Orders = () => {
               <option value="all">كل أوقات الوصول</option>
               <option value="under_15">وصول ١٥ دقيقة أو أقل</option>
               <option value="over_15">وصول أكثر من ١٥ دقيقة</option>
+            </select>
+            <ChevronDown size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          </div>
+
+          {/* سبب الإلغاء — الأكثر تكراراً أولاً */}
+          <div className="relative">
+            <select
+              value={cancelReasonFilter}
+              onChange={(e) => setCancelReasonFilter(e.target.value)}
+              className={`w-full appearance-none pr-3 pl-7 py-2 border rounded-xl text-sm font-semibold focus:outline-none cursor-pointer transition-colors ${
+                cancelReasonFilter !== 'all'
+                  ? 'bg-rose-50 border-rose-300 text-rose-800 focus:border-rose-400'
+                  : 'bg-gray-50 border-gray-200 text-gray-700 focus:border-teal-400'
+              }`}
+            >
+              <option value="all">كل أسباب الإلغاء</option>
+              {cancelReasonOptions.map((item) => (
+                <option key={item.label} value={item.label}>
+                  {item.label} ({item.count})
+                </option>
+              ))}
             </select>
             <ChevronDown size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           </div>

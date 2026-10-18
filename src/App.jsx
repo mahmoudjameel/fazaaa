@@ -44,6 +44,7 @@ const CustomerDrawerSections = lazy(() => import('./pages/CustomerDrawerSections
 const LandingSettings = lazy(() => import('./pages/LandingSettings'));
 const Articles = lazy(() => import('./pages/Articles'));
 const Blog = lazy(() => import('./pages/Blog').then((m) => ({ default: m.Blog })));
+const ServicePage = lazy(() => import('./pages/ServicePage').then((m) => ({ default: m.ServicePage })));
 const ArticleDetail = lazy(() => import('./pages/ArticleDetail').then((m) => ({ default: m.ArticleDetail })));
 const DeleteAccount = lazy(() => import('./pages/DeleteAccount').then((m) => ({ default: m.DeleteAccount })));
 const BlockedPhones = lazy(() => import('./pages/BlockedPhones'));
@@ -110,6 +111,7 @@ function App() {
           <Route path="/" element={<Landing />} />
           <Route path="/blog" element={<Blog />} />
           <Route path="/blog/:slug" element={<ArticleDetail />} />
+          <Route path="/services/:slug" element={<ServicePage />} />
           <Route path="/privacy" element={<PrivacyPolicy />} />
           <Route path="/terms" element={<Terms />} />
           <Route path="/support" element={<Support />} />

@@ -1257,6 +1257,7 @@ export const Landing = () => {
               </h4>
               <ul className="space-y-3">
                 {[
+                  { label: 'خدمات الطريق', to: '/services' },
                   { label: 'المقالات', to: '/blog' },
                   { label: 'سياسة الخصوصية', to: '/privacy' },
                   { label: 'الشروط والأحكام', to: '/terms' },
