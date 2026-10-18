@@ -4,6 +4,7 @@ import {
   orderBy,
   limit,
   getDocs,
+  onSnapshot,
   where,
   doc,
   getDoc,
@@ -126,6 +127,7 @@ export const WALLET_TOPUP_STATES = {
   PROCESSING: { label: 'قيد المعالجة', color: 'bg-blue-100 text-blue-800' },
   PAID: { label: 'مدفوع / مشحون', color: 'bg-emerald-100 text-emerald-800' },
   FAILED: { label: 'فشل', color: 'bg-red-100 text-red-800' },
+  COMPENSATED: { label: 'تعويض إداري', color: 'bg-blue-50 text-blue-700' },
   CANCELLED: { label: 'ملغي', color: 'bg-gray-100 text-gray-700' },
   VOIDED: { label: 'ملغى (Void)', color: 'bg-purple-100 text-purple-800' },
 };
@@ -133,4 +135,10 @@ export const WALLET_TOPUP_STATES = {
 export function getTopUpStateMeta(state) {
   const key = String(state || '').toUpperCase();
   return WALLET_TOPUP_STATES[key] || { label: state || 'غير معروف', color: 'bg-gray-100 text-gray-600' };
+}
+
+// Every server-side state change updates updatedAt, including older delayed payments.
+export function watchWalletTopUpChanges(onChange, onError) {
+  return onSnapshot(query(collection(db, TOPUPS_COLLECTION), orderBy('updatedAt', 'desc'), limit(1)),
+    onChange, onError);
 }

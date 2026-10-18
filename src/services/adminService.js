@@ -2600,6 +2600,36 @@ export const adjustProviderWallet = async (providerId, amount, type, reason, att
   }
 };
 
+const OPEN_BANK_TOPUP_STATES = ['CREATED', 'PENDING_PAYMENT', 'PROCESSING'];
+
+/** عمليات بنك ما زالت مفتوحة لهذا المزود — التعويض يقدر يغلق واحدة منها */
+export async function listOpenBankTopups(providerId) {
+  const snap = await getDocs(query(
+    collection(db, 'wallet_topups'),
+    where('uid', '==', providerId),
+    limit(40),
+  ));
+  return snap.docs
+    .map((d) => ({ id: d.id, ...d.data() }))
+    .filter((row) => row.source !== 'admin_panel'
+      && row.gateway === 'alrajhi'
+      && OPEN_BANK_TOPUP_STATES.includes(String(row.state || '')))
+    .sort((a, b) => providerTimeMs(b.createdAt) - providerTimeMs(a.createdAt));
+}
+
+/** يضيف الرصيد ويغلق عملية البنك في السيرفر حتى لا تُشحن تلقائياً مرة ثانية */
+export async function compensateStuckBankTopup({ providerId, topupId, amount, reason, attachment = null }) {
+  const fn = httpsCallable(functions, 'adminCompensateStuckTopup');
+  const res = await fn({
+    providerId,
+    topupId,
+    amount: Number(amount),
+    reason,
+    attachment,
+  });
+  return res.data || { success: false };
+}
+
 /**
  * الحصول على إحصائيات طلبات المزود
  * @param {string} providerId - معرف المزود

@@ -34,6 +34,8 @@ import {
   getProviderWalletHistory,
   getProviderLoginSessions,
   adjustProviderWallet,
+  listOpenBankTopups,
+  compensateStuckBankTopup,
   repairDuplicateProviders,
   repairApprovedProvidersPendingServices,
   permanentlyDeleteProvider,
@@ -103,6 +105,20 @@ const DOCUMENT_TYPE_OPTIONS = [
 const resolveTransactionReference = (tx) =>
   tx?.referenceNumber || tx?.trackId || (tx?.id ? `FZT${String(tx.id).slice(-8).toUpperCase()}` : null);
 
+const formatTopupWhen = (value) => {
+  const ms = typeof value?.toMillis === 'function'
+    ? value.toMillis()
+    : (typeof value?.seconds === 'number' ? value.seconds * 1000 : Date.parse(value));
+  if (!Number.isFinite(ms)) return '';
+  return new Date(ms).toLocaleString('ar-SA', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
+
 
 export const Providers = () => {
   const location = useLocation();
@@ -166,6 +182,10 @@ export const Providers = () => {
   const [loadingStats, setLoadingStats] = useState(false);
   const [ordersFilter, setOrdersFilter] = useState('all');
   const [walletAdjustment, setWalletAdjustment] = useState({ amount: '', type: 'addition', reason: '' });
+  const [openBankTopups, setOpenBankTopups] = useState([]);
+  const [loadingOpenTopups, setLoadingOpenTopups] = useState(false);
+  const [settlesTopupId, setSettlesTopupId] = useState('');
+  const [openTopupReload, setOpenTopupReload] = useState(0);
   // إيصال/مستند مرجعي اختياري لعملية الرصيد (صورة أو PDF) — مثال: إيصال إرجاع مبلغ لمزود
   const [walletReceiptFile, setWalletReceiptFile] = useState(null);
   const [walletAmountError, setWalletAmountError] = useState('');
@@ -199,7 +219,22 @@ export const Providers = () => {
       setAddDocFile(null);
       setAddDocType(DOCUMENT_TYPE_OPTIONS[0].key);
     }
+    setSettlesTopupId('');
+    setOpenBankTopups([]);
   }, [selectedProvider?.id]);
+
+  useEffect(() => {
+    if (activeTab !== 'wallet' || walletAdjustment.type !== 'compensation' || !selectedProvider?.id) {
+      return undefined;
+    }
+    let cancelled = false;
+    setLoadingOpenTopups(true);
+    listOpenBankTopups(selectedProvider.id)
+      .then((rows) => { if (!cancelled) setOpenBankTopups(rows); })
+      .catch(() => { if (!cancelled) setOpenBankTopups([]); })
+      .finally(() => { if (!cancelled) setLoadingOpenTopups(false); });
+    return () => { cancelled = true; };
+  }, [activeTab, walletAdjustment.type, selectedProvider?.id, openTopupReload]);
 
   // تحديث تسميات «قبل X دقيقة» أثناء فتح التفاصيل
   useEffect(() => {
@@ -930,22 +965,41 @@ export const Providers = () => {
           name: walletReceiptFile.name,
         };
       }
-      const result = await adjustProviderWallet(
-        selectedProvider.id,
-        walletAdjustment.amount,
-        walletAdjustment.type,
-        walletAdjustment.reason,
-        attachment
-      );
+      const linkedTopup = walletAdjustment.type === 'compensation' && settlesTopupId
+        ? openBankTopups.find((row) => row.id === settlesTopupId)
+        : null;
+      if (walletAdjustment.type === 'compensation' && settlesTopupId && !linkedTopup) {
+        alert('عملية البنك لم تعد معلّقة. اخترها من جديد.');
+        return;
+      }
+      const result = linkedTopup
+        ? await compensateStuckBankTopup({
+          providerId: selectedProvider.id,
+          topupId: linkedTopup.id,
+          amount: Number(linkedTopup.amount),
+          reason: walletAdjustment.reason,
+          attachment,
+        })
+        : await adjustProviderWallet(
+          selectedProvider.id,
+          walletAdjustment.amount,
+          walletAdjustment.type,
+          walletAdjustment.reason,
+          attachment
+        );
 
       if (result.success) {
         alert(
-          (result.serviceCreditsAdded > 0
-            ? `تم الشحن بنجاح — أُضيفت ${result.serviceCreditsAdded} خدمة`
-            : 'تم تحديث الرصيد بنجاح')
+          (linkedTopup
+            ? `تم التعويض وإغلاق عملية البنك — أُضيفت ${result.serviceCreditsAdded} خدمة`
+            : (result.serviceCreditsAdded > 0
+              ? `تم الشحن بنجاح — أُضيفت ${result.serviceCreditsAdded} خدمة`
+              : 'تم تحديث الرصيد بنجاح'))
           + (result.referenceNumber ? `\nرقم المرجع: ${result.referenceNumber}` : '')
         );
         setWalletAdjustment({ amount: '', type: 'addition', reason: '' });
+        setSettlesTopupId('');
+        setOpenTopupReload((n) => n + 1);
         setWalletReceiptFile(null);
         const updatedProvider = { ...selectedProvider };
         if (!updatedProvider.wallet) updatedProvider.wallet = {};
@@ -3195,14 +3249,20 @@ export const Providers = () => {
                             <div className="grid grid-cols-2 gap-3">
                               <button
                                 type="button"
-                                onClick={() => setWalletAdjustment({ ...walletAdjustment, type: 'addition' })}
+                                onClick={() => {
+                                  setSettlesTopupId('');
+                                  setWalletAdjustment({ ...walletAdjustment, type: 'addition' });
+                                }}
                                 className={`py-3 rounded-xl font-bold transition-all border-2 ${walletAdjustment.type === 'addition' ? 'bg-green-50 border-green-500 text-green-700' : 'bg-white border-gray-100 text-gray-500'}`}
                               >
                                 إضافة (شحن)
                               </button>
                               <button
                                 type="button"
-                                onClick={() => setWalletAdjustment({ ...walletAdjustment, type: 'deduction' })}
+                                onClick={() => {
+                                  setSettlesTopupId('');
+                                  setWalletAdjustment({ ...walletAdjustment, type: 'deduction' });
+                                }}
                                 className={`py-3 rounded-xl font-bold transition-all border-2 ${walletAdjustment.type === 'deduction' ? 'bg-red-50 border-red-500 text-red-700' : 'bg-white border-gray-100 text-gray-500'}`}
                               >
                                 خصم
@@ -3222,6 +3282,7 @@ export const Providers = () => {
                                 min={pricingSettings.providerCommissionPerOrder}
                                 placeholder={`مضاعف ${pricingSettings.providerCommissionPerOrder}`}
                                 value={walletAdjustment.amount}
+                                readOnly={walletAdjustment.type === 'compensation' && !!settlesTopupId}
                                 onChange={(e) => {
                                   setWalletAmountError('');
                                   setWalletAdjustment({ ...walletAdjustment, amount: e.target.value });
@@ -3245,6 +3306,48 @@ export const Providers = () => {
                                 </p>
                               );
                             })()}
+                            {walletAdjustment.type === 'compensation' && (
+                              <div className="space-y-2">
+                                <label className="block text-sm font-bold text-gray-700">عملية البنك المعلّقة</label>
+                                {loadingOpenTopups ? (
+                                  <p className="text-sm text-gray-500">جاري جلب العمليات المعلّقة...</p>
+                                ) : (
+                                  <select
+                                    value={settlesTopupId}
+                                    onChange={(e) => {
+                                      const id = e.target.value;
+                                      setSettlesTopupId(id);
+                                      const row = openBankTopups.find((item) => item.id === id);
+                                      if (row) {
+                                        setWalletAmountError('');
+                                        setWalletAdjustment((prev) => ({ ...prev, amount: String(row.amount) }));
+                                      }
+                                    }}
+                                    className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-blue-400 focus:outline-none font-semibold bg-white"
+                                  >
+                                    <option value="">تعويض عام — بدون إغلاق عملية بنك</option>
+                                    {openBankTopups.map((row) => (
+                                      <option key={row.id} value={row.id}>
+                                        {row.trackId || row.id} — {row.amount} ر.س — {row.serviceCredits} خدمات — {formatTopupWhen(row.createdAt)}
+                                      </option>
+                                    ))}
+                                  </select>
+                                )}
+                                {openBankTopups.length > 0 && !settlesTopupId && (
+                                  <p className="text-sm text-amber-700 font-semibold">
+                                    إذا هذا التعويض بدل عملية معلّقة، اخترها حتى لا يضيفها النظام مرة ثانية.
+                                  </p>
+                                )}
+                                {!loadingOpenTopups && openBankTopups.length === 0 && (
+                                  <p className="text-sm text-gray-500">لا توجد عملية بنك معلّقة لهذا المزود.</p>
+                                )}
+                                {settlesTopupId && (
+                                  <p className="text-sm text-blue-800 font-semibold bg-blue-50 border border-blue-100 rounded-xl px-3 py-2">
+                                    سيُضاف الرصيد وتُغلق عملية البنك. لن تُشحن تلقائياً بعد ذلك.
+                                  </p>
+                                )}
+                              </div>
+                            )}
                             {walletAmountError && (
                               <p className="text-sm text-red-500 font-semibold">
                                 {walletAmountError}
