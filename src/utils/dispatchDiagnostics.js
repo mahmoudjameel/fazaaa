@@ -9,7 +9,7 @@
 
 export const MIN_BALANCE_FOR_REQUEST = 5;
 /** سابقاً كان يستبعد المزود بعد 30د — ملغى في التوزيع الحالي (يُعرض كمعلومة فقط) */
-export const MAX_PROVIDER_LOCATION_AGE_MINUTES = 30;
+export const MAX_PROVIDER_LOCATION_AGE_MINUTES = 180;
 
 export const DEFAULT_SEARCH_STAGES = [
   { maxRadius: 4, waitTime: 60, maxProviders: 3, vipOnly: false },

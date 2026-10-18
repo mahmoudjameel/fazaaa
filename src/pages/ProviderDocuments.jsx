@@ -19,7 +19,7 @@ import {
   markManualCampaignResult,
 } from '../services/providerDocumentsService';
 
-const DISPATCH_STALE_MIN = 30;
+const DISPATCH_STALE_MIN = 180;
 
 /** على الجوال نفتح تطبيق واتساب مباشرة؛ على الكمبيوتر نعيد استخدام نفس التبويب لكل مزود */
 const IS_MOBILE = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);

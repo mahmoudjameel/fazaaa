@@ -1,6 +1,6 @@
 /** عتبات حداثة الموقع — نفس التوزيع في السيرفر (functions/lib/dispatchCoverage.js):
- * حديث ≤30د يستلم أولاً · بديل ≤24س يستلم كبديل · قديم >24س لا يستلم */
-export const FRESH_MS = 30 * 60 * 1000;
+ * حديث ≤3 ساعات يستلم أولاً · بديل ≤24س يستلم كبديل · قديم >24س لا يستلم */
+export const FRESH_MS = 3 * 60 * 60 * 1000;
 export const OK_MS = 24 * 60 * 60 * 1000;
 
 export const ACTIVE_REQUEST_STATUSES = [

@@ -10,8 +10,8 @@ import { ar } from 'date-fns/locale';
 import { db } from '../services/firebase';
 import { sendAdminPushToProviders, sendAdminBulkSmsToProviders } from '../services/adminService';
 
-/** السيرفر يستبعد المزود من التوزيع إذا كان موقعه أقدم من 30 دقيقة (functions: MAX_PROVIDER_LOCATION_AGE_MINUTES) */
-const DISPATCH_STALE_MIN = 30;
+/** بعد 3 ساعات يصير الموقع بديلاً (functions: MAX_PROVIDER_LOCATION_AGE_MINUTES) */
+const DISPATCH_STALE_MIN = 180;
 
 const PERIODS = [
   { value: 30, label: 'أكثر من 30 دقيقة' },
@@ -347,7 +347,7 @@ export const InactiveProviders = () => {
           <div>
             <h1 className="text-xl sm:text-2xl font-black text-gray-900">المزودون غير النشطين</h1>
             <p className="text-sm text-gray-500">
-              مزودون معتمدون موقعهم لم يتحدث منذ أكثر من {DISPATCH_STALE_MIN} دقيقة — لا تصلهم طلبات
+              مزودون معتمدون موقعهم لم يتحدث منذ أكثر من 3 ساعات
             </p>
           </div>
         </div>
