@@ -17,6 +17,7 @@ import {
   getAdminSessionFromStorage,
   ADMIN_SESSION_UPDATED_EVENT,
 } from '../utils/adminPermissions';
+import { WalletTopUpAlerts } from './WalletTopUpAlerts';
 import { SeoHead } from './SeoHead';
 import { playAlertTone, findPriorityCityForEscalation } from '../utils/adminAlerts';
 import { AdminRouteGuard } from './AdminRouteGuard';
@@ -491,6 +492,7 @@ export const Layout = () => {
         <main className="flex-1 overflow-auto">
           <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full">
             <AdminRouteGuard>
+              {filteredMenuItems.some((item) => item.id === 'wallet_topups') && <WalletTopUpAlerts />}
               <Outlet />
             </AdminRouteGuard>
           </div>

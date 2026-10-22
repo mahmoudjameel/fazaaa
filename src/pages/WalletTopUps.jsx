@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import {
   Search,
   Eye,
@@ -16,6 +16,7 @@ import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
 import {
   getWalletTopUps,
+  watchWalletTopUpChanges,
   getTopUpStateMeta,
   WALLET_TOPUP_STATES,
 } from '../services/walletTopupsService';
@@ -66,6 +67,7 @@ const copyText = async (text) => {
 };
 
 export default function WalletTopUps() {
+  const loadVersion = useRef(0);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
@@ -75,23 +77,29 @@ export default function WalletTopUps() {
   const [selected, setSelected] = useState(null);
 
   const load = useCallback(async () => {
+    const version = ++loadVersion.current;
     setLoading(true);
     setLoadError(null);
     try {
       // نجلب الكل ثم نفلتر محلياً لتجنب الاعتماد على فهرس مركّب لكل حالة
       const data = await getWalletTopUps({ state: 'all', max: 300 });
-      setRows(data);
+      if (version === loadVersion.current) {
+        setRows(data);
+        setSelected((current) => current ? data.find((row) => row.id === current.id) || current : null);
+      }
     } catch (e) {
+      if (version !== loadVersion.current) return;
       console.error('WalletTopUps load:', e);
       setLoadError(e?.message || 'فشل تحميل عمليات الشحن');
       setRows([]);
     } finally {
-      setLoading(false);
+      if (version === loadVersion.current) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    load();
+    const unsubscribe = watchWalletTopUpChanges(load, (e) => { setLoadError(e.message); setLoading(false); });
+    return () => { loadVersion.current++; unsubscribe(); };
   }, [load]);
 
   const sourceRows = useMemo(() => {
@@ -164,6 +172,7 @@ export default function WalletTopUps() {
   const FILTERS = [
     { key: 'all', label: 'الكل' },
     { key: 'PAID', label: 'مدفوع' },
+    { key: 'COMPENSATED', label: 'تعويض إداري' },
     { key: 'PENDING_PAYMENT', label: 'بانتظار الدفع' },
     { key: 'PROCESSING', label: 'قيد المعالجة' },
     { key: 'FAILED', label: 'فشل' },
@@ -174,6 +183,10 @@ export default function WalletTopUps() {
 
   return (
     <div className="space-y-6">
+      <div className="rounded-xl bg-blue-50 border border-blue-100 p-4 text-sm text-blue-900">
+        مرجع فزّاعين هو مرجع الشحن داخل النظام، وRRN هو الرقم المرجعي عند بوابة الدفع — استخدمه للمطابقة مع neoleap. رقم العملية الظاهر في تطبيق neoleap منفصل ولا يصل عبر الربط الحالي.
+        حالة «مدفوع / مشحون» تعني تأكيد الدفع وإضافة الرصيد، ولا تؤكد وصول التسوية للحساب البنكي. المبلغ هنا قبل رسوم البنك.
+      </div>
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">عمليات شحن المزودين</h1>
@@ -281,7 +294,7 @@ export default function WalletTopUps() {
                   <th className="px-4 py-3 font-bold">المبلغ</th>
                   <th className="px-4 py-3 font-bold">الحالة</th>
                   <th className="px-4 py-3 font-bold">نتيجة البنك</th>
-                  <th className="px-4 py-3 font-bold">رقم المرجع</th>
+                  <th className="px-4 py-3 font-bold">مراجع العملية</th>
                   <th className="px-4 py-3 font-bold">تفاصيل</th>
                 </tr>
               </thead>
@@ -339,7 +352,8 @@ export default function WalletTopUps() {
                       ) : null}
                     </td>
                     <td className="px-4 py-3 font-mono text-[11px] text-gray-600">
-                      <div className="flex items-center gap-1">
+                      <div className="text-gray-400">مرجع فزّاعين</div>
+                      <div className="flex items-center gap-1" dir="ltr">
                         <span className="truncate max-w-[120px]" title={row.trackId || ''}>
                           {row.trackId || '—'}
                         </span>
@@ -350,7 +364,15 @@ export default function WalletTopUps() {
                         ) : null}
                       </div>
                       <div className="truncate max-w-[140px] text-gray-400 mt-0.5" title={row.paymentId || ''}>
-                        {row.paymentId || '—'}
+                        معرّف الدفع: {row.paymentId || '—'}
+                      </div>
+                      <div className="flex items-center gap-1 mt-1 text-gray-800" dir="ltr">
+                        <span>RRN: {row.ref || '—'}</span>
+                        {row.ref ? (
+                          <button type="button" onClick={() => copyText(row.ref)} className="text-gray-400 hover:text-teal-600">
+                            <Copy className="w-3 h-3" />
+                          </button>
+                        ) : null}
                       </div>
                     </td>
                     <td className="px-4 py-3">
@@ -409,7 +431,7 @@ export default function WalletTopUps() {
                     label: 'المبلغ',
                     value: selected.amount != null ? `${selected.amount} ر.س` : '—',
                   },
-                  { label: 'رقم المرجع', value: selected.referenceNumber || selected.trackId, mono: true, copy: true },
+                  { label: 'مرجع الشحن في فزّاعين', value: selected.referenceNumber || selected.trackId, mono: true, copy: true },
                   ...(selected.source === 'admin_panel'
                     ? [
                         { label: 'نوع العملية', value: selected.adjustmentType === 'compensation' ? 'تعويض من الإدارة' : 'شحن من الإدارة' },
@@ -417,9 +439,9 @@ export default function WalletTopUps() {
                         { label: 'بواسطة', value: selected.adminEmail || '—', ltr: true },
                       ]
                     : []),
-                  { label: 'Payment ID', value: selected.paymentId, mono: true, copy: true },
-                  { label: 'Trans ID', value: selected.transId, mono: true, copy: true },
-                  { label: 'المرجع Ref', value: selected.ref, mono: true },
+                  { label: 'معرّف الدفع Payment ID', value: selected.paymentId, mono: true, copy: true },
+                  { label: 'معرّف عملية البوابة Trans ID', value: selected.transId, mono: true, copy: true },
+                  { label: 'الرقم المرجعي RRN (Ref)', value: selected.ref, mono: true, copy: true },
                   { label: 'تاريخ الإنشاء', value: formatDt(selected.createdAt) },
                   { label: 'آخر تحديث', value: formatDt(selected.updatedAt) },
                   { label: 'وقت الشحن', value: formatDt(selected.paidAt) },
