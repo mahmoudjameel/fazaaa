@@ -46,12 +46,13 @@ export function countProviderRemainingServices(providerData, pricing = DEFAULT_P
   const wallet = { ...providerData?.wallet, balance };
   const shaped = ensureWalletCreditsShape(wallet);
   const prices = normalizePricing(pricing);
-  const legacy = Math.min(
-    Math.max(0, Math.floor(shaped.legacyServiceCredits)),
-    Math.floor(balance / prices.legacyProviderCommissionPerOrder)
+  // الجديدة (10 ر.س) مسجّلة بشحن فعلي فتُحسب أولاً، والقديمة المقدّرة من المتبقي
+  const neu = Math.min(
+    Math.max(0, Math.floor(shaped.serviceCredits)),
+    Math.floor(balance / prices.providerCommissionPerOrder)
   );
-  const remainingBalance = Math.max(0, balance - legacy * prices.legacyProviderCommissionPerOrder);
-  const affordable = legacy + Math.floor(remainingBalance / prices.providerCommissionPerOrder);
+  const remainingBalance = Math.max(0, balance - neu * prices.providerCommissionPerOrder);
+  const affordable = neu + Math.floor(remainingBalance / prices.legacyProviderCommissionPerOrder);
   // العدادات القديمة قد لا تتزامن مع الخصم؛ لا نعرض خدمات لا يغطيها الرصيد.
   return Math.max(0, Math.min(Math.floor(countRemainingServices(wallet, prices)), affordable));
 }

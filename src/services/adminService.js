@@ -2515,25 +2515,29 @@ export const adjustProviderWallet = async (providerId, amount, type, reason, att
         if (!Number.isFinite(deductAmount) || deductAmount <= 0) {
           throw new Error('المبلغ يجب أن يكون أكبر من صفر');
         }
-        // خصم يدوي بمضاعفات سعر الخدمة → يُنقص عدد الخدمات أيضاً
+        // خصم يدوي → يُنقص عدد الخدمات بقيمتها: القديمة 5 ر.س والجديدة 10 ر.س.
+        // كان يُقسم المبلغ على 10 فقط، فتصفير 340 ر.س (20 قديمة + 24 جديدة) أبقى 4 خدمات برصيد صفر.
         const unit = pricing.providerCommissionPerOrder;
+        const legacyUnit = pricing.legacyProviderCommissionPerOrder;
         newBalance = Math.max(0, (Number(currentBalance) || 0) - deductAmount);
         walletUpdate['wallet.balance'] = newBalance;
 
         const shaped = ensureWalletCreditsShape({ ...wallet, balance: Number(currentBalance) || 0 });
         let legacy = shaped.legacyServiceCredits;
         let neu = shaped.serviceCredits;
-        if (deductAmount % unit === 0) {
-          let toConsume = deductAmount / unit;
-          while (toConsume > 0 && legacy > 0) {
-            legacy -= 1;
-            toConsume -= 1;
-          }
-          while (toConsume > 0 && neu > 0) {
-            neu -= 1;
-            toConsume -= 1;
-          }
+        let remaining = deductAmount;
+        while (remaining >= legacyUnit && legacy > 0) {
+          legacy -= 1;
+          remaining -= legacyUnit;
         }
+        while (remaining >= unit && neu > 0) {
+          neu -= 1;
+          remaining -= unit;
+        }
+        // لا تبقى خدمات لا يغطيها الرصيد بعد الخصم. الجديدة (10) مسجّلة بشحن فعلي،
+        // أما القديمة (5) فمقدّرة من الرصيد — فهي التي تُسقط أولاً.
+        neu = Math.min(neu, Math.floor(newBalance / unit));
+        legacy = Math.min(legacy, Math.floor(Math.max(0, newBalance - neu * unit) / legacyUnit));
         walletUpdate['wallet.legacyServiceCredits'] = legacy;
         walletUpdate['wallet.serviceCredits'] = neu;
         walletAfter = { balance: newBalance, legacyServiceCredits: legacy, serviceCredits: neu };

@@ -18,6 +18,7 @@ import {
   isPhoneBlocked,
 } from '../services/adminService';
 import SAUDI_CITIES_FALLBACK from '../services/cities.json';
+import { canonicalCityName } from '../utils/cityLabel';
 
 const SERVICE_TOKENS = ['بطار', 'إطار', 'اطار', 'بنشر', 'قفال', 'فتح', 'سطح', 'ونش', 'وقود'];
 
@@ -435,12 +436,13 @@ export const Users = () => {
     }
 
     if (cityFilter !== 'all') {
-      const cityNameAr = cities.find((c) => c.id === cityFilter)?.name;
+      // العملاء يخزّنون slug (riyadh) بينما الفلتر يحمل معرّف مستند cities — نقارن بالاسم الموحّد
+      const selected = cities.find((c) => c.id === cityFilter);
+      const target = canonicalCityName(selected?.slug || selected?.name || cityFilter);
       filtered = filtered.filter(
         (u) =>
           u.cityId === cityFilter ||
-          u.city === cityFilter ||
-          u.city === cityNameAr
+          canonicalCityName(u.cityId || u.city) === target
       );
     }
 
@@ -821,7 +823,7 @@ export const Users = () => {
                         {user.city && (
                           <div className="flex items-center gap-2">
                             <MapPin className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
-                            <span>المدينة: {cities.find(c => c.id === (user.cityId || user.city))?.name || user.city || '—'}</span>
+                            <span>المدينة: {canonicalCityName(user.cityId || user.city) || '—'}</span>
                           </div>
                         )}
                         {user.lastOrderAt ? (
@@ -914,7 +916,7 @@ export const Users = () => {
                   <div>
                     <h3 className="font-semibold text-sm sm:text-base text-gray-700 mb-1 sm:mb-2">المدينة</h3>
                     <p className="text-sm sm:text-base text-gray-800">
-                      {cities.find(c => c.id === (selectedUser.cityId || selectedUser.city))?.name || selectedUser.city}
+                      {canonicalCityName(selectedUser.cityId || selectedUser.city)}
                     </p>
                   </div>
                 )}

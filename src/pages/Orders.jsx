@@ -928,11 +928,18 @@ export const Orders = () => {
 
     // 2. Filter by City
     if (cityFilter !== 'all') {
-      const cityName = cities.find(c => c.id === cityFilter)?.name || cityFilter;
+      const selectedCity = cities.find(c => c.id === cityFilter);
+      const cityName = selectedCity?.name || cityFilter;
+      // كلمة كاملة في العنوان: «الجبيل» لا تطابق حي «الجبيلة» في الدرعية
+      const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const locationPatterns = [cityName, selectedCity?.nameEn, cityFilter]
+        .filter(Boolean)
+        .map((n) => new RegExp(`(^|[^\\p{L}])${escapeRe(n)}($|[^\\p{L}])`, 'iu'));
       filtered = filtered.filter(req => {
         const matchesId = req.cityId === cityFilter || req.city === cityFilter;
         const matchesName = req.city === cityName;
-        const matchesLocation = req.location?.includes(cityName) || req.location?.includes(cityFilter);
+        const matchesLocation = typeof req.location === 'string'
+          && locationPatterns.some((re) => re.test(req.location));
         return matchesId || matchesName || matchesLocation;
       });
     }
