@@ -88,6 +88,8 @@ export const Chats = () => {
           lastMessage: data.lastMessage || null,
           updatedAt: toMillis(data.updatedAt),
           updatedAtRaw: data.updatedAt,
+          // وقت آخر رسالة فعلية — updatedAt يتغير أيضاً عند مجرد فتح المحادثة (تسجيل المشاهدة)
+          lastMessageAt: toMillis(data.lastMessage?.createdAt) || toMillis(data.createdAt) || toMillis(data.updatedAt),
         };
       });
 
@@ -132,10 +134,12 @@ export const Chats = () => {
       );
       const customersMap = Object.fromEntries(customerEntries);
 
-      const chats = withRequests.map((chat) => ({
-        ...chat,
-        customerName: (chat.customerId && customersMap[chat.customerId]) || '—',
-      }));
+      const chats = withRequests
+        .map((chat) => ({
+          ...chat,
+          customerName: (chat.customerId && customersMap[chat.customerId]) || '—',
+        }))
+        .sort((a, b) => b.lastMessageAt - a.lastMessageAt);
 
       setChatsList(chats);
     } catch (error) {
@@ -271,7 +275,7 @@ export const Chats = () => {
                   <p className="text-xs text-gray-500 truncate">آخر رسالة: {getMessagePreview(chat.lastMessage)}</p>
                 )}
                 <p className="text-xs text-gray-400 mt-1">
-                  {chat.updatedAt ? format(new Date(chat.updatedAt), 'dd MMM yyyy, HH:mm', { locale: ar }) : '—'}
+                  {chat.lastMessageAt ? format(new Date(chat.lastMessageAt), 'dd MMM yyyy, HH:mm', { locale: ar }) : '—'}
                 </p>
               </div>
               <button
