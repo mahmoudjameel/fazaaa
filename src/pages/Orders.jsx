@@ -35,6 +35,7 @@ import {
   Copy,
   Check,
   Stethoscope,
+  TrendingUp,
 } from 'lucide-react';
 import {
   listenToAllRequests,
@@ -59,6 +60,7 @@ import { collection, getDocs, doc, getDoc, updateDoc, query, orderBy, where, lim
 import { db } from '../services/firebase';
 import SAUDI_CITIES_FALLBACK from '../services/cities.json';
 import { formatOrderNumberLabel } from '../utils/orderNumber';
+import { resolveServiceChange, serviceChangeBadge } from '../utils/serviceUpgrade';
 
 /** تحويل أكواد الإلغاء القديمة (إنجليزي) لنص عربي — النص الحر يُعرض كما هو */
 const CANCEL_REASON_LABELS_AR = {
@@ -353,6 +355,8 @@ export const Orders = () => {
   const [showCancelCompletedConfirm, setShowCancelCompletedConfirm] = useState(false);
   const [cancellingCompleted, setCancellingCompleted] = useState(false);
   const [executedProviderFilter, setExecutedProviderFilter] = useState('all');
+  // طلبات تغيّرت خدمتها أثناء التنفيذ (ترقية من المزود، تعديل إداري، اقتراح بلا رد)
+  const [serviceChangeFilter, setServiceChangeFilter] = useState('all');
   const [executedProviderIds, setExecutedProviderIds] = useState(null);
   const [loadingExecutedProviders, setLoadingExecutedProviders] = useState(false);
   const [dateRangeFilter, setDateRangeFilter] = useState('all');
@@ -539,11 +543,11 @@ export const Orders = () => {
 
   useEffect(() => {
     setVisibleCount(ORDERS_PAGE_SIZE);
-  }, [searchTerm, statusFilter, cityFilter, serviceFilter, slaFilter, executedProviderFilter, dateRangeFilter, cancelReasonFilter]);
+  }, [searchTerm, statusFilter, cityFilter, serviceFilter, slaFilter, executedProviderFilter, serviceChangeFilter, dateRangeFilter, cancelReasonFilter]);
 
   useEffect(() => {
     filterOrders();
-  }, [requests, searchTerm, statusFilter, cityFilter, serviceFilter, slaFilter, executedProviderFilter, executedProviderIds, dateRangeFilter, cancelReasonFilter, matchedUids, providersDict, mainServices, services, cities, nowTick]);
+  }, [requests, searchTerm, statusFilter, cityFilter, serviceFilter, slaFilter, executedProviderFilter, serviceChangeFilter, executedProviderIds, dateRangeFilter, cancelReasonFilter, matchedUids, providersDict, mainServices, services, cities, nowTick]);
 
   // معرفات المزودين الذين نفّذوا طلباً مكتملاً واحداً على الأقل
   useEffect(() => {
@@ -1012,6 +1016,14 @@ export const Orders = () => {
 
     if (cancelReasonFilter !== 'all') {
       filtered = filtered.filter((req) => extractOrderCancelReason(req) === cancelReasonFilter);
+    }
+
+    if (serviceChangeFilter !== 'all') {
+      filtered = filtered.filter((req) => {
+        const badge = serviceChangeBadge(req);
+        if (serviceChangeFilter === 'any') return badge === 'upgraded' || badge === 'changed';
+        return badge === serviceChangeFilter;
+      });
     }
 
     // 6. فلتر الفترة الزمنية حسب تاريخ إنشاء الطلب
@@ -2106,7 +2118,7 @@ export const Orders = () => {
         </div>
 
         {/* صف الفلاتر */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           {/* الفترة الزمنية */}
           <div className="relative">
             <select
@@ -2242,6 +2254,27 @@ export const Orders = () => {
               <ChevronDown size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             )}
           </div>
+
+          {/* طلبات تغيّرت خدمتها عن طلب العميل الأصلي */}
+          <div className="relative">
+            <select
+              value={serviceChangeFilter}
+              onChange={(e) => setServiceChangeFilter(e.target.value)}
+              className={`w-full appearance-none pr-3 pl-7 py-2 border rounded-xl text-sm font-semibold focus:outline-none cursor-pointer transition-colors ${
+                serviceChangeFilter !== 'all'
+                  ? 'bg-violet-50 border-violet-300 text-violet-800 focus:border-violet-400'
+                  : 'bg-gray-50 border-gray-200 text-gray-700 focus:border-teal-400'
+              }`}
+            >
+              <option value="all">كل الطلبات (الخدمة)</option>
+              <option value="any">خدمة معدّلة عن الأصل</option>
+              <option value="upgraded">طلبات تم ترقيتها</option>
+              <option value="changed">معدّلة بسعر أقل/مساوٍ</option>
+              <option value="pending">اقتراح مزود بانتظار العميل</option>
+              <option value="unanswered">اقتراح بلا رد حتى انتهاء الطلب</option>
+            </select>
+            <ChevronDown size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          </div>
         </div>
       </div>
 
@@ -2326,6 +2359,26 @@ export const Orders = () => {
                         <h3 className="text-base font-bold text-gray-800 leading-tight">
                           {order.serviceName || order.serviceType || 'خدمة'}
                         </h3>
+                        {(() => {
+                          const badge = serviceChangeBadge(order);
+                          if (!badge) return null;
+                          const info = resolveServiceChange(order);
+                          const cfg = {
+                            upgraded: { text: 'مُرقّى', cls: 'bg-violet-100 text-violet-800 border-violet-200' },
+                            changed: { text: 'خدمة معدّلة', cls: 'bg-amber-50 text-amber-800 border-amber-200' },
+                            pending: { text: 'اقتراح تعديل', cls: 'bg-sky-50 text-sky-800 border-sky-200' },
+                            unanswered: { text: 'اقتراح بلا رد', cls: 'bg-gray-100 text-gray-600 border-gray-200' },
+                          }[badge];
+                          return (
+                            <span
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold border ${cfg.cls}`}
+                              title={`الأصلي: ${info.original.name || '—'}${info.original.price != null ? ` (${info.original.price} ر.س)` : ''}`}
+                            >
+                              <TrendingUp className="w-3 h-3" />
+                              {cfg.text}
+                            </span>
+                          );
+                        })()}
                         <span className="text-[11px] text-gray-400 font-medium bg-gray-50 px-2 py-0.5 rounded-full border border-gray-100">
                           {formatOrderNumberLabel(order.orderNumber)}
                         </span>
@@ -3109,77 +3162,105 @@ export const Orders = () => {
                   </div>
                 )}
 
-                {/* سجل تعديلات الخدمة (أدمن / مزود ↔ عميل) */}
-                {Array.isArray(selectedRequest.history) && selectedRequest.history.some((h) =>
-                  h?.action === 'admin_service_change' ||
-                  h?.action === 'service_modification_approved' ||
-                  h?.action === 'service_modification_rejected' ||
-                  h?.action === 'service_modification_requested' ||
-                  (h?.oldService && h?.newService)
-                ) && (
-                  <div className="bg-indigo-50 rounded-xl p-4 sm:p-5 border border-indigo-100">
-                    <h3 className="font-semibold text-sm sm:text-base text-indigo-900 mb-3 flex items-center gap-2">
-                      <RefreshCw className="w-4 h-4 text-indigo-600" />
-                      سجل تعديلات الخدمة
-                    </h3>
-                    <div className="space-y-3">
-                      {[...selectedRequest.history]
-                        .filter((h) =>
-                          h?.action === 'admin_service_change' ||
-                          h?.action === 'service_modification_approved' ||
-                          h?.action === 'service_modification_rejected' ||
-                          h?.action === 'service_modification_requested' ||
-                          (h?.oldService && h?.newService)
-                        )
-                        .map((h, idx) => {
-                          const oldName = h.oldService?.name || h.changes?.previousServiceName;
-                          const newName = h.newService?.name || h.changes?.serviceName;
-                          const oldPrice = h.oldService?.price;
-                          const newPrice = h.newService?.price;
-                          const byLabel =
-                            h.updatedBy === 'admin' ? 'الإدارة' :
-                            h.updatedBy === 'provider' ? 'المزود' :
-                            h.updatedBy === 'customer' || h.updatedBy === 'client' ? 'العميل' :
-                            h.updatedBy || 'النظام';
-                          let dateText = '';
-                          try {
-                            const raw = h.timestamp;
-                            const d = raw?.toDate ? raw.toDate()
-                              : raw?.toMillis ? new Date(raw.toMillis())
-                              : raw?.seconds ? new Date(raw.seconds * 1000)
-                              : raw ? new Date(raw) : null;
-                            if (d && !Number.isNaN(d.getTime())) {
-                              dateText = format(d, 'dd MMM yyyy, HH:mm', { locale: ar });
-                            }
-                          } catch (_) {}
-                          return (
-                            <div key={`svc-hist-${idx}`} className="bg-white rounded-xl border border-indigo-100 p-3 text-sm">
-                              <p className="font-semibold text-gray-800 leading-6">
-                                {h.message || (
-                                  oldName && newName
-                                    ? `تم تعديل الخدمة من «${oldName}» إلى «${newName}»`
-                                    : 'تحديث على الخدمة'
-                                )}
-                              </p>
-                              {oldName && newName && (
-                                <p className="text-xs text-gray-600 mt-1.5">
-                                  الأساسي: <strong>{oldName}</strong>
-                                  {oldPrice != null ? ` (${oldPrice} ر.س)` : ''}
-                                  {' → '}
-                                  الجديد: <strong>{newName}</strong>
-                                  {newPrice != null ? ` (${newPrice} ر.س)` : ''}
+                {/* الطلب الأصلي ↔ النهائي + سجل تعديلات الخدمة (مزود ↔ عميل ↔ إدارة) */}
+                {(() => {
+                  const info = resolveServiceChange(selectedRequest);
+                  if (!info || (!info.changed && !info.pendingProposal && !info.unansweredProposal && info.events.length === 0)) {
+                    return null;
+                  }
+                  const fmtDate = (ms) => {
+                    if (!ms) return '';
+                    try { return format(new Date(ms), 'dd MMM yyyy, HH:mm', { locale: ar }); } catch (_) { return ''; }
+                  };
+                  const providerNameById = (id) => {
+                    if (!id) return null;
+                    const p = providersDict[id];
+                    const fromDict = p
+                      ? (p.name || p.fullName || p.displayName || [p.firstName, p.lastName].filter(Boolean).join(' ').trim() || null)
+                      : null;
+                    return fromDict || (selectedRequest.providerId === id ? selectedRequest.providerName : null) || `…${String(id).slice(-6)}`;
+                  };
+                  const priceText = (v) => (v != null ? `${v} ر.س` : '—');
+                  const appliedByText = {
+                    admin: 'عدّلتها الإدارة',
+                    provider: 'عدّلها المزود مباشرة',
+                    customer: 'وافق العميل على اقتراح المزود',
+                  }[info.changedByRole] || null;
+                  return (
+                    <div className="bg-violet-50 rounded-xl p-4 sm:p-5 border border-violet-100 space-y-4">
+                      <h3 className="font-semibold text-sm sm:text-base text-violet-900 flex items-center gap-2">
+                        <TrendingUp className="w-4 h-4 text-violet-600" />
+                        {info.isUpgrade ? 'طلب مُرقّى' : info.changed ? 'تعديل على الخدمة' : 'اقتراح تعديل الخدمة'}
+                      </h3>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="bg-white rounded-xl border border-gray-200 p-3">
+                          <p className="text-xs text-gray-500 mb-1">طلب العميل الأصلي</p>
+                          <p className="font-bold text-gray-900">{info.original.name || '—'}</p>
+                          <p className="text-sm text-gray-600 mt-0.5">{priceText(info.original.price)}</p>
+                        </div>
+                        <div className={`bg-white rounded-xl border p-3 ${info.changed ? 'border-violet-300' : 'border-gray-200'}`}>
+                          <p className="text-xs text-gray-500 mb-1">{info.changed ? 'الخدمة النهائية' : 'الخدمة الحالية'}</p>
+                          <p className="font-bold text-gray-900">{info.final.name || '—'}</p>
+                          <p className="text-sm text-gray-600 mt-0.5">
+                            {priceText(info.final.price)}
+                            {info.changed && info.priceDiff != null && info.priceDiff !== 0 && (
+                              <span className={`mr-2 font-bold ${info.priceDiff > 0 ? 'text-violet-700' : 'text-amber-700'}`}>
+                                ({info.priceDiff > 0 ? '+' : ''}{info.priceDiff} ر.س)
+                              </span>
+                            )}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="text-sm text-gray-700 space-y-1">
+                        {info.proposedBy && (
+                          <p>
+                            اقترح التعديل: <strong>{providerNameById(info.proposedBy)}</strong>
+                            {info.proposedAt ? <span className="text-gray-500"> · {fmtDate(info.proposedAt)}</span> : null}
+                          </p>
+                        )}
+                        {info.changed && appliedByText && (
+                          <p>
+                            التطبيق: <strong>{appliedByText}</strong>
+                            {info.approvedAt ? <span className="text-gray-500"> · {fmtDate(info.approvedAt)}</span> : null}
+                          </p>
+                        )}
+                        {(info.pendingProposal || info.unansweredProposal) && info.proposedService && (
+                          <p className={info.pendingProposal ? 'text-sky-800' : 'text-gray-600'}>
+                            {info.pendingProposal ? 'بانتظار رد العميل على: ' : 'بقي بلا رد حتى انتهاء الطلب: '}
+                            <strong>{info.proposedService.name}</strong> ({priceText(info.proposedService.price)})
+                          </p>
+                        )}
+                        {(info.proposals > 0 || info.rejections > 0) && (
+                          <p className="text-xs text-gray-500">
+                            اقتراحات المزود: {info.proposals} · موافقات: {info.approvals} · رفض: {info.rejections}
+                          </p>
+                        )}
+                      </div>
+
+                      {info.events.length > 0 && (
+                        <div className="space-y-2">
+                          {info.events.map((e, idx) => (
+                            <div key={`svc-ev-${idx}`} className="bg-white rounded-xl border border-violet-100 p-3 text-sm">
+                              <p className="font-semibold text-gray-800 leading-6">{e.message || 'تحديث على الخدمة'}</p>
+                              {e.oldService?.name && e.newService?.name && (
+                                <p className="text-xs text-gray-600 mt-1">
+                                  {e.oldService.name}{e.oldService.price != null ? ` (${e.oldService.price} ر.س)` : ''}
+                                  {' ← '}
+                                  {e.newService.name}{e.newService.price != null ? ` (${e.newService.price} ر.س)` : ''}
                                 </p>
                               )}
-                              <p className="text-xs text-indigo-600 mt-1.5">
-                                بواسطة: {byLabel}
-                                {dateText ? ` · ${dateText}` : ''}
+                              <p className="text-xs text-violet-600 mt-1">
+                                بواسطة: {e.by}{e.at ? ` · ${fmtDate(e.at)}` : ''}
                               </p>
                             </div>
-                          );
-                        })}
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
 
                 {/* Timeline Section */}
                 <div className="bg-gray-50 rounded-xl p-4 sm:p-5 border border-gray-200">

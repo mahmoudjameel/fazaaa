@@ -15,6 +15,7 @@ export const ADMIN_PERMISSION_DEFS = [
   { id: 'sla_tracking', path: '/admin/sla-tracking', category: 'management', label: 'متابعة SLA' },
   { id: 'escalations', path: '/admin/escalations', category: 'management', label: 'تصعيدات النظام' },
   { id: 'provider_cancellations', path: '/admin/provider-cancellations', category: 'management', label: 'متابعة إلغاءات المزودين' },
+  { id: 'service_upgrades', path: '/admin/service-upgrades', category: 'management', label: 'ترقيات الخدمة من المزودين' },
   { id: 'inactive_providers', path: '/admin/inactive-providers', category: 'management', label: 'المزودون غير النشطين' },
   { id: 'provider_documents', path: '/admin/provider-documents', category: 'management', label: 'إرسال الوثائق للمزودين' },
   { id: 'users', path: '/admin/users', category: 'management', label: 'العملاء' },

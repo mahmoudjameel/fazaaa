@@ -2745,6 +2745,16 @@ export const getProviderOrderStats = async (providerId, extraOrders = []) => {
  * يُحسب من history لأن الطلب يعود للبحث بعد إلغاء المزود.
  * @returns {Promise<Record<string, { count: number, requestIds: string[] }>>}
  */
+/** طلبات أُنشئت بين وقتين (ms) — لتقرير ترقيات/تعديلات الخدمة من المزودين */
+export const getRequestsCreatedBetween = async (fromMs, toMs = Date.now()) => {
+  const snap = await getDocs(query(
+    collection(db, 'requests'),
+    where('createdAt', '>=', Timestamp.fromMillis(fromMs)),
+    where('createdAt', '<=', Timestamp.fromMillis(toMs))
+  ));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+};
+
 export const getProviderCancellationCounts = async (days = 7) => {
   const cutoffMs = Date.now() - days * 24 * 60 * 60 * 1000;
   // الإلغاء يحدث عادة خلال ساعات من الإنشاء — يوم إضافي هامش أمان

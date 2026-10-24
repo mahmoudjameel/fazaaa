@@ -37,6 +37,7 @@ const AddProvider = lazy(() => import('./pages/AddProvider').then((m) => ({ defa
 const SLATracking = lazy(() => import('./pages/SLATracking').then((m) => ({ default: m.SLATracking })));
 const Escalations = lazy(() => import('./pages/Escalations').then((m) => ({ default: m.Escalations })));
 const ProviderCancellations = lazy(() => import('./pages/ProviderCancellations').then((m) => ({ default: m.ProviderCancellations })));
+const ServiceUpgrades = lazy(() => import('./pages/ServiceUpgrades').then((m) => ({ default: m.ServiceUpgrades })));
 const InactiveProviders = lazy(() => import('./pages/InactiveProviders').then((m) => ({ default: m.InactiveProviders })));
 const ProviderDocuments = lazy(() => import('./pages/ProviderDocuments').then((m) => ({ default: m.ProviderDocuments })));
 const ProviderDrawerSections = lazy(() => import('./pages/ProviderDrawerSections'));
@@ -145,6 +146,7 @@ function App() {
             <Route path="sla-tracking" element={<SLATracking />} />
             <Route path="escalations" element={<Escalations />} />
             <Route path="provider-cancellations" element={<ProviderCancellations />} />
+            <Route path="service-upgrades" element={<ServiceUpgrades />} />
             <Route path="inactive-providers" element={<InactiveProviders />} />
             <Route path="provider-documents" element={<ProviderDocuments />} />
             <Route path="complaints" element={<Complaints />} />
