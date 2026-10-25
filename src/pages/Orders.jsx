@@ -3724,6 +3724,17 @@ export const Orders = () => {
               <div className="p-4 sm:p-5 md:p-6 border-b border-gray-200">
                 <div className="flex items-center justify-between">
                   <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-800">تفاصيل المزود</h2>
+                  {selectedProvider.id && (
+                    // نفس ملف المزود الكامل في صفحة المزودين (?highlight يفتح نافذته) — تبويب جديد حتى لا تضيع قائمة الطلبات
+                    <a
+                      href={`/admin/providers?highlight=${encodeURIComponent(selectedProvider.id)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mr-auto ml-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-600 text-white text-xs sm:text-sm font-bold hover:bg-teal-700"
+                    >
+                      فتح ملف المزود الكامل ↗
+                    </a>
+                  )}
                   <button
                     onClick={() => setSelectedProvider(null)}
                     className="text-gray-500 hover:text-gray-700 text-xl sm:text-2xl"

@@ -57,8 +57,8 @@ export function countProviderRemainingServices(providerData, pricing = DEFAULT_P
   return Math.max(0, Math.min(Math.floor(countRemainingServices(wallet, prices)), affordable));
 }
 
-/** رصيد منخفض: 3 خدمات أو أقل */
-export const LOW_BALANCE_SERVICE_THRESHOLD = 3;
+/** رصيد منخفض: خدمتان أو أقل */
+export const LOW_BALANCE_SERVICE_THRESHOLD = 2;
 
 export function isLowWalletBalance(providerData, threshold = LOW_BALANCE_SERVICE_THRESHOLD, pricing = DEFAULT_PRICING) {
   return countProviderRemainingServices(providerData, pricing) <= threshold;

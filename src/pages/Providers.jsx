@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   Search, CheckCircle, XCircle, Clock, Eye, Phone, Mail, Star, Power,
   UserCheck, Users, Plus, Edit2, Trash2, Tag, X, FileText, Copy, ShieldBan, ShieldOff, ShieldCheck, Loader2,
-  MapPin, Globe, Smartphone, RefreshCw, ExternalLink, Navigation, ShieldAlert, MessageCircle,
+  MapPin, Globe, Smartphone, RefreshCw, ExternalLink, Navigation, ShieldAlert, MessageCircle, PauseCircle,
 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -10,6 +10,8 @@ import {
   getProviderById,
   updateProvider,
   updateProviderStatus,
+  suspendProvider,
+  liftProviderSuspension,
   getAllProviderGroups,
   createProviderGroup,
   updateProviderGroup,
@@ -29,6 +31,7 @@ import {
   getProviderOrderStats,
   PROVIDER_OUTCOME_LABELS,
   getProviderCancellationCounts,
+  getProviderPerformanceSince,
   getProviderIdsWithCompletedOrders,
   toggleProviderVIP,
   getProviderWalletHistory,
@@ -120,6 +123,64 @@ const formatTopupWhen = (value) => {
 };
 
 
+const MONTHLY_RANK_DAYS = 30;
+const MONTHLY_RANK_LIMIT = 20;
+// تقييم مرجّح: مزود بتقييم واحد 5★ لا يتقدّم على مزود بعشرين تقييماً 4.9★
+const RATING_PRIOR_WEIGHT = 3;
+
+/** نسبة الإلغاء (من المزود + من العميل بعد التعيين) من كل الطلبات التي أُسندت إليه */
+const monthlyCancelRate = (s) => {
+  const cancels = s.providerCancels + s.customerCancels;
+  const total = s.completed + cancels;
+  return total > 0 ? cancels / total : 0;
+};
+
+/**
+ * ترتيبات الشهر على القائمة بعد الفلاتر الأخرى — أعلى/أسوأ 20.
+ * topRated: التقييم المرجّح · bestPerf: تنفيذ × (1 − نسبة الإلغاء) · worst: إلغاء عالٍ + تقييم ضعيف
+ */
+const rankMonthly = (list, mode, perf) => {
+  const statsOf = (p) => perf[String(p.id)];
+  const rated = Object.values(perf).filter((s) => s.ratingCount > 0);
+  const globalMean = rated.length
+    ? rated.reduce((sum, s) => sum + s.ratingSum, 0) / rated.reduce((sum, s) => sum + s.ratingCount, 0)
+    : 4.5;
+  const weightedRating = (s) =>
+    (s.ratingSum + RATING_PRIOR_WEIGHT * globalMean) / (s.ratingCount + RATING_PRIOR_WEIGHT);
+
+  let scored;
+  if (mode === 'topRated') {
+    scored = list
+      .filter((p) => statsOf(p)?.ratingCount > 0)
+      .map((p) => ({ p, score: weightedRating(statsOf(p)), tie: statsOf(p).ratingCount }));
+  } else if (mode === 'bestPerf') {
+    scored = list
+      .filter((p) => statsOf(p)?.completed > 0)
+      .map((p) => {
+        const s = statsOf(p);
+        return { p, score: s.completed * (1 - monthlyCancelRate(s)), tie: s.ratingCount ? weightedRating(s) : 0 };
+      });
+  } else {
+    // worst: طلبان مُسندان على الأقل، وفيه إلغاء أو تقييم دون 4
+    scored = list
+      .filter((p) => {
+        const s = statsOf(p);
+        if (!s || s.completed + s.providerCancels + s.customerCancels < 2) return false;
+        const lowRating = s.ratingCount > 0 && s.ratingSum / s.ratingCount < 4;
+        return s.providerCancels + s.customerCancels > 0 || lowRating;
+      })
+      .map((p) => {
+        const s = statsOf(p);
+        const ratingPenalty = s.ratingCount > 0 ? (5 - weightedRating(s)) / 4 : 0;
+        return { p, score: monthlyCancelRate(s) + ratingPenalty, tie: s.providerCancels + s.customerCancels };
+      });
+  }
+  return scored
+    .sort((a, b) => (b.score - a.score) || (b.tie - a.tie))
+    .slice(0, MONTHLY_RANK_LIMIT)
+    .map(({ p }) => p);
+};
+
 export const Providers = () => {
   const location = useLocation();
   const [providers, setProviders] = useState([]);
@@ -144,6 +205,10 @@ export const Providers = () => {
   const [perfLeastCancel, setPerfLeastCancel] = useState(false);
   const [perfTopRated, setPerfTopRated] = useState(false);
   const [perfCancelCounts, setPerfCancelCounts] = useState(null);
+  // ترتيب الشهر (آخر 30 يوماً): none | topRated | bestPerf | worst — أعلى/أسوأ 20
+  const [monthlyRank, setMonthlyRank] = useState('none');
+  const [monthlyPerf, setMonthlyPerf] = useState(null);
+  const [loadingMonthlyPerf, setLoadingMonthlyPerf] = useState(false);
   const [loadingPerfCancel, setLoadingPerfCancel] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState(null);
   const [selectedProvidersForGroup, setSelectedProvidersForGroup] = useState([]);
@@ -197,6 +262,9 @@ export const Providers = () => {
   const [repairingDuplicates, setRepairingDuplicates] = useState(false);
   const [repairingServices, setRepairingServices] = useState(false);
   const [approvingAll, setApprovingAll] = useState(false);
+  // الإيقاف المؤقت: { provider, reason, days } — days='' يعني حتى الرفع اليدوي
+  const [suspendForm, setSuspendForm] = useState(null);
+  const [suspending, setSuspending] = useState(false);
   const [deletingDocKey, setDeletingDocKey] = useState(null);
   const [removingServiceId, setRemovingServiceId] = useState(null);
   const [uploadingDocument, setUploadingDocument] = useState(false);
@@ -348,7 +416,22 @@ export const Providers = () => {
 
   useEffect(() => {
     filterProviders();
-  }, [providers, mainServices, searchTerm, statusFilter, typeFilter, groupFilter, serviceFilter, cityFilter, nationalityFilter, lowBalanceFilter, pricingSettings, executedOrdersFilter, locationIssueFilter, providerIdsWithCompletedOrders, executedOrdersCounts, cancelFreqFilter, cancelCounts, perfMostExecuted, perfLeastCancel, perfTopRated, perfCancelCounts]);
+  }, [providers, mainServices, searchTerm, statusFilter, typeFilter, groupFilter, serviceFilter, cityFilter, nationalityFilter, lowBalanceFilter, pricingSettings, executedOrdersFilter, locationIssueFilter, providerIdsWithCompletedOrders, executedOrdersCounts, cancelFreqFilter, cancelCounts, perfMostExecuted, perfLeastCancel, perfTopRated, perfCancelCounts, monthlyRank, monthlyPerf]);
+
+  // أداء آخر 30 يوماً — يُحمّل مرة واحدة عند اختيار أي ترتيب شهري
+  useEffect(() => {
+    if (monthlyRank === 'none' || monthlyPerf) return undefined;
+    let cancelled = false;
+    setLoadingMonthlyPerf(true);
+    getProviderPerformanceSince(MONTHLY_RANK_DAYS)
+      .then((stats) => { if (!cancelled) setMonthlyPerf(stats || {}); })
+      .catch((e) => {
+        console.error('Error loading monthly provider performance:', e);
+        if (!cancelled) setMonthlyPerf({});
+      })
+      .finally(() => { if (!cancelled) setLoadingMonthlyPerf(false); });
+    return () => { cancelled = true; };
+  }, [monthlyRank, monthlyPerf]);
 
   // إلغاءات المزود (كل الوقت) — تُحمّل مرة واحدة عند تفعيل «الأقل إلغاءً»
   useEffect(() => {
@@ -1085,7 +1168,7 @@ export const Providers = () => {
         const approvalStatus = p.approvalStatus || p.status;
         // إذا كانت statusFilter هي pending/approved/rejected، استخدم approvalStatus
         // إذا كانت statusFilter هي online/offline، استخدم status
-        if (['pending', 'approved', 'rejected'].includes(statusFilter)) {
+        if (['pending', 'approved', 'rejected', 'suspended'].includes(statusFilter)) {
           return approvalStatus === statusFilter;
         }
         return p.status === statusFilter;
@@ -1187,8 +1270,14 @@ export const Providers = () => {
       }
     }
 
+    if (monthlyRank !== 'none') {
+      filtered = monthlyPerf ? rankMonthly(filtered, monthlyRank, monthlyPerf) : [];
+    }
+
     setFilteredProviders(filtered);
   };
+
+  const getMonthlyStats = (p) => monthlyPerf?.[String(p.id)] || null;
 
   const getExecutedCount = (p) => executedOrdersCounts[String(p.id)] || 0;
   const getProviderRatingAvg = (p) => {
@@ -1208,7 +1297,7 @@ export const Providers = () => {
     try {
       await updateProviderStatus(providerId, newStatus);
       setProviders((prev) =>
-        prev.map((p) => (p.id === providerId ? { ...p, approvalStatus: newStatus } : p))
+        prev.map((p) => (p.id === providerId ? { ...p, approvalStatus: newStatus, suspension: null } : p))
       );
       setSelectedProvider(null);
       alert(`تم ${newStatus === 'approved' ? 'قبول' : newStatus === 'rejected' ? 'رفض' : 'إعادة'} المزود بنجاح`);
@@ -1216,6 +1305,57 @@ export const Providers = () => {
       console.error('Error updating provider status:', error);
       alert('فشل تحديث حالة المزود');
     }
+  };
+
+  const handleConfirmSuspend = async () => {
+    if (!suspendForm?.provider) return;
+    const reason = String(suspendForm.reason || '').trim();
+    if (!reason) {
+      alert('اكتب سبب الإيقاف — يظهر للمزود في التطبيق');
+      return;
+    }
+    const { provider } = suspendForm;
+    if ((provider.isBusy || provider.activeRequestId)
+      && !window.confirm('المزود لديه طلب نشط الآن. الإيقاف يمنعه من الطلبات الجديدة فقط، والطلب الحالي يبقى معه. متابعة؟')) {
+      return;
+    }
+    setSuspending(true);
+    try {
+      const days = suspendForm.days ? Number(suspendForm.days) : null;
+      const { suspension } = await suspendProvider(provider.id, { reason, days });
+      setProviders((prev) => prev.map((p) => (p.id === provider.id
+        ? { ...p, approvalStatus: 'suspended', status: 'suspended', isOnline: false, suspension }
+        : p)));
+      setSuspendForm(null);
+      alert('تم إيقاف المزود مؤقتاً');
+    } catch (error) {
+      console.error('Suspend provider error:', error);
+      alert(error?.message || 'فشل إيقاف المزود');
+    } finally {
+      setSuspending(false);
+    }
+  };
+
+  const handleLiftSuspension = async (provider) => {
+    if (!window.confirm(`رفع الإيقاف عن ${provider.fullName || provider.firstName || 'المزود'} وإعادته معتمداً؟`)) return;
+    try {
+      await liftProviderSuspension(provider.id);
+      setProviders((prev) => prev.map((p) => (p.id === provider.id
+        ? { ...p, approvalStatus: 'approved', status: 'approved', suspension: null }
+        : p)));
+      alert('تم رفع الإيقاف');
+    } catch (error) {
+      console.error('Lift suspension error:', error);
+      alert(error?.message || 'فشل رفع الإيقاف');
+    }
+  };
+
+  const formatSuspensionUntil = (suspension) => {
+    if (!suspension?.until) return 'حتى الرفع اليدوي';
+    const d = new Date(suspension.until);
+    return Number.isNaN(d.getTime())
+      ? ''
+      : `حتى ${d.toLocaleString('ar-SA', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`;
   };
 
   const handleApproveProviderAndAllServices = async () => {
@@ -1452,6 +1592,7 @@ export const Providers = () => {
       pending: { text: 'قيد المراجعة', color: 'bg-yellow-100 text-yellow-700', icon: Clock },
       approved: { text: 'موافق عليه', color: 'bg-green-100 text-green-700', icon: CheckCircle },
       rejected: { text: 'مرفوض', color: 'bg-red-100 text-red-700', icon: XCircle },
+      suspended: { text: 'موقوف مؤقتاً', color: 'bg-orange-100 text-orange-700', icon: PauseCircle },
     };
     return badges[status] || { text: status, color: 'bg-gray-100 text-gray-700', icon: Clock };
   };
@@ -1719,6 +1860,7 @@ export const Providers = () => {
                   <option value="pending">قيد المراجعة</option>
                   <option value="approved">موافق عليه</option>
                   <option value="rejected">مرفوض</option>
+                  <option value="suspended">موقوف مؤقتاً</option>
                 </select>
                 <select
                   value={typeFilter}
@@ -1857,6 +1999,41 @@ export const Providers = () => {
                     </span>
                   )}
                 </div>
+                <div className="sm:col-span-2 lg:col-span-3 xl:col-span-4 flex flex-wrap items-center gap-2 px-4 py-3 bg-emerald-50 rounded-lg border border-emerald-100 min-w-0">
+                  <span className="text-sm font-black text-emerald-900 ml-1">ترتيب الشهر (آخر 30 يوم):</span>
+                  {[
+                    { id: 'topRated', label: `أعلى ${MONTHLY_RANK_LIMIT} تقييماً`, tone: 'good' },
+                    { id: 'bestPerf', label: `أفضل ${MONTHLY_RANK_LIMIT}: تنفيذ عالٍ وإلغاء قليل`, tone: 'good' },
+                    { id: 'worst', label: `أسوأ ${MONTHLY_RANK_LIMIT}: تقييم ضعيف وإلغاء عالٍ`, tone: 'bad' },
+                  ].map((f) => {
+                    const on = monthlyRank === f.id;
+                    const onCls = f.tone === 'bad' ? 'bg-rose-600 text-white border-rose-600' : 'bg-emerald-600 text-white border-emerald-600';
+                    const offCls = f.tone === 'bad'
+                      ? 'bg-white text-rose-700 border-rose-200 hover:bg-rose-50'
+                      : 'bg-white text-emerald-800 border-emerald-200 hover:bg-emerald-100';
+                    return (
+                      <button
+                        key={f.id}
+                        type="button"
+                        onClick={() => setMonthlyRank(on ? 'none' : f.id)}
+                        className={`px-3 py-1.5 rounded-full text-sm font-bold border transition-all ${on ? onCls : offCls}`}
+                      >
+                        {on ? '✓ ' : ''}{f.label}
+                      </button>
+                    );
+                  })}
+                  {loadingMonthlyPerf && <Loader2 size={14} className="animate-spin text-emerald-600" />}
+                  {monthlyRank !== 'none' && !loadingMonthlyPerf && (
+                    <span className="text-xs font-semibold text-emerald-700 bg-white px-2 py-0.5 rounded-full border border-emerald-100">
+                      {filteredProviders.length}
+                    </span>
+                  )}
+                  {monthlyRank !== 'none' && (
+                    <span className="w-full text-xs text-emerald-800">
+                      الإلغاء يشمل إلغاء المزود وإلغاء العميل بعد تعيين المزود. الترتيب من الأعلى للأقل، ويطبَّق على نتيجة الفلاتر الأخرى (الحالة، المدينة…).
+                    </span>
+                  )}
+                </div>
                 <div className="flex items-center gap-2 px-4 py-3 bg-orange-50 rounded-lg border border-orange-100 sm:col-span-2 lg:col-span-1 xl:col-span-2 min-w-0">
                   <input
                     type="checkbox"
@@ -1959,6 +2136,20 @@ export const Providers = () => {
                                     ★ {getProviderRatingAvg(provider).toFixed(1)}
                                   </span>
                                 )}
+                                {monthlyRank !== 'none' && getMonthlyStats(provider) && (() => {
+                                  const ms = getMonthlyStats(provider);
+                                  return (
+                                    <span className="inline-flex flex-wrap items-center gap-1 px-2 py-0.5 rounded text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-100">
+                                      <span>#{index + 1}</span>
+                                      {ms.ratingCount > 0 && (
+                                        <span>· ★ {(ms.ratingSum / ms.ratingCount).toFixed(1)} ({ms.ratingCount})</span>
+                                      )}
+                                      <span>· نفّذ {ms.completed}</span>
+                                      <span className={ms.providerCancels ? 'text-rose-700' : ''}>· ألغى {ms.providerCancels}</span>
+                                      <span className={ms.customerCancels ? 'text-rose-700' : ''}>· ألغى العميل {ms.customerCancels}</span>
+                                    </span>
+                                  );
+                                })()}
                                 {perfLeastCancel && perfCancelCounts && (
                                   <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-rose-50 text-rose-700">
                                     ألغى {getProviderCancelCount(provider)} ({Math.round(getProviderCancelRate(provider) * 100)}٪)
@@ -2066,6 +2257,12 @@ export const Providers = () => {
                               <StatusIcon size={14} />
                               {statusBadge.text}
                             </span>
+                            {approvalStatus === 'suspended' && provider.suspension && (
+                              <div className="mt-1 text-[11px] text-orange-700 max-w-[180px]" title={provider.suspension.reason || ''}>
+                                <div>{formatSuspensionUntil(provider.suspension)}</div>
+                                <div className="truncate text-gray-500">{provider.suspension.reason}</div>
+                              </div>
+                            )}
                           </td>
                           <td className="px-6 py-4">
                             <button
@@ -2149,11 +2346,37 @@ export const Providers = () => {
                                           رفض
                                         </button>
                                         <button
+                                          onClick={() => setSuspendForm({ provider, reason: '', days: '3' })}
+                                          className="inline-flex items-center gap-1.5 min-w-[110px] justify-center px-3 py-2 bg-orange-600 text-white rounded-xl hover:bg-orange-700 shadow-sm transition-all text-xs font-bold"
+                                          title="إيقاف استقبال الطلبات ومنع أي تعديل على الحساب أو المستندات"
+                                        >
+                                          <PauseCircle size={14} />
+                                          إيقاف مؤقت
+                                        </button>
+                                        <button
                                           onClick={() => handleStatusChange(provider.id, 'pending')}
                                           className="inline-flex items-center gap-1.5 min-w-[110px] justify-center px-3 py-2 bg-amber-500 text-white rounded-xl hover:bg-amber-600 shadow-sm transition-all text-xs font-bold"
                                         >
                                           <Clock size={14} />
                                           إعادة للمراجعة
+                                        </button>
+                                      </>
+                                    )}
+                                    {approvalStatus === 'suspended' && (
+                                      <>
+                                        <button
+                                          onClick={() => handleLiftSuspension(provider)}
+                                          className="inline-flex items-center gap-1.5 min-w-[110px] justify-center px-3 py-2 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 shadow-sm transition-all text-xs font-bold"
+                                        >
+                                          <CheckCircle size={14} />
+                                          رفع الإيقاف
+                                        </button>
+                                        <button
+                                          onClick={() => handleStatusChange(provider.id, 'rejected')}
+                                          className="inline-flex items-center gap-1.5 min-w-[88px] justify-center px-3 py-2 bg-rose-600 text-white rounded-xl hover:bg-rose-700 shadow-sm transition-all text-xs font-bold"
+                                        >
+                                          <XCircle size={14} />
+                                          رفض
                                         </button>
                                       </>
                                     )}
@@ -2333,6 +2556,62 @@ export const Providers = () => {
           )}
 
           {/* تأكيد الحذف النهائي */}
+          {suspendForm && (
+            <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
+              <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
+                <h3 className="text-lg font-bold text-gray-900 mb-1">إيقاف مؤقت للمزود</h3>
+                <p className="text-sm text-gray-600 mb-4">
+                  {suspendForm.provider.fullName || suspendForm.provider.firstName || 'مزود'}{' '}
+                  <span dir="ltr">({suspendForm.provider.phone})</span>
+                </p>
+                <div className="text-xs text-orange-800 bg-orange-50 border border-orange-200 rounded-lg p-3 mb-4 leading-6">
+                  لن تصله طلبات جديدة، ولن يستطيع تعديل بياناته أو خدماته أو مستنداته، ويبقى مسجّلاً
+                  ويرى سبب الإيقاف ومدته. بياناته وخدماته المعتمدة تبقى كما هي.
+                </div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">المدة</label>
+                <select
+                  value={suspendForm.days}
+                  onChange={(e) => setSuspendForm((f) => ({ ...f, days: e.target.value }))}
+                  className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-lg mb-3 focus:border-orange-400 focus:outline-none"
+                >
+                  <option value="1">يوم واحد</option>
+                  <option value="3">3 أيام</option>
+                  <option value="7">أسبوع</option>
+                  <option value="14">أسبوعان</option>
+                  <option value="30">شهر</option>
+                  <option value="">حتى الرفع اليدوي</option>
+                </select>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">السبب (يظهر للمزود)</label>
+                <textarea
+                  value={suspendForm.reason}
+                  onChange={(e) => setSuspendForm((f) => ({ ...f, reason: e.target.value }))}
+                  rows={3}
+                  maxLength={300}
+                  placeholder="مثال: تكرار إلغاء الطلبات بعد القبول"
+                  className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-lg mb-5 focus:border-orange-400 focus:outline-none text-sm"
+                />
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    disabled={suspending}
+                    onClick={handleConfirmSuspend}
+                    className="flex-1 py-2.5 bg-orange-600 text-white rounded-xl font-semibold hover:bg-orange-700 disabled:opacity-50"
+                  >
+                    {suspending ? 'جاري الإيقاف...' : 'إيقاف'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={suspending}
+                    onClick={() => setSuspendForm(null)}
+                    className="flex-1 py-2.5 bg-gray-200 text-gray-800 rounded-xl font-semibold hover:bg-gray-300"
+                  >
+                    إلغاء
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {showDeleteProviderModal && selectedProvider && (
             <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
               <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6">

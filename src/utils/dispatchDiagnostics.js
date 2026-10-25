@@ -69,7 +69,10 @@ export function resolveDistributionSettings(settingsDoc) {
     vipEnabled = sData.vipEnabled;
   }
   const maxDispatchRadiusKm = Math.max(...stagesToUse.map((s) => s.maxRadius ?? 15));
-  return { stagesToUse, maxPerStage, vipEnabled, maxDispatchRadiusKm };
+  // مطابق للسيرفر: نطاق المرحلة بمسافة الطريق التقديرية (المستقيم × المعامل) عدا الأخيرة
+  const rf = Number(sData.roadDistanceFactor);
+  const roadDistanceFactor = Number.isFinite(rf) && rf >= 1 && rf <= 2.5 ? rf : 1.4;
+  return { stagesToUse, maxPerStage, vipEnabled, maxDispatchRadiusKm, roadDistanceFactor };
 }
 
 export function buildServiceMatcher(request) {
@@ -334,7 +337,7 @@ export function evaluateProviderEligibility(providerId, providerData, request, d
  * محاكاة من سيتم إشعاره في كل مرحلة (نفس منطق performStagedSearch)
  */
 export function simulateDispatchStages(eligibleProviders, distributionSettings) {
-  const { stagesToUse, maxPerStage, vipEnabled } = resolveDistributionSettings(distributionSettings);
+  const { stagesToUse, maxPerStage, vipEnabled, roadDistanceFactor } = resolveDistributionSettings(distributionSettings);
   const globalNotified = new Set();
   const stageResults = [];
   const providerStageMap = {};
@@ -345,8 +348,9 @@ export function simulateDispatchStages(eligibleProviders, distributionSettings) 
     const stageTarget = range.maxProviders ?? maxPerStage;
     const isVipStage = range.vipOnly === true && vipEnabled;
 
+    const isLastStage = i === stagesToUse.length - 1;
     const stageCandidates = eligibleProviders.filter((p) => {
-      if (p.distance > maxR) return false;
+      if ((isLastStage ? p.distance : p.distance * roadDistanceFactor) > maxR) return false;
       if (globalNotified.has(p.id)) return false;
       if (isVipStage && !p.isVIP) return false;
       return true;

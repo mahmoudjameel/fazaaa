@@ -536,6 +536,8 @@ export const updateProviderStatus = async (providerId, status) => {
       approvalStatus: status,
       status,
       isOnline: false,
+      // تغيير الحالة من «موقوف» إلى رفض/مراجعة ينهي الإيقاف (السجل في suspensionHistory)
+      suspension: deleteField(),
       updatedAt: new Date().toISOString(),
     });
     return { success: true };
@@ -543,6 +545,96 @@ export const updateProviderStatus = async (providerId, status) => {
     console.error('Update provider status error:', error);
     throw error;
   }
+};
+
+/**
+ * إيقاف مؤقت لمزود معتمد — بديل «إعادة للمراجعة» الذي كان يفتح له تعديل المستندات.
+ * الحالة suspended: لا يستقبل طلبات (التوزيع يشترط approved) ولا يعدّل الملف أو الخدمات
+ * أو المستندات (التطبيق يسمح بالتعديل في pending فقط)، ويبقى مسجّلاً ليرى سبب الإيقاف.
+ * @param {{ reason: string, days?: number|null }} params — days=null: حتى يُرفع يدوياً
+ */
+export const suspendProvider = async (providerId, { reason, days = null }) => {
+  const trimmedReason = String(reason || '').trim();
+  if (!trimmedReason) throw new Error('سبب الإيقاف مطلوب');
+
+  const providerRef = doc(db, 'providers', providerId);
+  const snap = await getDoc(providerRef);
+  if (!snap.exists()) throw new Error('المزود غير موجود');
+  const data = snap.data() || {};
+  const previousStatus = data.approvalStatus || data.status || null;
+  if (previousStatus === 'suspended') throw new Error('المزود موقوف مسبقاً');
+  // رفع الإيقاف يعيده approved — فلا يُوقف إلا معتمد (حتى لا يُعتمد pending دون مراجعة)
+  if (previousStatus !== 'approved') throw new Error('الإيقاف المؤقت متاح للمزود المعتمد فقط');
+
+  const now = new Date();
+  const until = Number(days) > 0 ? new Date(now.getTime() + Number(days) * 86400000) : null;
+  const suspension = {
+    reason: trimmedReason,
+    suspendedAt: now.toISOString(),
+    until: until ? until.toISOString() : null,
+    days: until ? Number(days) : null,
+    previousStatus,
+    byEmail: auth.currentUser?.email || null,
+  };
+
+  await updateDoc(providerRef, {
+    approvalStatus: 'suspended',
+    status: 'suspended',
+    isOnline: false,
+    availabilityStatus: 'offline',
+    suspension,
+    suspensionHistory: arrayUnion(suspension),
+    updatedAt: now.toISOString(),
+  });
+
+  const untilText = until
+    ? `حتى ${until.toLocaleDateString('ar-SA', { day: 'numeric', month: 'long' })}`
+    : 'حتى إشعار آخر من الإدارة';
+  await addDoc(collection(db, 'admin_notifications'), {
+    title: 'تم إيقاف حسابك مؤقتاً',
+    message: `تم إيقاف حسابك مؤقتاً ${untilText}. السبب: ${trimmedReason}`,
+    target: 'provider',
+    providerIds: [providerId],
+    providerCities: [],
+    providerCityNames: [],
+    // onAdminNotificationCreated يرسل للمعتمدين فقط — هذا يسمح بإشعار الموقوف
+    allowSuspended: true,
+    source: 'provider_suspension',
+    createdAt: serverTimestamp(),
+    type: 'admin_broadcast',
+  }).catch((e) => console.warn('suspension notification failed:', e?.message));
+
+  return { success: true, suspension, hadActiveRequest: !!(data.isBusy || data.activeRequestId) };
+};
+
+/** رفع الإيقاف المؤقت وإعادة المزود معتمداً (الخدمات المعتمدة لم تُمسّ أثناء الإيقاف). */
+export const liftProviderSuspension = async (providerId) => {
+  const providerRef = doc(db, 'providers', providerId);
+  const snap = await getDoc(providerRef);
+  const current = snap.exists() ? (snap.data().approvalStatus || snap.data().status) : null;
+  if (current !== 'suspended') throw new Error('المزود غير موقوف حالياً');
+  const nowIso = new Date().toISOString();
+  await updateDoc(providerRef, {
+    approvalStatus: 'approved',
+    status: 'approved',
+    suspension: deleteField(),
+    suspensionLiftedAt: nowIso,
+    updatedAt: nowIso,
+  });
+
+  await addDoc(collection(db, 'admin_notifications'), {
+    title: 'تم رفع الإيقاف عن حسابك',
+    message: 'يمكنك الآن تفعيل حالتك واستقبال الطلبات.',
+    target: 'provider',
+    providerIds: [providerId],
+    providerCities: [],
+    providerCityNames: [],
+    source: 'provider_suspension_lifted',
+    createdAt: serverTimestamp(),
+    type: 'admin_broadcast',
+  }).catch((e) => console.warn('lift notification failed:', e?.message));
+
+  return { success: true };
 };
 
 /**
@@ -3295,4 +3387,74 @@ export const unbanPhoneNumber = async (phoneOrId) => {
   }
 
   return { success: true, phone };
+};
+
+/**
+ * أداء كل مزود خلال آخر N يوماً — لترتيبات «أفضل/أسوأ 20» في صفحة المزودين.
+ * - completed: مكتمل بمراحل تنفيذ فعلية من التطبيق (نفس شرط «الأكثر تنفيذاً»)
+ * - providerCancels: إلغاء من المزود (من history)
+ * - customerCancels: إلغاء العميل بعد تعيين المزود (لا يُحسب إلغاء أثناء البحث)
+ * - ratingSum/ratingCount: تقييمات العملاء المنشأة خلال الفترة
+ * @returns {Promise<Record<string, { completed, providerCancels, customerCancels, ratingSum, ratingCount }>>}
+ */
+export const getProviderPerformanceSince = async (days = 30) => {
+  const cutoffMs = Date.now() - days * 24 * 60 * 60 * 1000;
+  const cutoff = Timestamp.fromMillis(cutoffMs);
+  const [reqSnap, ratingSnap] = await Promise.all([
+    getDocs(query(collection(db, 'requests'), where('createdAt', '>=', cutoff))),
+    getDocs(query(collection(db, 'ratings'), where('createdAt', '>=', cutoff))),
+  ]);
+
+  const stats = {};
+  const entry = (pid) => {
+    const key = String(pid);
+    if (!stats[key]) {
+      stats[key] = { completed: 0, providerCancels: 0, customerCancels: 0, ratingSum: 0, ratingCount: 0 };
+    }
+    return stats[key];
+  };
+
+  reqSnap.forEach((d) => {
+    const data = d.data() || {};
+    const history = Array.isArray(data.history) ? data.history : [];
+    const providerCancelers = new Set();
+    let lastAssigned = null;
+
+    history.forEach((h) => {
+      if (h?.status === 'assigned' && h?.providerId) lastAssigned = h.providerId;
+      const isProviderCancel =
+        h?.action === 'provider_cancellation' ||
+        h?.status === 'canceled_by_provider' ||
+        h?.status === 'canceled_by_provider_with_reason';
+      if (isProviderCancel && h?.providerId) providerCancelers.add(String(h.providerId));
+      // ألغى المزود فعاد الطلب للبحث — إلغاء العميل بعدها لا يُحسب عليه
+      if (isProviderCancel) lastAssigned = null;
+    });
+    if (providerCancelers.size === 0
+      && (data.status === 'canceled_by_provider' || data.status === 'canceled_by_provider_with_reason')) {
+      const pid = data.cancelledBy || data.providerId;
+      if (pid) providerCancelers.add(String(pid));
+    }
+    providerCancelers.forEach((pid) => { entry(pid).providerCancels += 1; });
+
+    if (data.status === 'completed' && data.providerId && hasProviderExecutionEvidence(data)) {
+      entry(data.providerId).completed += 1;
+    }
+    if (data.status === 'canceled_by_client' || data.status === 'canceled_by_client_with_reason') {
+      // السجل أدق من providerId (قد يبقى اسم مزود ألغى سابقاً)
+      const pid = history.length > 0 ? lastAssigned : data.providerId;
+      if (pid) entry(pid).customerCancels += 1;
+    }
+  });
+
+  ratingSnap.forEach((d) => {
+    const r = d.data() || {};
+    const value = Number(r.rating);
+    if (!r.providerId || !Number.isFinite(value) || value <= 0) return;
+    const e = entry(r.providerId);
+    e.ratingSum += value;
+    e.ratingCount += 1;
+  });
+
+  return stats;
 };

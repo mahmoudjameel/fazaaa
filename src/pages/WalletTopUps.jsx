@@ -21,6 +21,7 @@ import {
   WALLET_TOPUP_STATES,
 } from '../services/walletTopupsService';
 import { WalletPackagesManager } from '../components/WalletPackagesManager';
+import { DailySettlementSummary } from '../components/DailySettlementSummary';
 
 const formatDt = (value) => {
   if (!value) return '—';
@@ -50,6 +51,8 @@ const StateBadge = ({ state }) => {
 
 /** شحن الإدارة (رصيد يدوي/تعويض) يُسجَّل بـ source='admin_panel' — الباقي دفع فعلي عبر بوابة البنك */
 const isAdminTopUp = (r) => r?.source === 'admin_panel';
+
+const TOPUPS_LOAD_LIMIT = 300;
 
 const SOURCE_FILTERS = [
   { key: 'all', label: 'كل المصادر' },
@@ -82,7 +85,7 @@ export default function WalletTopUps() {
     setLoadError(null);
     try {
       // نجلب الكل ثم نفلتر محلياً لتجنب الاعتماد على فهرس مركّب لكل حالة
-      const data = await getWalletTopUps({ state: 'all', max: 300 });
+      const data = await getWalletTopUps({ state: 'all', max: TOPUPS_LOAD_LIMIT });
       if (version === loadVersion.current) {
         setRows(data);
         setSelected((current) => current ? data.find((row) => row.id === current.id) || current : null);
@@ -219,6 +222,8 @@ export default function WalletTopUps() {
         />
         <StatCard label="خدمات مشحونة" value={stats.paidCredits} colorClass="text-indigo-600" />
       </div>
+
+      <DailySettlementSummary rows={rows} rowsLimit={TOPUPS_LOAD_LIMIT} />
 
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 space-y-3">
         <div className="relative">

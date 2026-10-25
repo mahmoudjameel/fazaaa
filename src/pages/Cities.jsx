@@ -3,6 +3,7 @@ import { Search, Plus, Edit2, Trash2, MapPin, Users as UsersIcon, CheckCircle, X
 import { collection, getDocs, doc, updateDoc, deleteDoc, addDoc, setDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import SAUDI_CITIES_DEFAULTS from '../services/cities.json';
+import { NoCoverageReport } from '../components/NoCoverageReport';
 
 export const Cities = () => {
   const [cities, setCities] = useState([]);
@@ -329,6 +330,8 @@ export const Cities = () => {
           </p>
         </div>
       </div>
+
+      <NoCoverageReport cities={cities} />
 
       {/* Search */}
       <div className="bg-white rounded-xl sm:rounded-2xl shadow-lg p-4 sm:p-5 md:p-6 mb-4 sm:mb-6">
