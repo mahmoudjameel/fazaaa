@@ -807,6 +807,18 @@ export const Providers = () => {
     return null;
   };
 
+  /** «15 يوليو 2026 · منذ 3 أشهر» — لتاريخ التسجيل والاعتماد */
+  const formatJoinDate = (ts) => {
+    const d = timestampToDate(ts);
+    if (!d) return null;
+    const days = Math.floor((Date.now() - d.getTime()) / 86400000);
+    const since = days < 1 ? 'اليوم'
+      : days < 30 ? `منذ ${days} يوم`
+        : days < 365 ? `منذ ${Math.floor(days / 30)} شهر`
+          : `منذ ${Math.floor(days / 365)} سنة${days % 365 >= 30 ? ` و${Math.floor((days % 365) / 30)} شهر` : ''}`;
+    return `${format(d, 'd MMMM yyyy', { locale: ar })} · ${since}`;
+  };
+
   const formatRelativeAgo = (ts) => {
     const d = timestampToDate(ts);
     if (!d) return null;
@@ -2842,6 +2854,19 @@ export const Providers = () => {
                             <h3 className="font-bold text-teal-800 mb-3">بيانات التسجيل والمفوّض</h3>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                               <div>
+                                <p className="text-sm font-semibold text-gray-600 mb-1">تاريخ التسجيل</p>
+                                <p className="text-gray-900 font-bold">
+                                  {formatJoinDate(selectedProvider.createdAt || selectedProvider.registeredAt) || 'غير معروف'}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-sm font-semibold text-gray-600 mb-1">تاريخ الاعتماد (الانضمام الفعلي)</p>
+                                <p className="text-gray-900 font-bold">
+                                  {formatJoinDate(selectedProvider.approvedAt || selectedProvider.accountActivatedAt)
+                                    || ((selectedProvider.approvalStatus || selectedProvider.status) === 'approved' ? 'معتمد (التاريخ غير مسجّل)' : 'لم يُعتمد بعد')}
+                                </p>
+                              </div>
+                              <div>
                                 <p className="text-sm font-semibold text-gray-600 mb-1">صفة التسجيل</p>
                                 <span className="inline-flex px-3 py-1 rounded-full bg-white text-teal-800 font-bold text-sm border border-teal-200">
                                   {selectedProvider.providerType === 'non_saudi' ? 'غير سعودي — مفوّض منشأة' : 'سعودي'}
@@ -3851,8 +3876,14 @@ export const Providers = () => {
                                           ? { text: 'اعتذر المزود', color: 'bg-red-100 text-red-700' }
                                           : (badges[order.status] || { text: order.status, color: 'bg-gray-100 text-gray-700' });
                                         return (
-                                          <tr key={order.id} className="hover:bg-gray-50 transition-colors">
-                                            <td className="px-4 py-3 font-mono text-gray-500">{order.orderNumber != null ? `#${String(order.orderNumber).padStart(9, '0')}` : '—'}</td>
+                                          <tr
+                                            key={order.id}
+                                            // تفاصيل الطلب الكاملة في صفحة الطلبات (?orderId يفتحها) — تبويب جديد حتى يبقى ملف المزود مفتوحاً
+                                            onClick={() => window.open(`/admin/orders?orderId=${encodeURIComponent(order.id)}`, '_blank', 'noopener')}
+                                            className="hover:bg-teal-50 transition-colors cursor-pointer"
+                                            title="فتح تفاصيل الطلب"
+                                          >
+                                            <td className="px-4 py-3 font-mono text-teal-700 underline decoration-dotted">{order.orderNumber != null ? `#${String(order.orderNumber).padStart(9, '0')}` : '—'}</td>
                                             <td className="px-4 py-3 font-bold text-gray-800">{order.serviceName || order.serviceType || '-'}</td>
                                             <td className="px-4 py-3 text-gray-600">
                                               {order.createdAt ? format(order.createdAt.toDate ? order.createdAt.toDate() : new Date(order.createdAt?.seconds ? order.createdAt.seconds * 1000 : order.createdAt), 'dd/MM/yyyy HH:mm', { locale: ar }) : '-'}
