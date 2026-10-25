@@ -3707,6 +3707,19 @@ export const Providers = () => {
                                           <Copy size={11} />
                                         </button>
                                       )}
+                                      {item.ref && (
+                                        // RRN = الرقم المرجعي عند البنك/neoleap (للمطابقة)، غير مرجع فزّاعين أعلاه
+                                        <button
+                                          type="button"
+                                          onClick={() => navigator.clipboard?.writeText(String(item.ref)).then(() => alert('تم نسخ RRN'))}
+                                          className="flex items-center gap-1 text-[10px] font-mono text-teal-700 hover:text-teal-900"
+                                          title="نسخ الرقم المرجعي عند البنك"
+                                          dir="ltr"
+                                        >
+                                          RRN: {item.ref}
+                                          <Copy size={11} />
+                                        </button>
+                                      )}
                                       {item.attachment?.url && (
                                         <a
                                           href={item.attachment.url}
