@@ -9,7 +9,7 @@ function formatWhen(value) {
   if (!value) return '—';
   const date = value.toDate ? value.toDate() : new Date(value);
   if (Number.isNaN(date.getTime())) return '—';
-  return date.toLocaleString('ar-SA', { timeZone: 'Asia/Riyadh' });
+  return date.toLocaleString('ar-SA-u-ca-gregory', { timeZone: 'Asia/Riyadh' });
 }
 
 export default function QrLink() {

@@ -223,7 +223,7 @@ export default function WalletTopUps() {
         <StatCard label="خدمات مشحونة" value={stats.paidCredits} colorClass="text-indigo-600" />
       </div>
 
-      <DailySettlementSummary rows={rows} rowsLimit={TOPUPS_LOAD_LIMIT} />
+      <DailySettlementSummary rows={rows} rowsLimit={TOPUPS_LOAD_LIMIT} onSelect={setSelected} />
 
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 space-y-3">
         <div className="relative">

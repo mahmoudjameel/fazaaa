@@ -104,7 +104,7 @@ export default function ProviderProfileRequests() {
     if (!v) return '—';
     try {
       const d = v.toDate ? v.toDate() : new Date(v);
-      return d.toLocaleDateString('ar-SA', { dateStyle: 'medium' }) + ' ' + d.toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' });
+      return d.toLocaleDateString('ar-SA-u-ca-gregory', { dateStyle: 'medium' }) + ' ' + d.toLocaleTimeString('ar-SA-u-ca-gregory', { hour: '2-digit', minute: '2-digit' });
     } catch {
       return String(v);
     }

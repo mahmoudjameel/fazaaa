@@ -522,7 +522,7 @@ export default function AppSettings() {
           {currentLastUpdated ? (
             <p className="text-xs text-gray-400">
               آخر تحديث:{' '}
-              {new Date(currentLastUpdated).toLocaleString('ar-SA', {
+              {new Date(currentLastUpdated).toLocaleString('ar-SA-u-ca-gregory', {
                 year: 'numeric',
                 month: 'long',
                 day: 'numeric',

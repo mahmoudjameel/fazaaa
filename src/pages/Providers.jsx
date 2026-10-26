@@ -113,7 +113,7 @@ const formatTopupWhen = (value) => {
     ? value.toMillis()
     : (typeof value?.seconds === 'number' ? value.seconds * 1000 : Date.parse(value));
   if (!Number.isFinite(ms)) return '';
-  return new Date(ms).toLocaleString('ar-SA', {
+  return new Date(ms).toLocaleString('ar-SA-u-ca-gregory', {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
@@ -1367,7 +1367,7 @@ export const Providers = () => {
     const d = new Date(suspension.until);
     return Number.isNaN(d.getTime())
       ? ''
-      : `حتى ${d.toLocaleString('ar-SA', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`;
+      : `حتى ${d.toLocaleString('ar-SA-u-ca-gregory', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`;
   };
 
   const handleApproveProviderAndAllServices = async () => {

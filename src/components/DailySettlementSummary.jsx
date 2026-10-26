@@ -15,7 +15,7 @@ const riyadhDayKey = (date) =>
   new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Riyadh' }).format(date);
 
 const dayLabel = (key) =>
-  new Intl.DateTimeFormat('ar-SA', { weekday: 'short', day: 'numeric', month: 'long', timeZone: 'UTC' })
+  new Intl.DateTimeFormat('ar-SA-u-ca-gregory', { weekday: 'short', day: 'numeric', month: 'long', timeZone: 'UTC' })
     .format(new Date(`${key}T00:00:00Z`));
 
 /** دفع فعلي نجح عند البنك (حتى لو لم يُشحن الرصيد بعد) — شحن الإدارة لا يمرّ بالبنك */
@@ -32,7 +32,8 @@ const hasNoCardType = (r) => !r?.cardType;
  * اليوم = تاريخ إنشاء العملية (وقت الدفع)، لا وقت الشحن: الشحن المتأخر عبر Inquiry لا يغيّر يوم التسوية.
  */
 /** rowsLimit: سقف ما تجلبه الصفحة — إن بلغته فأقدم يوم معروض قد يكون ناقصاً */
-export function DailySettlementSummary({ rows, rowsLimit }) {
+/** onSelect(row): فتح تفاصيل العملية (نفس نافذة جدول الشحن) */
+export function DailySettlementSummary({ rows, rowsLimit, onSelect }) {
   const [openDay, setOpenDay] = useState(null);
 
   const days = useMemo(() => {
@@ -140,12 +141,19 @@ export function DailySettlementSummary({ rows, rowsLimit }) {
                         <td colSpan={6} className="px-3 py-2">
                           <div className="space-y-1">
                             {d.items.map((r) => (
-                              <div key={r.id} className="flex flex-wrap items-center gap-x-4 gap-y-0.5 text-xs text-gray-700">
+                              <button
+                                type="button"
+                                key={r.id}
+                                onClick={() => onSelect?.(r)}
+                                className="w-full flex flex-wrap items-center gap-x-4 gap-y-0.5 text-xs text-gray-700 text-right rounded-lg px-2 py-1 hover:bg-white hover:text-teal-700"
+                                title="عرض تفاصيل العملية"
+                              >
                                 <span className="font-semibold">{r.providerName || r.providerPhone || '—'}</span>
                                 <span>{sar(Number(r.amount) || 0)} ر.س</span>
                                 <span dir="ltr" className="font-mono">RRN {r.ref || '—'}</span>
                                 <span className="text-gray-400">{r.cardType || 'مدى'}</span>
-                              </div>
+                                <span className="text-teal-600 font-semibold">التفاصيل ›</span>
+                              </button>
                             ))}
                           </div>
                         </td>

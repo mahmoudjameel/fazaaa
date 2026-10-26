@@ -588,7 +588,7 @@ export const suspendProvider = async (providerId, { reason, days = null }) => {
   });
 
   const untilText = until
-    ? `حتى ${until.toLocaleDateString('ar-SA', { day: 'numeric', month: 'long' })}`
+    ? `حتى ${until.toLocaleDateString('ar-SA-u-ca-gregory', { day: 'numeric', month: 'long' })}`
     : 'حتى إشعار آخر من الإدارة';
   await addDoc(collection(db, 'admin_notifications'), {
     title: 'تم إيقاف حسابك مؤقتاً',

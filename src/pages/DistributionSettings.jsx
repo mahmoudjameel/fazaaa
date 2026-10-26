@@ -83,7 +83,7 @@ export const DistributionSettings = () => {
     if (!block?.blockedUntilMs) return '—';
     const d = new Date(block.blockedUntilMs);
     if (Number.isNaN(d.getTime())) return '—';
-    return d.toLocaleString('ar-SA', { dateStyle: 'medium', timeStyle: 'short' });
+    return d.toLocaleString('ar-SA-u-ca-gregory', { dateStyle: 'medium', timeStyle: 'short' });
   };
 
   const handleUnblock = async (customerId, providerId) => {

@@ -419,7 +419,7 @@ export default function LandingSettings() {
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-2">
             <p className="text-xs text-gray-400">
               {(legalTab === 'privacy' ? privacy.lastUpdated : terms.lastUpdated)
-                ? `آخر حفظ: ${new Date(legalTab === 'privacy' ? privacy.lastUpdated : terms.lastUpdated).toLocaleString('ar-SA')}`
+                ? `آخر حفظ: ${new Date(legalTab === 'privacy' ? privacy.lastUpdated : terms.lastUpdated).toLocaleString('ar-SA-u-ca-gregory')}`
                 : 'لم يُحفظ محتوى مخصص بعد — الموقع يعرض النص الافتراضي'}
             </p>
             <button
@@ -623,7 +623,7 @@ export default function LandingSettings() {
 
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex items-center justify-between">
         <div className="text-xs text-gray-500">
-          {content.lastUpdated ? `آخر تحديث: ${new Date(content.lastUpdated).toLocaleString('ar-SA')}` : 'لم يتم الحفظ بعد'}
+          {content.lastUpdated ? `آخر تحديث: ${new Date(content.lastUpdated).toLocaleString('ar-SA-u-ca-gregory')}` : 'لم يتم الحفظ بعد'}
         </div>
         <button
           onClick={handleSave}

@@ -10,7 +10,7 @@ const formatLastUpdated = (value) => {
   try {
     const date = typeof value?.toDate === 'function' ? value.toDate() : new Date(value);
     if (Number.isNaN(date.getTime())) return null;
-    return date.toLocaleDateString('ar-SA', {
+    return date.toLocaleDateString('ar-SA-u-ca-gregory', {
       year: 'numeric',
       month: 'long',
       day: 'numeric',

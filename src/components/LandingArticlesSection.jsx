@@ -9,7 +9,7 @@ function formatDate(value) {
       value?.toDate?.() ||
       (value?.seconds ? new Date(value.seconds * 1000) : value ? new Date(value) : null);
     if (!d || Number.isNaN(d.getTime())) return '';
-    return d.toLocaleDateString('ar-SA', { month: 'short', day: 'numeric' });
+    return d.toLocaleDateString('ar-SA-u-ca-gregory', { month: 'short', day: 'numeric' });
   } catch {
     return '';
   }
