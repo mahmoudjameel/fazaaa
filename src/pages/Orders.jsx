@@ -56,7 +56,7 @@ import {
 } from '../services/adminService';
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
-import { collection, getDocs, doc, getDoc, updateDoc, query, orderBy, where, limit } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, updateDoc, query, orderBy, where, limit, documentId } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import SAUDI_CITIES_FALLBACK from '../services/cities.json';
 import { formatOrderNumberLabel } from '../utils/orderNumber';
@@ -313,6 +313,7 @@ export const Orders = () => {
   const [mainServices, setMainServices] = useState([]);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [loadingCustomer, setLoadingCustomer] = useState(false);
+  const [customerLoadError, setCustomerLoadError] = useState(null);
   const [services, setServices] = useState([]);
 
   // Manual Order State
@@ -582,6 +583,7 @@ export const Orders = () => {
       }
 
       const userId = selectedRequest.userId || selectedRequest.customerId || selectedRequest.uid;
+      setCustomerLoadError(null);
       if (!userId) {
         setSelectedCustomer(null);
         return;
@@ -589,17 +591,22 @@ export const Orders = () => {
 
       setLoadingCustomer(true);
       try {
-        const customerRef = doc(db, 'customers', userId);
-        const customerSnap = await getDoc(customerRef);
-
-        if (customerSnap.exists()) {
-          setSelectedCustomer({ id: customerSnap.id, ...customerSnap.data() });
-        } else {
-          setSelectedCustomer(null);
+        let data = null;
+        try {
+          const customerSnap = await getDoc(doc(db, 'customers', userId));
+          if (customerSnap.exists()) data = { id: customerSnap.id, ...customerSnap.data() };
+        } catch (getErr) {
+          // قراءة المستند الواحد قد تُرفض بينما الاستعلام مسموح (قاعدة list) — نجرّبه قبل الاستسلام
+          console.warn('Customer get failed, trying query:', getErr);
+          const snap = await getDocs(query(collection(db, 'customers'), where(documentId(), '==', userId)));
+          if (!snap.empty) data = { id: snap.docs[0].id, ...snap.docs[0].data() };
         }
+        setSelectedCustomer(data);
+        if (!data) setCustomerLoadError('حساب العميل غير موجود (ربما حُذف)');
       } catch (error) {
         console.error('Error fetching customer:', error);
         setSelectedCustomer(null);
+        setCustomerLoadError(`تعذّر تحميل بيانات العميل (${error?.code || error?.message || 'خطأ'})`);
       } finally {
         setLoadingCustomer(false);
       }
@@ -2648,6 +2655,19 @@ export const Orders = () => {
                   <div className="bg-blue-50 rounded-xl p-4 text-center">
                     <p className="text-sm text-gray-500">جاري تحميل بيانات العميل...</p>
                   </div>
+                ) : !selectedCustomer && customerLoadError ? (
+                  <div className="bg-amber-50 rounded-xl p-4 border border-amber-200 text-sm">
+                    <p className="font-semibold text-amber-800">{customerLoadError}</p>
+                    {(selectedRequest.customerName || selectedRequest.customerPhone) && (
+                      <p className="text-gray-700 mt-1">
+                        {selectedRequest.customerName || ''}{' '}
+                        <span dir="ltr">{formatPhoneWith00(selectedRequest.customerPhone || '')}</span>
+                      </p>
+                    )}
+                    <p className="text-[11px] text-gray-500 mt-1 font-mono" dir="ltr">
+                      {selectedRequest.customerId || selectedRequest.userId || selectedRequest.uid}
+                    </p>
+                  </div>
                 ) : selectedCustomer ? (
                   <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 sm:p-5 border border-blue-200 mb-4">
                     <div className="flex items-center gap-3 mb-3">
@@ -2739,7 +2759,7 @@ export const Orders = () => {
 
                 <div>
                   <h3 className="font-semibold text-sm sm:text-base text-gray-700 mb-1 sm:mb-2">نوع الخدمة</h3>
-                  <p className="text-sm sm:text-base text-gray-800">{selectedRequest.serviceType}</p>
+                  <p className="text-sm sm:text-base text-gray-800">{selectedRequest.serviceType || selectedRequest.serviceName || '—'}</p>
                 </div>
                 {selectedRequest.serviceOption && (
                   <div>
