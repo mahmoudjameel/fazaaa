@@ -9,6 +9,8 @@ const DAYS_SHOWN = 14;
 
 const round2 = (n) => Math.round(n * 100) / 100;
 const sar = (n) => n.toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const num = (n) => n.toLocaleString('ar-SA');
+const cardLabel = (t) => (!t || String(t).toUpperCase() === 'MADA' ? 'مدى' : t);
 
 /** يوم العملية بتوقيت الرياض — البنك يسوّي عمليات اليوم في دفعة واحدة فجر اليوم التالي */
 const riyadhDayKey = (date) =>
@@ -80,10 +82,8 @@ export function DailySettlementSummary({ rows, rowsLimit, onSelect }) {
         <Landmark className="w-5 h-5 text-teal-600" />
         <h2 className="text-lg font-bold text-gray-900">التسوية اليومية</h2>
       </div>
-      <p className="text-xs text-gray-500 mb-3 leading-5">
-        عمليات كل يوم يودعها البنك دفعة واحدة فجر اليوم التالي باسم «Payment gateway settlement».
-        طابق عدد العمليات والمبلغ مع «Credit Transaction count» و«Original Amount» في الكشف.
-        الصافي تقديري لبطاقات مدى (0.6% + ضريبة 15%) — قد يختلف عن الإيداع ببضع هللات بسبب التقريب.
+      <p className="text-xs text-gray-500 mb-3">
+        يودع البنك عمليات كل يوم دفعة واحدة صباح اليوم التالي.
       </p>
 
       {days.length === 0 ? (
@@ -93,11 +93,11 @@ export function DailySettlementSummary({ rows, rowsLimit, onSelect }) {
           <table className="w-full text-sm">
             <thead>
               <tr className="text-gray-500 text-xs border-b border-gray-100">
-                <th className="text-right font-semibold py-2 px-2">يوم العمليات</th>
-                <th className="text-right font-semibold py-2 px-2">العدد</th>
+                <th className="text-right font-semibold py-2 px-2">اليوم</th>
+                <th className="text-right font-semibold py-2 px-2">عدد العمليات</th>
                 <th className="text-right font-semibold py-2 px-2">المبلغ</th>
-                <th className="text-right font-semibold py-2 px-2">رسوم + ضريبة</th>
-                <th className="text-right font-semibold py-2 px-2">الصافي المتوقع</th>
+                <th className="text-right font-semibold py-2 px-2">الرسوم</th>
+                <th className="text-right font-semibold py-2 px-2">صافي الإيداع</th>
                 <th className="py-2 px-2" />
               </tr>
             </thead>
@@ -113,21 +113,21 @@ export function DailySettlementSummary({ rows, rowsLimit, onSelect }) {
                       <td className="py-2 px-2 font-semibold text-gray-800 whitespace-nowrap">
                         {dayLabel(d.key)}
                         {d.maybeIncomplete && (
-                          <span className="block text-[11px] font-normal text-amber-600">قد يكون ناقصاً — خارج آخر العمليات المحمّلة</span>
+                          <span className="block text-[11px] font-normal text-amber-600">قد تكون بيانات هذا اليوم ناقصة</span>
                         )}
                       </td>
-                      <td className="py-2 px-2">{d.count}</td>
+                      <td className="py-2 px-2">{num(d.count)}</td>
                       <td className="py-2 px-2 font-semibold">{sar(d.gross)}</td>
-                      <td className="py-2 px-2 text-gray-500">
-                        {sar(d.fee)} + {sar(d.vat)}
+                      <td className="py-2 px-2 text-gray-500" title={`رسوم ${sar(d.fee)} + ضريبة ${sar(d.vat)}`}>
+                        {sar(round2(d.fee + d.vat))}
                         {d.nonMadaCount > 0 && (
                           <span className="block text-[11px] text-amber-600">
-                            {d.nonMadaCount} بغير مدى — رسومها مختلفة
+                            {num(d.nonMadaCount)} بغير مدى (رسوم مختلفة)
                           </span>
                         )}
                         {d.unknownCardCount > 0 && (
                           <span className="block text-[11px] text-gray-400">
-                            {d.unknownCardCount} بدون نوع بطاقة — حُسبت مدى
+                            {num(d.unknownCardCount)} بلا نوع بطاقة (حُسبت مدى)
                           </span>
                         )}
                       </td>
@@ -151,8 +151,8 @@ export function DailySettlementSummary({ rows, rowsLimit, onSelect }) {
                                 <span className="font-semibold">{r.providerName || r.providerPhone || '—'}</span>
                                 <span>{sar(Number(r.amount) || 0)} ر.س</span>
                                 <span dir="ltr" className="font-mono">RRN {r.ref || '—'}</span>
-                                <span className="text-gray-400">{r.cardType || 'مدى'}</span>
-                                <span className="text-teal-600 font-semibold">التفاصيل ›</span>
+                                <span className="text-gray-400">{cardLabel(r.cardType)}</span>
+                                <span className="text-teal-600 font-semibold">عرض</span>
                               </button>
                             ))}
                           </div>
@@ -164,6 +164,9 @@ export function DailySettlementSummary({ rows, rowsLimit, onSelect }) {
               })}
             </tbody>
           </table>
+          <p className="text-[11px] text-gray-400 mt-2">
+            الرسوم = 0.6% من المبلغ + ضريبة 15% عليها. قد يختلف الصافي عن الإيداع الفعلي بهللات.
+          </p>
         </div>
       )}
     </div>
