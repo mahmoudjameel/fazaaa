@@ -59,6 +59,8 @@ export function countProviderRemainingServices(providerData, pricing = DEFAULT_P
 
 /** رصيد منخفض: خدمتان أو أقل */
 export const LOW_BALANCE_SERVICE_THRESHOLD = 2;
+/** نص العتبة للواجهة — يُحدَّث مع LOW_BALANCE_SERVICE_THRESHOLD */
+export const LOW_BALANCE_LABEL = 'طلبين أو أقل';
 
 export function isLowWalletBalance(providerData, threshold = LOW_BALANCE_SERVICE_THRESHOLD, pricing = DEFAULT_PRICING) {
   return countProviderRemainingServices(providerData, pricing) <= threshold;

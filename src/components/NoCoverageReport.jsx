@@ -7,7 +7,7 @@ import { groupNoCoverageByArea } from '../utils/noCoverage';
 const PERIOD_DAYS = 30;
 const THRESHOLD_OPTIONS = [5, 10, 20];
 
-/** مدن ومناطق فيها طلبات انتهت بلا أي مزود («لا توجد شبكة») خلال آخر 30 يوماً */
+/** مدن ومناطق فيها طلبات انتهت «لا يوجد شبكة» خلال آخر 30 يوماً — للمراقبة وتعويض التغطية */
 export function NoCoverageReport({ cities }) {
   const [requests, setRequests] = useState(null);
   const [error, setError] = useState(null);
@@ -30,8 +30,8 @@ export function NoCoverageReport({ cities }) {
     () => (requests ? groupNoCoverageByArea(requests, cities) : []),
     [requests, cities]
   );
-  const shown = onlyAboveThreshold ? areas.filter((a) => a.noCoverage >= threshold) : areas;
-  const totalNoCoverage = areas.reduce((s, a) => s + a.noCoverage, 0);
+  const shown = onlyAboveThreshold ? areas.filter((a) => a.noNetwork >= threshold) : areas;
+  const totalNoNetwork = areas.reduce((s, a) => s + a.noNetwork, 0);
 
   return (
     <div className="bg-white rounded-xl sm:rounded-2xl shadow-lg p-4 sm:p-5 mb-4 sm:mb-6">
@@ -39,10 +39,10 @@ export function NoCoverageReport({ cities }) {
         <div className="flex items-center gap-2">
           <WifiOff className="w-5 h-5 text-red-500" />
           <div>
-            <h2 className="text-lg font-black text-gray-800">مناطق بدون تغطية (آخر {PERIOD_DAYS} يوم)</h2>
+            <h2 className="text-lg font-black text-gray-800">مدن «لا يوجد شبكة» (آخر {PERIOD_DAYS} يوم)</h2>
             <p className="text-xs text-gray-500">
-              طلبات انتهت دون أن يصل الطلب لأي مزود — يرى العميل «لا يوجد شبكة»
-              {requests ? ` · الإجمالي ${totalNoCoverage} طلب` : ''}
+              طلبات انتهت بلا قبول فرأى العميل «لا يوجد شبكة» — لم يصل لأحد = لا مزودين بالنطاق · لم يقبل أحد = وصل ولم يُقبل
+              {requests ? ` · الإجمالي ${totalNoNetwork} طلب` : ''}
             </p>
           </div>
         </div>
@@ -77,7 +77,7 @@ export function NoCoverageReport({ cities }) {
         </div>
       ) : shown.length === 0 ? (
         <div className="text-sm text-gray-400 py-3">
-          {onlyAboveThreshold ? `لا توجد مدينة أو منطقة فيها ${threshold} طلبات أو أكثر بلا تغطية` : 'لا توجد طلبات بلا تغطية'}
+          {onlyAboveThreshold ? `لا توجد مدينة أو منطقة فيها ${threshold} طلبات «لا يوجد شبكة» أو أكثر` : 'لا توجد طلبات «لا يوجد شبكة»'}
         </div>
       ) : (
         <div className="overflow-x-auto">
@@ -85,7 +85,9 @@ export function NoCoverageReport({ cities }) {
             <thead>
               <tr className="text-xs text-gray-500 border-b border-gray-100">
                 <th className="text-right font-semibold py-2 px-2">المدينة / المنطقة</th>
-                <th className="text-right font-semibold py-2 px-2">بلا تغطية</th>
+                <th className="text-right font-semibold py-2 px-2">لا يوجد شبكة</th>
+                <th className="text-right font-semibold py-2 px-2">لم يصل لأحد</th>
+                <th className="text-right font-semibold py-2 px-2">لم يقبل أحد</th>
                 <th className="text-right font-semibold py-2 px-2">كل الطلبات</th>
                 <th className="text-right font-semibold py-2 px-2">النسبة</th>
                 <th className="py-2 px-2" />
@@ -100,16 +102,18 @@ export function NoCoverageReport({ cities }) {
                       <span className="block text-[11px] text-gray-400">ليست ضمن المدن المسجّلة</span>
                     )}
                   </td>
-                  <td className="py-2 px-2 font-black text-red-600">{a.noCoverage}</td>
+                  <td className="py-2 px-2 font-black text-red-600">{a.noNetwork}</td>
+                  <td className="py-2 px-2 font-semibold text-gray-700">{a.noCoverage}</td>
+                  <td className="py-2 px-2 font-semibold text-amber-700">{a.notAccepted}</td>
                   <td className="py-2 px-2 text-gray-600">{a.total}</td>
-                  <td className="py-2 px-2 text-gray-600">{Math.round((a.noCoverage / a.total) * 100)}٪</td>
+                  <td className="py-2 px-2 text-gray-600">{Math.round((a.noNetwork / a.total) * 100)}٪</td>
                   <td className="py-2 px-2">
                     <a
                       href={`https://www.google.com/maps?q=${a.lat.toFixed(5)},${a.lng.toFixed(5)}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1 text-xs font-semibold text-teal-600 hover:underline"
-                      title="مركز الطلبات بلا تغطية على الخريطة"
+                      title="مركز طلبات «لا يوجد شبكة» على الخريطة"
                     >
                       <ExternalLink className="w-3.5 h-3.5" /> الخريطة
                     </a>

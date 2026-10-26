@@ -67,6 +67,7 @@ import {
   isLowWalletBalance,
   countProviderRemainingServices,
   LOW_BALANCE_SERVICE_THRESHOLD,
+  LOW_BALANCE_LABEL,
 } from '../utils/providerWallet';
 import { hasLocationTrackingIssue, inferLocationTrackingIssue, FRESH_MS, OK_MS } from '../utils/providerLocation';
 import { PhoneWithActions } from '../components/PhoneWithActions';
@@ -1139,17 +1140,21 @@ export const Providers = () => {
       );
     }
 
-    // فلتر الرصيد المنخفض: 3 خدمات أو أقل — للمزودين المفعّلين فقط (معتمدين)
-    // الحسابات الجديدة/قيد المراجعة غالباً رصيدها 0 ولا تُحسب هنا
+    // فلتر الرصيد المنخفض: خدمتان أو أقل — للمعتمدين الذين نفّذوا طلباً واحداً على الأقل.
+    // الفلتر لمتابعة الاستهلاك: المعتمد الذي لم ينفّذ أي طلب (الجديد) لا يدخل حتى لو رصيده 0،
+    // حتى لا يُحسب «مستهلكاً» وهو لم يعمل بعد. ينتظر تحميل قائمة المنفّذين.
     if (lowBalanceFilter) {
-      filtered = filtered.filter((p) => {
+      filtered = !providerIdsWithCompletedOrders ? [] : filtered.filter((p) => {
         const approvalStatus = p.approvalStatus || p.status;
         if (approvalStatus !== 'approved') return false;
+        if (!providerIdsWithCompletedOrders.has(String(p.id))) return false;
         return isLowWalletBalance(p, LOW_BALANCE_SERVICE_THRESHOLD, pricingSettings);
       });
-      filtered = [...filtered].sort(
-        (a, b) => resolveProviderWalletBalance(a) - resolveProviderWalletBalance(b)
-      );
+      // الأكثر إلحاحاً أولاً: الطلبات المتبقية (تحترم الرصيد القديم 5 والجديد 10) ثم الرصيد
+      filtered = filtered
+        .map((p) => ({ p, left: countProviderRemainingServices(p, pricingSettings), bal: resolveProviderWalletBalance(p) }))
+        .sort((a, b) => a.left - b.left || a.bal - b.bal)
+        .map(({ p }) => p);
     }
 
     // مزودون نفّذوا طلباً واحداً على الأقل مرّ بمراحل التنفيذ من تطبيق المزود
@@ -1956,9 +1961,12 @@ export const Providers = () => {
                     className="w-4 h-4 flex-shrink-0 text-red-600 rounded focus:ring-red-500 cursor-pointer"
                   />
                   <label htmlFor="lowBalance" className="text-sm font-bold text-red-700 cursor-pointer truncate">
-                    رصيد منخفض — مفعّلين ({LOW_BALANCE_SERVICE_THRESHOLD} خدمات أو أقل)
+                    رصيد منخفض — نفّذوا طلبات (يكفي {LOW_BALANCE_LABEL})
                   </label>
-                  {lowBalanceFilter && (
+                  {lowBalanceFilter && loadingExecutedOrdersFilter && (
+                    <Loader2 size={14} className="animate-spin text-red-600 flex-shrink-0" />
+                  )}
+                  {lowBalanceFilter && !loadingExecutedOrdersFilter && (
                     <span className="text-xs font-semibold text-red-600 bg-white px-2 py-0.5 rounded-full border border-red-100 flex-shrink-0">
                       {filteredProviders.length}
                     </span>
@@ -2094,7 +2102,7 @@ export const Providers = () => {
                           : executedOrdersFilter
                             ? 'لا يوجد مزودون نفّذوا طلباً فعلياً'
                             : lowBalanceFilter
-                              ? `لا يوجد مزودون مفعّلون بـ ${LOW_BALANCE_SERVICE_THRESHOLD} خدمات متبقية أو أقل`
+                              ? `لا يوجد مزودون نفّذوا طلبات ورصيدهم يكفي ${LOW_BALANCE_LABEL}`
                               : locationIssueFilter
                                 ? 'لا يوجد مزودون معتمدون بمشكلة في تتبع الموقع'
                                 : 'لا توجد نتائج'}

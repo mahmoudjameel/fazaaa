@@ -1,5 +1,7 @@
 /**
- * طلبات «لا توجد تغطية»: انتهت timed_out دون أن يُشعَر أي مزود (البحث لم يجد أحداً في النطاق).
+ * طلبات «لا يوجد شبكة»: كل طلب انتهى بحثه بلا قبول (timed_out) — يرى العميل نفس الرسالة في الحالتين:
+ *   • لم يصل لأحد (noCoverage): لم يُشعَر أي مزود — لا مزودين في النطاق.
+ *   • لم يقبل أحد (notAccepted): أُشعر مزودون ولم يقبل أحد.
  * الطلب لا يحمل حقل مدينة — نحدّدها من إحداثياته: أقرب مدينة مسجّلة ضمن serviceRadius،
  * وإلا تُجمَع في منطقة شبكية (~20كم) خارج المدن مع بعدها واتجاهها من أقرب مدينة.
  */
@@ -31,14 +33,40 @@ const cityCoords = (c) => {
   return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
 };
 
+const STALE_SEARCH_GRACE_MS = 2 * 60 * 1000;
+
+const STALE_SEARCH_NO_DEADLINE_MS = 3 * 60 * 1000; // كما في resolveDisplayStatus بصفحة الطلبات
+const toMs = (v) => v?.toMillis?.() ?? (v ? Date.parse(v) : NaN);
+
+/** timed_out — أو ما زال searching بعد مهلته (تأخرت مهمة الإنهاء) والعميل رأى الرسالة */
+export const isNetworkTimeoutRequest = (r) => {
+  if (r?.status === 'timed_out') return true;
+  if (r?.status !== 'searching') return false;
+  const endsMs = toMs(r.searchEndsAt);
+  if (Number.isFinite(endsMs)) return endsMs + STALE_SEARCH_GRACE_MS < Date.now();
+  const sinceMs = toMs(r.updatedAt) || toMs(r.createdAt);
+  return Number.isFinite(sinceMs) && sinceMs + STALE_SEARCH_NO_DEADLINE_MS < Date.now();
+};
+
 export const isNoCoverageRequest = (r) =>
-  r?.status === 'timed_out' && !(Array.isArray(r.notifiedProviders) && r.notifiedProviders.length > 0);
+  isNetworkTimeoutRequest(r) && !(Array.isArray(r.notifiedProviders) && r.notifiedProviders.length > 0);
+
+/** إحداثيات الطلب: coordinates ثم address، بصيغة lat/lng أو latitude/longitude. null/'' و(0,0) غير صالحة */
+const toCoord = (v) => (v == null || v === '' ? NaN : Number(v));
+const requestCoords = (r) => {
+  for (const c of [r?.coordinates, r?.address]) {
+    const lat = toCoord(c?.latitude ?? c?.lat);
+    const lng = toCoord(c?.longitude ?? c?.lng);
+    if (Number.isFinite(lat) && Number.isFinite(lng) && !(lat === 0 && lng === 0)) return { lat, lng };
+  }
+  return null;
+};
 
 /**
  * @param {Array} requests طلبات الفترة (data + id)
  * @param {Array} cities مستندات cities (name, coordinates, serviceRadius)
- * @returns {Array<{ key, label, isCity, noCoverage, total, lat, lng, nearestCity, distanceFromCityKm }>}
- *   مرتبة تنازلياً بعدد طلبات بلا تغطية
+ * @returns {Array<{ key, label, isCity, noNetwork, noCoverage, notAccepted, total, lat, lng, nearestCity, distanceFromCityKm }>}
+ *   مرتبة تنازلياً بعدد طلبات «لا يوجد شبكة»
  */
 export function groupNoCoverageByArea(requests, cities) {
   const cityList = (cities || [])
@@ -75,17 +103,18 @@ export function groupNoCoverageByArea(requests, cities) {
   };
 
   (requests || []).forEach((r) => {
-    const lat = Number(r?.coordinates?.latitude);
-    const lng = Number(r?.coordinates?.longitude);
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    const pos = requestCoords(r);
+    if (!pos) return;
+    const { lat, lng } = pos;
     const a = areaFor(lat, lng);
     if (!areas.has(a.key)) {
-      areas.set(a.key, { ...a, noCoverage: 0, total: 0, sumLat: 0, sumLng: 0, pointCount: 0 });
+      areas.set(a.key, { ...a, noNetwork: 0, noCoverage: 0, total: 0, sumLat: 0, sumLng: 0, pointCount: 0 });
     }
     const area = areas.get(a.key);
     area.total += 1;
-    if (isNoCoverageRequest(r)) {
-      area.noCoverage += 1;
+    if (isNetworkTimeoutRequest(r)) {
+      area.noNetwork += 1;
+      if (!(Array.isArray(r.notifiedProviders) && r.notifiedProviders.length > 0)) area.noCoverage += 1;
       area.sumLat += lat;
       area.sumLng += lng;
       area.pointCount += 1;
@@ -93,7 +122,7 @@ export function groupNoCoverageByArea(requests, cities) {
   });
 
   return [...areas.values()]
-    .filter((a) => a.noCoverage > 0)
+    .filter((a) => a.noNetwork > 0)
     .map((a) => {
       const lat = a.sumLat / a.pointCount;
       const lng = a.sumLng / a.pointCount;
@@ -110,7 +139,9 @@ export function groupNoCoverageByArea(requests, cities) {
         key: a.key,
         label,
         isCity: a.isCity,
+        noNetwork: a.noNetwork,
         noCoverage: a.noCoverage,
+        notAccepted: a.noNetwork - a.noCoverage,
         total: a.total,
         lat,
         lng,
@@ -118,5 +149,5 @@ export function groupNoCoverageByArea(requests, cities) {
         distanceFromCityKm,
       };
     })
-    .sort((x, y) => y.noCoverage - x.noCoverage);
+    .sort((x, y) => y.noNetwork - x.noNetwork || y.noCoverage - x.noCoverage);
 }
