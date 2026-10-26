@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Search, MessageSquare, AlertTriangle, CheckCircle, Clock, User, Calendar, Filter, Phone, MapPin, Wrench, ExternalLink } from 'lucide-react';
-import { collection, getDocs, query, orderBy, doc, getDoc, updateDoc } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
 import { formatOrderNumberLabel } from '../utils/orderNumber';
+import { loadOpenedIds, rememberOpenedId, isOpenedUnderFilter } from '../utils/openedItems';
 
 export const Complaints = () => {
   const [complaintsList, setComplaintsList] = useState([]);
@@ -20,9 +21,19 @@ export const Complaints = () => {
   const [adminNoteText, setAdminNoteText] = useState('');
   const [requestDetails, setRequestDetails] = useState(null);
   const [requestProviderDetails, setRequestProviderDetails] = useState(null);
+  const [openedIds, setOpenedIds] = useState(() => loadOpenedIds('complaints'));
 
+  // استماع حي — رسائل المزودين الجديدة تظهر دون تحديث الصفحة
   useEffect(() => {
-    fetchComplaints();
+    const q = query(collection(db, 'complaints'), orderBy('createdAt', 'desc'));
+    const unsub = onSnapshot(q, (snapshot) => {
+      setComplaintsList(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })));
+      setLoading(false);
+    }, (error) => {
+      console.error('Error fetching complaints:', error);
+      setLoading(false);
+    });
+    return () => unsub();
   }, []);
 
   useEffect(() => {
@@ -106,34 +117,18 @@ export const Complaints = () => {
 
   useEffect(() => {
     filterComplaints();
-  }, [complaintsList, searchTerm, statusFilter, typeFilter, priorityFilter]);
+  }, [complaintsList, searchTerm, statusFilter, typeFilter, priorityFilter, openedIds]);
 
   useEffect(() => {
     setAdminNoteText(selectedComplaint?.adminNotes || '');
   }, [selectedComplaint]);
 
-  const fetchComplaints = async () => {
-    try {
-      const complaintsRef = collection(db, 'complaints');
-      const q = query(complaintsRef, orderBy('createdAt', 'desc'));
-      const querySnapshot = await getDocs(q);
-      const complaintsData = [];
-      querySnapshot.forEach((doc) => {
-        complaintsData.push({ id: doc.id, ...doc.data() });
-      });
-      setComplaintsList(complaintsData);
-    } catch (error) {
-      console.error('Error fetching complaints:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const filterComplaints = () => {
     let filtered = complaintsList;
 
     if (statusFilter !== 'all') {
-      filtered = filtered.filter((c) => c.status === statusFilter);
+      // الشكوى التي فُتحت تبقى ظاهرة بعد تغيّر حالتها
+      filtered = filtered.filter((c) => c.status === statusFilter || isOpenedUnderFilter(openedIds, c.id, statusFilter));
     }
 
     if (typeFilter !== 'all') {
@@ -415,7 +410,7 @@ export const Complaints = () => {
                   </div>
                   <div className="text-left sm:text-right sm:ml-4">
                     <button
-                      onClick={() => setSelectedComplaint(complaint)}
+                      onClick={() => { setSelectedComplaint(complaint); setOpenedIds((prev) => rememberOpenedId('complaints', complaint.id, statusFilter, prev)); }}
                       className="flex items-center justify-center sm:justify-start gap-2 px-3 sm:px-4 py-2 bg-green-50 hover:bg-green-100 rounded-lg transition-all text-xs sm:text-sm font-semibold w-full sm:w-auto"
                     >
                       <Filter className="w-4 h-4" />

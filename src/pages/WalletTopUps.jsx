@@ -22,6 +22,7 @@ import {
 } from '../services/walletTopupsService';
 import { WalletPackagesManager } from '../components/WalletPackagesManager';
 import { DailySettlementSummary } from '../components/DailySettlementSummary';
+import { RepairTopupReferences } from '../components/RepairTopupReferences';
 
 const formatDt = (value) => {
   if (!value) return '—';
@@ -187,9 +188,10 @@ export default function WalletTopUps() {
   return (
     <div className="space-y-6">
       <div className="rounded-xl bg-blue-50 border border-blue-100 p-4 text-sm text-blue-900">
-        مرجع فزّاعين هو مرجع الشحن داخل النظام، وRRN هو الرقم المرجعي عند بوابة الدفع — استخدمه للمطابقة مع neoleap. رقم العملية الظاهر في تطبيق neoleap منفصل ولا يصل عبر الربط الحالي.
+        للمطابقة مع neoleap: مرجع فزّاعين (FZ…) يُرسل للبوابة كـ Track ID وهو الأسهل للبحث. Trans ID في العمليات السابقة خُزّن مقرّباً (آخر خانتين أو ثلاث مختلفة عن البوابة) فلا تعتمد عليه فيها؛ يطابق البوابة في العمليات بعد تحديث الربط. RRN رقم شبكة البطاقات (مدى/فيزا) ويظهر في تفاصيل العملية وكشف البنك.
         حالة «مدفوع / مشحون» تعني تأكيد الدفع وإضافة الرصيد، ولا تؤكد وصول التسوية للحساب البنكي. المبلغ هنا قبل رسوم البنك.
       </div>
+      <RepairTopupReferences />
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">عمليات شحن المزودين</h1>

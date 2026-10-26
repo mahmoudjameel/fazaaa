@@ -7,6 +7,7 @@ import { collection, getDocs, query, orderBy, doc, updateDoc, onSnapshot, server
 import { db } from '../services/firebase';
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
+import { loadOpenedIds, rememberOpenedId, isOpenedUnderFilter } from '../utils/openedItems';
 
 const STATUS_OPTIONS = [
   { key: 'open', label: 'مفتوحة', color: 'amber', icon: Clock },
@@ -54,6 +55,7 @@ export const SupportTickets = () => {
   const [replyText, setReplyText] = useState('');
   const [sending, setSending] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [openedIds, setOpenedIds] = useState(() => loadOpenedIds('support_tickets'));
 
   useEffect(() => {
     const q = query(collection(db, 'support_tickets'), orderBy('createdAt', 'desc'));
@@ -72,7 +74,8 @@ export const SupportTickets = () => {
   useEffect(() => {
     let filtered = [...tickets];
     if (statusFilter !== 'all') {
-      filtered = filtered.filter(t => t.status === statusFilter);
+      // التذكرة التي فُتحت تبقى ظاهرة بعد تغيّر حالتها بالرد
+      filtered = filtered.filter(t => t.status === statusFilter || isOpenedUnderFilter(openedIds, t.id, statusFilter));
     }
     if (categoryFilter !== 'all') {
       filtered = filtered.filter(t => t.category === categoryFilter);
@@ -93,7 +96,7 @@ export const SupportTickets = () => {
       );
     }
     setFilteredTickets(filtered);
-  }, [tickets, statusFilter, categoryFilter, sourceFilter, searchTerm]);
+  }, [tickets, statusFilter, categoryFilter, sourceFilter, searchTerm, openedIds]);
 
   useEffect(() => {
     if (selectedTicket) {
@@ -260,7 +263,7 @@ export const SupportTickets = () => {
               {filteredTickets.map((ticket) => (
                 <div
                   key={ticket.id}
-                  onClick={() => { setSelectedTicket(ticket); setReplyText(ticket.adminReply || ''); }}
+                  onClick={() => { setSelectedTicket(ticket); setReplyText(ticket.adminReply || ''); setOpenedIds((prev) => rememberOpenedId('support_tickets', ticket.id, statusFilter, prev)); }}
                   className={`bg-white rounded-xl p-4 border cursor-pointer transition-all hover:shadow-md ${selectedTicket?.id === ticket.id ? 'border-primary-orange shadow-md ring-1 ring-primary-orange/20' : 'border-gray-100'}`}
                 >
                   <div className="flex items-start justify-between gap-3 mb-2">
