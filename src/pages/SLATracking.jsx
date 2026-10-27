@@ -5,9 +5,7 @@ import {
 } from 'lucide-react';
 import { format, subDays, isAfter, startOfDay } from 'date-fns';
 import { ar } from 'date-fns/locale';
-import { collection, query, orderBy, onSnapshot, getDocs } from 'firebase/firestore';
-import { db } from '../services/firebase';
-import { getAllCities } from '../services/adminService';
+import { getAllCities, getAllProviders, listenToAllRequests, listenToRequestsSince } from '../services/adminService';
 import SAUDI_CITIES_FALLBACK from '../services/cities.json';
 import { formatOrderNumberLabel } from '../utils/orderNumber';
 import {
@@ -56,7 +54,7 @@ const KPICard = ({ icon: Icon, label, value, sub, iconBg, iconColor, valueColor 
 export const SLATracking = () => {
   const [requests, setRequests]       = useState([]);
   const [loading, setLoading]         = useState(true);
-  const [timeFilter, setTimeFilter]   = useState('all');
+  const [timeFilter, setTimeFilter]   = useState('month');
   const [cityFilter, setCityFilter]   = useState('all');
   const [slaFilter, setSlaFilter]     = useState('over_15');
   const [providersDict, setProviders] = useState({});
@@ -66,21 +64,27 @@ export const SLATracking = () => {
   useEffect(() => {
     getAllCities().then(r => { if (r.success && r.cities.length) setCities(r.cities); });
 
-    getDocs(query(collection(db, 'providers'))).then(snap => {
+    getAllProviders().then((r) => {
       const d = {};
-      snap.forEach(doc => { d[doc.id] = doc.data(); });
+      (r.providers || []).forEach((p) => { d[p.id] = p; });
       setProviders(d);
     }).catch(console.error);
-
-    const unsub = onSnapshot(
-      query(collection(db, 'requests'), orderBy('createdAt', 'desc')),
-      snap => {
-        setRequests(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-        setLoading(false);
-      }
-    );
-    return unsub;
   }, []);
+
+  // الطلبات من السيرفر حسب الفترة فقط (نفس مستمع صفحة الطلبات المشترك) — «الكل» وحده ينزّل كل الطلبات
+  useEffect(() => {
+    setLoading(true);
+    const now = Date.now();
+    const sinceMs =
+      timeFilter === 'today' ? startOfDay(new Date(now)).getTime() :
+      timeFilter === 'week'  ? Math.floor((now - 7 * 86400000) / 60000) * 60000 :
+      timeFilter === 'month' ? Math.floor((now - 30 * 86400000) / 60000) * 60000 : null;
+    const onData = (reqs) => {
+      setRequests(reqs || []);
+      setLoading(false);
+    };
+    return sinceMs != null ? listenToRequestsSince(sinceMs, onData) : listenToAllRequests(onData);
+  }, [timeFilter]);
 
   // ── حساب مدة الاستجابة لكل طلب — نفس buildDistanceInfoFromRequest في تطبيق المزود ──
   const withDuration = useMemo(() =>

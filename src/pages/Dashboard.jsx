@@ -48,18 +48,30 @@ export const Dashboard = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
       try {
-        const [s, a] = await Promise.all([getDashboardStats(), getRecentActivity()]);
+        // الأعداد أولاً (سريعة) ثم الإيراد/العمولة/النشطون من قائمة المكتملة
+        const [s, a] = await Promise.all([
+          getDashboardStats({ withCompletedTotals: false }),
+          getRecentActivity(),
+        ]);
+        if (cancelled) return;
         setStats(s.stats);
         setActivities(a.activities);
+        setLoading(false);
+        const full = await getDashboardStats();
+        if (!cancelled) setStats(full.stats);
       } catch (e) {
         console.error('Dashboard fetch error:', e);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     })();
+    return () => { cancelled = true; };
   }, []);
+
+  const pendingValue = (v, fmt = (x) => x) => (v == null ? '…' : fmt(v));
 
   if (loading) {
     return (
@@ -91,7 +103,7 @@ export const Dashboard = () => {
     },
     {
       title: 'المزودون النشطون',
-      value: stats?.activeProviders ?? 0,
+      value: pendingValue(stats?.activeProviders),
       icon: UserCheck,
       iconBg: 'bg-emerald-50',
       iconColor: 'text-emerald-600',
@@ -146,7 +158,7 @@ export const Dashboard = () => {
     },
     {
       title: 'الإيرادات',
-      value: `${(stats?.totalRevenue ?? 0).toLocaleString()} ر.س`,
+      value: pendingValue(stats?.totalRevenue, (v) => `${v.toLocaleString()} ر.س`),
       icon: DollarSign,
       iconBg: 'bg-green-50',
       iconColor: 'text-green-600',
@@ -156,7 +168,7 @@ export const Dashboard = () => {
     },
     {
       title: 'إجمالي العمولات',
-      value: `${(stats?.totalCommission ?? 0).toLocaleString()} ر.س`,
+      value: pendingValue(stats?.totalCommission, (v) => `${v.toLocaleString()} ر.س`),
       icon: Banknote,
       iconBg: 'bg-orange-50',
       iconColor: 'text-orange-500',

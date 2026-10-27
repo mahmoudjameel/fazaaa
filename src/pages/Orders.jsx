@@ -361,7 +361,8 @@ export const Orders = () => {
   const [serviceChangeFilter, setServiceChangeFilter] = useState('all');
   const [executedProviderIds, setExecutedProviderIds] = useState(null);
   const [loadingExecutedProviders, setLoadingExecutedProviders] = useState(false);
-  const [dateRangeFilter, setDateRangeFilter] = useState('all');
+  // آخر شهر افتراضياً — «كل الفترات» تنزّل كل الطلبات (~10MB) فتبطئ فتح الصفحة
+  const [dateRangeFilter, setDateRangeFilter] = useState('30d');
 
   useEffect(() => {
     // جلب المزودين لغرض حساب مسافة SLA — يستخدم كاش getAllProviders إن وُجد
@@ -2124,6 +2125,14 @@ export const Orders = () => {
             </div>
           )}
         </div>
+        {searchTerm.trim() && dateRangeFilter !== 'all' && (
+          <p className="text-xs text-gray-500 -mt-1">
+            البحث ضمن الفترة المحددة فقط —{' '}
+            <button type="button" onClick={() => setDateRangeFilter('all')} className="font-bold text-teal-700 underline">
+              ابحث في كل الفترات
+            </button>
+          </p>
+        )}
 
         {/* صف الفلاتر */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">

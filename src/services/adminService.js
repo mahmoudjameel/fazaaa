@@ -18,6 +18,7 @@ import {
   runTransaction,
   collectionGroup,
   arrayUnion,
+  getCountFromServer,
 } from 'firebase/firestore';
 import { auth, db, functions } from './firebase';
 import { httpsCallable } from 'firebase/functions';
@@ -1344,56 +1345,64 @@ function toDate(ts) {
   return isNaN(d.getTime()) ? null : d;
 }
 
-export const getDashboardStats = async ({ force = false } = {}) => {
+const countRequests = async (...constraints) => {
+  const snap = await getCountFromServer(query(collection(db, 'requests'), ...constraints));
+  return snap.data().count;
+};
+
+const startOfLocalDay = (offsetDays = 0) => {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + offsetDays);
+  return d;
+};
+
+// الأعداد تُحسب على السيرفر والإيراد من قائمة المكتملة المشتركة — كانت الصفحة تنزّل كل الطلبات والعملاء (~10MB، ١٤ ثانية)
+// withCompletedTotals=false: الأعداد فقط (ثانية تقريباً) — الإيراد/العمولة/النشطون null حتى يكتمل التحميل الكامل
+export const getDashboardStats = async ({ force = false, withCompletedTotals = true } = {}) => {
   try {
-    const cacheKey = 'getDashboardStats';
+    const cacheKey = withCompletedTotals ? 'getDashboardStats' : 'getDashboardStats:counts';
     if (!force) {
-      const cached = getCached(cacheKey, 30_000);
+      const cached = getCached(cacheKey, 60_000);
       if (cached) return cached;
     }
-    const [providersSnapshot, requestsSnapshot, ordersSnapshot, customersSnapshot] = await Promise.all([
-      getDocs(collection(db, 'providers')),
-      getDocs(collection(db, 'requests')),
-      getDocs(collection(db, 'orders')),
-      getDocs(collection(db, 'customers')),
+    const yesterdayStart = startOfLocalDay(-1);
+    const todayStartMs = startOfLocalDay(0).getTime();
+
+    const [
+      providersResult,
+      customersCount,
+      totalOrders,
+      completedOrders,
+      activeOrders,
+      cancelledOrders,
+      recentSnap,
+      completedByProvider,
+    ] = await Promise.all([
+      getAllProviders({ force }),
+      getCountFromServer(collection(db, 'customers')).then((r) => r.data().count),
+      countRequests(),
+      countRequests(where('status', '==', 'completed')),
+      countRequests(where('status', 'in', ACTIVE_REQUEST_STATUSES)),
+      countRequests(where('status', 'in', CANCELLED_REQUEST_STATUSES)),
+      getDocs(query(collection(db, 'requests'), where('createdAt', '>=', Timestamp.fromDate(yesterdayStart)))),
+      withCompletedTotals ? getProviderIdsWithCompletedOrders() : null,
     ]);
 
-    const providers = [];
-    providersSnapshot.forEach((doc) => providers.push({ ...doc.data(), id: doc.id }));
+    const providers = providersResult.providers || [];
+    // الإيراد والعمولة ومن أكمل طلباً — من قائمة المكتملة المشتركة (مخزّنة ٥ دقائق بين الصفحات)
+    const completedTotals = completedByProvider?.completedTotals || null;
+    const providersWithCompletedOrders = new Set(completedByProvider?.anyCompletedProviderIds || []);
+    const approvedProviders = providers.filter((p) => (p.approvalStatus || p.status) === 'approved');
 
-    const customers = [];
-    customersSnapshot.forEach((doc) => customers.push({ ...doc.data(), id: doc.id }));
-
-    // دمج الطلبات من المجموعتين (requests + orders) بدون تكرار
-    const allOrdersMap = new Map();
-    requestsSnapshot.forEach((doc) => allOrdersMap.set(doc.id, { id: doc.id, ...doc.data() }));
-    ordersSnapshot.forEach((doc) => {
-      if (!allOrdersMap.has(doc.id)) allOrdersMap.set(doc.id, { id: doc.id, ...doc.data() });
+    const recentOrders = recentSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const todayOrders = [];
+    const yesterdayOrders = [];
+    recentOrders.forEach((o) => {
+      const d = toDate(o.createdAt);
+      if (!d) return;
+      (d.getTime() >= todayStartMs ? todayOrders : yesterdayOrders).push(o);
     });
-    const allOrders = Array.from(allOrdersMap.values());
-
-    const completed = allOrders.filter((o) => o.status === 'completed');
-    const activeOrders = allOrders.filter((o) => ACTIVE_REQUEST_STATUSES.includes(o.status));
-    const cancelledOrders = allOrders.filter((o) => CANCELLED_REQUEST_STATUSES.includes(o.status));
-
-    const providersWithCompletedOrders = new Set(
-      completed
-        .map((o) => (o.providerId ? String(o.providerId) : ''))
-        .filter(Boolean)
-    );
-
-    const approvedProviders = providers.filter((p) => {
-      const approvalStatus = p.approvalStatus || p.status;
-      return approvalStatus === 'approved';
-    });
-
-    const now = new Date();
-    const todayStr = now.toDateString();
-    const yesterday = new Date(now); yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = yesterday.toDateString();
-
-    const todayOrders = allOrders.filter((o) => { const d = toDate(o.createdAt); return d && d.toDateString() === todayStr; });
-    const yesterdayOrders = allOrders.filter((o) => { const d = toDate(o.createdAt); return d && d.toDateString() === yesterdayStr; });
 
     const todayCompleted = todayOrders.filter((o) => o.status === 'completed');
     const yesterdayCompleted = yesterdayOrders.filter((o) => o.status === 'completed');
@@ -1416,26 +1425,20 @@ export const getDashboardStats = async ({ force = false } = {}) => {
 
     const stats = {
       totalProviders: providers.length,
-      totalCustomers: customers.length,
+      totalCustomers: customersCount,
       approvedProviders: approvedProviders.length,
       // نشط = معتمد ونفّذ طلب مكتمل واحد على الأقل (مو مجرد isActive/isOnline)
-      activeProviders: approvedProviders.filter((p) =>
-        providersWithCompletedOrders.has(String(p.id))
-      ).length,
-      onlineProviders: providers.filter((p) => {
-        const approvalStatus = p.approvalStatus || p.status;
-        return approvalStatus === 'approved' && p.isOnline === true;
-      }).length,
-      pendingProviders: providers.filter((p) => {
-        const approvalStatus = p.approvalStatus || p.status;
-        return approvalStatus === 'pending';
-      }).length,
-      totalOrders: allOrders.length,
-      completedOrders: completed.length,
-      activeOrders: activeOrders.length,
-      cancelledOrders: cancelledOrders.length,
-      totalRevenue: completed.reduce((sum, o) => sum + (Number(o.price) || Number(o.servicePrice) || 0), 0),
-      totalCommission: completed.reduce((sum, o) => sum + (Number(o.commission) || 0), 0),
+      activeProviders: completedByProvider
+        ? approvedProviders.filter((p) => providersWithCompletedOrders.has(String(p.id))).length
+        : null,
+      onlineProviders: approvedProviders.filter((p) => p.isOnline === true).length,
+      pendingProviders: providers.filter((p) => (p.approvalStatus || p.status) === 'pending').length,
+      totalOrders,
+      completedOrders,
+      activeOrders,
+      cancelledOrders,
+      totalRevenue: completedTotals ? Number(completedTotals.revenue) || 0 : null,
+      totalCommission: completedTotals ? Number(completedTotals.commission) || 0 : null,
       todayOrders: todayOrders.length,
       // نسب التغيير (اليوم مقارنة بالأمس)
       changeProviders: calcChange(providers.length, providers.length),
@@ -2947,10 +2950,30 @@ function hasProviderExecutionEvidence(data) {
  * لا يُحتسب الطلب إلا إذا كان مكتملاً ومرّ بمراحل تنفيذ المزود من التطبيق.
  * @returns {Promise<{ success: boolean, providerIds: string[], counts: Record<string, number> }>}
  */
-export const getProviderIdsWithCompletedOrders = async () => {
+const COMPLETED_ORDERS_CACHE_MS = 5 * 60 * 1000;
+let completedOrdersInFlight = null;
+
+// كل الطلبات المكتملة (~4MB) — تُشارَك بين المزودين/الطلبات/الرئيسية بدل تنزيلها في كل صفحة
+export const getProviderIdsWithCompletedOrders = async ({ force = false } = {}) => {
+  const cacheKey = 'getProviderIdsWithCompletedOrders';
+  if (!force) {
+    const cached = getCached(cacheKey, COMPLETED_ORDERS_CACHE_MS);
+    if (cached) return cached;
+    if (completedOrdersInFlight) return completedOrdersInFlight;
+  }
+  completedOrdersInFlight = loadProviderIdsWithCompletedOrders()
+    .then((result) => setCached(cacheKey, result))
+    .finally(() => { completedOrdersInFlight = null; });
+  return completedOrdersInFlight;
+};
+
+const loadProviderIdsWithCompletedOrders = async () => {
   try {
     const seenRequestIds = new Set();
     const counts = {};
+    // للرئيسية: إجماليات كل المكتملة + من أكمل طلباً (بدون شرط إثبات التنفيذ)
+    const completedTotals = { count: 0, revenue: 0, commission: 0 };
+    const anyCompletedProviderIds = new Set();
 
     const collectFromSnap = (snap) => {
       snap.forEach((d) => {
@@ -2958,8 +2981,12 @@ export const getProviderIdsWithCompletedOrders = async () => {
         seenRequestIds.add(d.id);
 
         const data = d.data() || {};
+        completedTotals.count += 1;
+        completedTotals.revenue += Number(data.price) || Number(data.servicePrice) || 0;
+        completedTotals.commission += Number(data.commission) || 0;
         const providerId = data.providerId ? String(data.providerId) : '';
         if (!providerId) return;
+        anyCompletedProviderIds.add(providerId);
         if (!hasProviderExecutionEvidence(data)) return;
 
         counts[providerId] = (counts[providerId] || 0) + 1;
@@ -2984,7 +3011,13 @@ export const getProviderIdsWithCompletedOrders = async () => {
       console.warn('completed orders query:', e.message);
     }
 
-    return { success: true, providerIds: Object.keys(counts), counts };
+    return {
+      success: true,
+      providerIds: Object.keys(counts),
+      counts,
+      completedTotals,
+      anyCompletedProviderIds: Array.from(anyCompletedProviderIds),
+    };
   } catch (error) {
     console.error('Get providers with completed orders error:', error);
     throw error;
