@@ -2760,6 +2760,15 @@ export const resolveProviderOrderOutcome = (order, providerId) => {
   return 'other';
 };
 
+/** طلب وصل المزود فرفضه ولم يُسند إليه — حالته العامة (مثل «انتهت المهلة») لا تخصّه */
+export const didProviderRejectOrder = (order, providerId) => {
+  const pid = String(providerId || '');
+  if (!pid || String(order?.providerId || '') === pid) return false;
+  const history = Array.isArray(order?.history) ? order.history : [];
+  return history.some((h) => String(h?.providerId || '') === pid && h?.action === 'provider_rejection') ||
+    (Array.isArray(order?.rejectedProviders) && order.rejectedProviders.map(String).includes(pid));
+};
+
 export const PROVIDER_OUTCOME_LABELS = {
   completed: 'مكتمل',
   active: 'نشط',

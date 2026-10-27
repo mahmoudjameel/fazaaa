@@ -30,6 +30,7 @@ import {
   addOrUpdateProviderDocument,
   getProviderOrderStats,
   PROVIDER_OUTCOME_LABELS,
+  didProviderRejectOrder,
   getProviderCancellationCounts,
   getProviderPerformanceSince,
   getProviderIdsWithCompletedOrders,
@@ -3882,6 +3883,8 @@ export const Providers = () => {
                                         // طلب اعتذر عنه المزود ثم أُعيد للبحث/أكمله غيره — حالته العامة لا تخصّ هذا المزود
                                         const badge = order.providerOutcome === 'provider_cancelled' && order.providerId !== selectedProvider?.id
                                           ? { text: 'اعتذر المزود', color: 'bg-red-100 text-red-700' }
+                                          : didProviderRejectOrder(order, selectedProvider?.id)
+                                          ? { text: 'رفضه المزود', color: 'bg-gray-100 text-gray-700' }
                                           : (badges[order.status] || { text: order.status, color: 'bg-gray-100 text-gray-700' });
                                         return (
                                           <tr

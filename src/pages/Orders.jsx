@@ -51,6 +51,7 @@ import {
   getProviderIdsWithCompletedOrders,
   getProviderOrderStats,
   PROVIDER_OUTCOME_LABELS,
+  didProviderRejectOrder,
   getAllCities,
   phonesMatchForSearch,
 } from '../services/adminService';
@@ -3975,6 +3976,9 @@ export const Orders = () => {
                                   if ((didCancelThis || order.providerOutcome === 'provider_cancelled') && order.providerId !== selectedProvider.id) {
                                     statusText = "تم الاعتذار عنه";
                                     statusColor = "bg-red-100 text-red-700";
+                                  } else if (didProviderRejectOrder(order, selectedProvider.id)) {
+                                    statusText = "رفضه المزود";
+                                    statusColor = "bg-gray-100 text-gray-700";
                                   }
 
                                   const orderDate = order.createdAt?.toMillis
