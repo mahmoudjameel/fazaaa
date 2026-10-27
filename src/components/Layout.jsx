@@ -173,7 +173,9 @@ export const Layout = () => {
           ? 'لا يوجد مزودون'
           : first.type === 'all_rejected'
             ? 'جميع المزودين رفضوا'
-            : 'انتهاء وقت البحث';
+            : first.type === 'late_arrival'
+              ? 'تأخر المزود عن الوصول'
+              : 'انتهاء وقت البحث';
       raiseAlert({
         kind: 'escalation_priority',
         title: priorityAdded.length === 1

@@ -61,6 +61,21 @@ const TYPE_CONFIG = {
         summaryText: 'text-blue-700',
         summaryCount: 'text-blue-900',
     },
+    late_arrival: {
+        label: 'تأخر المزود عن الوصول',
+        shortLabel: 'تأخر الوصول',
+        icon: Clock,
+        cardBorder: 'border-purple-200',
+        headerBg: 'bg-purple-50',
+        badgeBg: 'bg-purple-100',
+        badgeText: 'text-purple-700',
+        iconBg: 'bg-purple-100',
+        iconColor: 'text-purple-600',
+        dotColor: 'bg-purple-500',
+        summaryBg: 'bg-purple-50 border-purple-200',
+        summaryText: 'text-purple-700',
+        summaryCount: 'text-purple-900',
+    },
 };
 
 const FALLBACK_TYPE = TYPE_CONFIG.search_timeout;
@@ -240,6 +255,7 @@ export const Escalations = () => {
         no_providers: escalations.filter((e) => e.type === 'no_providers' && isUnresolvedEscalation(e)).length,
         all_rejected: escalations.filter((e) => e.type === 'all_rejected' && isUnresolvedEscalation(e)).length,
         search_timeout: escalations.filter((e) => e.type === 'search_timeout' && isUnresolvedEscalation(e)).length,
+        late_arrival: escalations.filter((e) => e.type === 'late_arrival' && isUnresolvedEscalation(e)).length,
     };
 
     // ── مساعد وقت ─────────────────────────────────────────────────────────────
@@ -299,7 +315,7 @@ export const Escalations = () => {
             </div>
 
             {/* ── بطاقات تلخيص الأنواع ── */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                 {Object.entries(TYPE_CONFIG).map(([type, cfg]) => {
                     const Icon = cfg.icon;
                     const isActive = typeFilter === type;
@@ -460,7 +476,26 @@ export const Escalations = () => {
                                                 </button>
                                             )}
 
-                                            {/* عدادات المزودين */}
+                                            {/* تأخر الوصول: المزود والوقت بدل عدادات البحث */}
+                                            {esc.type === 'late_arrival' ? (
+                                            <div className="flex flex-wrap gap-3">
+                                                <div className="flex items-center gap-1.5 text-sm text-gray-600 bg-gray-50 px-3 py-1.5 rounded-xl">
+                                                    <Users size={13} className="text-gray-400" />
+                                                    <strong className="text-gray-800">{esc.providerName || 'مزود'}</strong>
+                                                    {esc.providerPhone && (
+                                                        <a href={`tel:+${String(esc.providerPhone).replace(/^\+/, '')}`} className="text-blue-600 underline" dir="ltr">
+                                                            {esc.providerPhone}
+                                                        </a>
+                                                    )}
+                                                </div>
+                                                <div className="flex items-center gap-1.5 text-sm text-purple-700 bg-purple-50 px-3 py-1.5 rounded-xl">
+                                                    <Clock size={13} />
+                                                    <span>
+                                                        مرّ <strong>{esc.elapsedMinutes ?? '—'}</strong> د · المتوقع <strong>{esc.etaMinutes ?? '—'}</strong> د
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            ) : (
                                             <div className="flex flex-wrap gap-3">
                                                 <div className="flex items-center gap-1.5 text-sm text-gray-600 bg-gray-50 px-3 py-1.5 rounded-xl">
                                                     <Users size={13} className="text-gray-400" />
@@ -494,6 +529,7 @@ export const Escalations = () => {
                                                     </span>
                                                 </div>
                                             </div>
+                                            )}
 
                                             {/* سبب التصعيد */}
                                             {esc.reason && (

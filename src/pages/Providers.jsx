@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Search, CheckCircle, XCircle, Clock, Eye, Phone, Mail, Star, Power,
   UserCheck, Users, Plus, Edit2, Trash2, Tag, X, FileText, Copy, ShieldBan, ShieldOff, ShieldCheck, Loader2,
@@ -241,6 +241,11 @@ export const Providers = () => {
 
   // Provider Detail Modal State
   const [activeTab, setActiveTab] = useState('info'); // 'info', 'wallet', 'orders', 'logins'
+  // المزود المفتوح حالياً — نتيجة طلب بطيء لمزود سابق لا تُكتب فوق بيانات الجديد
+  const openedProviderIdRef = useRef(null);
+  openedProviderIdRef.current = selectedProvider?.id || null;
+  const isStillOpen = (providerId) => openedProviderIdRef.current === providerId;
+  const appliedHighlightRef = useRef(null);
   const [walletHistory, setWalletHistory] = useState([]);
   const [loadingWallet, setLoadingWallet] = useState(false);
   const [loginSessions, setLoginSessions] = useState([]);
@@ -291,6 +296,10 @@ export const Providers = () => {
     }
     setSettlesTopupId('');
     setOpenBankTopups([]);
+    // مبلغ/سبب كُتب لمزود سابق لا يُنفَّذ على الجديد بالخطأ
+    setWalletAdjustment({ amount: '', type: 'addition', reason: '' });
+    setWalletReceiptFile(null);
+    setSuspendForm(null);
   }, [selectedProvider?.id]);
 
   useEffect(() => {
@@ -389,9 +398,13 @@ export const Providers = () => {
 
   useEffect(() => {
     const highlightId = new URLSearchParams(location.search).get('highlight');
-    if (!highlightId || providers.length === 0) return;
+    // مرة واحدة لكل رابط — وإلا كل تحديث لقائمة المزودين يعيد فتح المزود الأول فوق الذي اخترته
+    if (!highlightId || providers.length === 0 || appliedHighlightRef.current === highlightId) return;
     const provider = providers.find((p) => p.id === highlightId);
-    if (provider) setSelectedProvider(provider);
+    if (provider) {
+      appliedHighlightRef.current = highlightId;
+      setSelectedProvider(provider);
+    }
   }, [providers, location.search]);
 
   // جلب الخدمات الرئيسية من emergency-services
@@ -610,7 +623,7 @@ export const Providers = () => {
     };
     checkBan();
     return () => { cancelled = true; };
-  }, [selectedProvider]);
+  }, [selectedProvider?.id, selectedProvider?.phone, selectedProvider?.isBanned]);
 
   const handleBanProviderPhone = async () => {
     if (!selectedProvider?.phone) {
@@ -660,24 +673,38 @@ export const Providers = () => {
     }
   };
 
+  // تبديل المزود: امسح بيانات السابق فوراً ثم حمّل الجديد (الطلبات وسجل الدخول عند فتح تبويبهما فقط)
   useEffect(() => {
+    setWalletHistory([]);
+    setOrderStats(null);
+    setOrdersFilter('all');
+    setProviderBlocks([]);
+    setLoginSessions([]);
+    setActiveTab('info');
+    // تحميل سابق انقطع بالتبديل لا يُبقي مؤشر التحميل عالقاً
+    setLoadingWallet(false);
+    setLoadingStats(false);
+    setLoadingProviderBlocks(false);
+    setLoadingLoginSessions(false);
     if (selectedProvider?.id) {
       fetchWalletData();
-      fetchOrderStats();
       fetchProviderBlocks();
-      fetchLoginSessions();
-      setActiveTab('info');
-    } else {
-      setProviderBlocks([]);
-      setLoginSessions([]);
     }
   }, [selectedProvider?.id]);
 
+  useEffect(() => {
+    if (activeTab === 'orders' && selectedProvider?.id && orderStats?.providerId !== selectedProvider.id) {
+      fetchOrderStats();
+    }
+  }, [activeTab, selectedProvider?.id]);
+
   const fetchProviderBlocks = async () => {
     if (!selectedProvider?.id) return;
+    const providerId = selectedProvider.id;
     setLoadingProviderBlocks(true);
     try {
-      const result = await getProviderBlocks(selectedProvider.id);
+      const result = await getProviderBlocks(providerId);
+      if (!isStillOpen(providerId)) return;
       if (result.success) {
         setProviderBlocks(result.blocks || []);
       } else {
@@ -685,9 +712,9 @@ export const Providers = () => {
       }
     } catch (error) {
       console.error('Error fetching provider blocks:', error);
-      setProviderBlocks([]);
+      if (isStillOpen(providerId)) setProviderBlocks([]);
     } finally {
-      setLoadingProviderBlocks(false);
+      if (isStillOpen(providerId)) setLoadingProviderBlocks(false);
     }
   };
 
@@ -724,6 +751,7 @@ export const Providers = () => {
         getProviderById(providerId),
       ]);
 
+      if (!isStillOpen(providerId)) return;
       const history = historyResult.success ? historyResult.history : [];
       setWalletHistory(history);
 
@@ -739,37 +767,39 @@ export const Providers = () => {
     } catch (error) {
       console.error('Error fetching wallet data:', error);
     } finally {
-      setLoadingWallet(false);
+      if (isStillOpen(providerId)) setLoadingWallet(false);
     }
   };
 
   const fetchOrderStats = async () => {
-    if (!selectedProvider) return;
+    if (!selectedProvider?.id) return;
+    const providerId = selectedProvider.id;
     setLoadingStats(true);
     setOrdersFilter('all');
     try {
-      const result = await getProviderOrderStats(selectedProvider.id);
-      if (result.success) {
-        setOrderStats(result);
+      const result = await getProviderOrderStats(providerId);
+      if (result.success && isStillOpen(providerId)) {
+        setOrderStats({ ...result, providerId });
       }
     } catch (error) {
       console.error('Error fetching order stats:', error);
     } finally {
-      setLoadingStats(false);
+      if (isStillOpen(providerId)) setLoadingStats(false);
     }
   };
 
   const fetchLoginSessions = async () => {
     if (!selectedProvider?.id) return;
+    const providerId = selectedProvider.id;
     setLoadingLoginSessions(true);
     try {
-      const result = await getProviderLoginSessions(selectedProvider.id);
-      setLoginSessions(result.success ? result.sessions : []);
+      const result = await getProviderLoginSessions(providerId);
+      if (isStillOpen(providerId)) setLoginSessions(result.success ? result.sessions : []);
     } catch (error) {
       console.error('Error fetching login sessions:', error);
-      setLoginSessions([]);
+      if (isStillOpen(providerId)) setLoginSessions([]);
     } finally {
-      setLoadingLoginSessions(false);
+      if (isStillOpen(providerId)) setLoadingLoginSessions(false);
     }
   };
 
@@ -845,10 +875,11 @@ export const Providers = () => {
 
   const refreshSelectedProvider = async () => {
     if (!selectedProvider) return;
+    const providerId = selectedProvider.id;
     try {
-      const res = await getProviderById(selectedProvider.id);
+      const res = await getProviderById(providerId);
       if (res.success && res.provider) {
-        setSelectedProvider(res.provider);
+        setSelectedProvider((prev) => (prev?.id === providerId ? res.provider : prev));
         setProviders(prev => prev.map(p => p.id === res.provider.id ? res.provider : p));
       }
     } catch (e) {

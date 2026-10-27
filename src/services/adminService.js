@@ -947,6 +947,7 @@ export const removeProviderService = async (providerId, serviceId) => {
 export const BLOCK_REASON_LABELS = {
   provider_rejected_request: 'رفض الطلب من المزود',
   provider_cancelled_request: 'إلغاء الطلب من المزود',
+  provider_cancelled_after_accept: 'ألغى الطلب بعد قبوله (٢٤ ساعة)',
 };
 
 function parseBlockedUntilMs(blockedUntil) {
