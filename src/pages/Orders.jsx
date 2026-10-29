@@ -737,6 +737,26 @@ export const Orders = () => {
     return Number.isFinite(parsed) ? parsed : 0;
   };
 
+  const SLOW_ARRIVAL_MINUTES = 25;
+
+  /** آخر وقت لحالة في history (اختيارياً قبل وقت معيّن) — إلغاء المزود يعيد الطلب للبحث فيتكرر assigned */
+  const findLastHistoryStatusMs = (order, status, beforeMs = Infinity) => {
+    const history = Array.isArray(order?.history) ? order.history : Object.values(order?.history || {});
+    return history.reduce((latest, h) => {
+      if (h?.status !== status) return latest;
+      const ms = toFirestoreMs(h.timestamp);
+      return ms && ms <= beforeMs && ms > latest ? ms : latest;
+    }, 0);
+  };
+
+  /** الوصول الفعلي بالدقائق: من قبول المزود حتى ضغطه «وصلت» — null إن نقص أحد الوقتين */
+  const resolveActualArrivalMinutes = (order) => {
+    const arrivedMs = toFirestoreMs(order?.arrivedAt) || findLastHistoryStatusMs(order, 'arrived');
+    const assignedMs = toFirestoreMs(order?.assignedAt) || findLastHistoryStatusMs(order, 'assigned', arrivedMs || Infinity);
+    if (!assignedMs || !arrivedMs || arrivedMs < assignedMs) return null;
+    return Math.round((arrivedMs - assignedMs) / 60000);
+  };
+
   const SEARCH_WINDOW_MS = 3 * 60 * 1000;
 
   /**
@@ -1001,7 +1021,13 @@ export const Orders = () => {
     }
 
     // 4. Filter by SLA (زمن وصول المزود) — الطلبات بلا بيانات وصول تُستبعد
-    if (slaFilter !== 'all') {
+    if (slaFilter === 'completed_slow_arrival') {
+      filtered = filtered.filter((req) => {
+        if (req.status !== 'completed') return false;
+        const minutes = resolveActualArrivalMinutes(req);
+        return minutes != null && minutes >= SLOW_ARRIVAL_MINUTES;
+      });
+    } else if (slaFilter !== 'all') {
       filtered = filtered.filter(req => {
         const arrival = resolveOrderArrival(req);
         if (!arrival || arrival.duration == null) return false;
@@ -2225,6 +2251,7 @@ export const Orders = () => {
               <option value="all">كل أوقات الوصول</option>
               <option value="under_15">وصول ١٥ دقيقة أو أقل</option>
               <option value="over_15">وصول أكثر من ١٥ دقيقة</option>
+              <option value="completed_slow_arrival">مكتملة بوصول فعلي ٢٥ دقيقة فأكثر</option>
             </select>
             <ChevronDown size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           </div>
@@ -2566,6 +2593,21 @@ export const Orders = () => {
                             <span className="text-[10px] font-black text-amber-700">تقديري</span>
                           )}
                           {arrivalChip.exceeded && <span className="text-[10px] font-black">أكثر من 15 د</span>}
+                        </span>
+                      );
+                    }
+
+                    const actualArrivalMinutes = resolveActualArrivalMinutes(order);
+                    if (actualArrivalMinutes != null) {
+                      const isSlow = actualArrivalMinutes >= SLOW_ARRIVAL_MINUTES;
+                      chips.push(
+                        <span
+                          key="actual-arrival"
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border ${isSlow ? 'bg-red-50 text-red-700 border-red-200' : 'bg-gray-50 text-gray-700 border-gray-200'}`}
+                          title="من قبول المزود حتى ضغطه «وصلت»"
+                        >
+                          <Clock size={11} />
+                          وصل فعلياً خلال {actualArrivalMinutes} د
                         </span>
                       );
                     }
