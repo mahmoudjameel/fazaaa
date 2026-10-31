@@ -63,6 +63,11 @@ import SAUDI_CITIES_FALLBACK from '../services/cities.json';
 import { formatOrderNumberLabel } from '../utils/orderNumber';
 import { resolveServiceChange, serviceChangeBadge } from '../utils/serviceUpgrade';
 import { resolveActualArrivalMinutes } from '../utils/providerPerformance';
+import { summarizeCustomerDemand, buildAttemptLookup } from '../utils/customerDemand';
+import { formatPhoneForExport } from '../utils/exportTable';
+import { resolveRequestCityName } from '../utils/noCoverage';
+import { ExportButtons } from '../components/ExportButtons';
+import { CityRanking } from '../components/CityRanking';
 
 /** تحويل أكواد الإلغاء القديمة (إنجليزي) لنص عربي — النص الحر يُعرض كما هو */
 const CANCEL_REASON_LABELS_AR = {
@@ -739,6 +744,32 @@ export const Orders = () => {
   };
 
   const SLOW_ARRIVAL_MINUTES = 25;
+
+  const customerDemand = useMemo(() => summarizeCustomerDemand(filteredRequests), [filteredRequests]);
+
+  const buildOrderExportColumns = () => {
+    const attempts = buildAttemptLookup(requests);
+    const providerOf = (order) => providersDict[order.providerId];
+    return [
+      { header: 'رقم الطلب', value: (o) => o.orderNumber ?? o.id },
+      { header: 'التاريخ', value: (o) => { const ms = getRequestCreatedMs(o); return ms ? new Date(ms) : null; } },
+      { header: 'الحالة', value: (o) => getStatusBadge(resolveDisplayStatus(o)).text },
+      { header: 'الخدمة', value: (o) => o.serviceName || o.serviceType || '' },
+      { header: 'السعر', value: (o) => (o.servicePrice == null || o.servicePrice === '' || !Number.isFinite(Number(o.servicePrice)) ? null : Number(o.servicePrice)) },
+      { header: 'العميل', value: (o) => o.customerName || '' },
+      { header: 'جوال العميل', value: (o) => formatPhoneForExport(o.customerPhone) },
+      { header: 'المحاولة', value: (o) => attempts.get(o.id)?.attempt ?? null },
+      { header: 'محاولات نفس الاحتياج', value: (o) => attempts.get(o.id)?.needAttempts ?? null },
+      { header: 'المدينة', value: (o) => resolveRequestCityName(o, cities) },
+      { header: 'الموقع', value: (o) => (typeof o.location === 'string' ? o.location : '') },
+      { header: 'المزود', value: (o) => o.providerName || providerOf(o)?.name || [providerOf(o)?.firstName, providerOf(o)?.lastName].filter(Boolean).join(' ') },
+      { header: 'جوال المزود', value: (o) => formatPhoneForExport(o.providerPhone || providerOf(o)?.phone) },
+      { header: 'الوصول المتوقع (د)', value: (o) => resolveOrderArrival(o)?.duration ?? null },
+      { header: 'الوصول الفعلي (د)', value: (o) => resolveActualArrivalMinutes(o) },
+      { header: 'التقييم', value: (o) => getOrderRating(o) },
+      { header: 'سبب الإلغاء', value: (o) => extractOrderCancelReason(o) || '' },
+    ];
+  };
 
   const SEARCH_WINDOW_MS = 3 * 60 * 1000;
 
@@ -2305,8 +2336,26 @@ export const Orders = () => {
         </div>
       </div>
 
+      <CityRanking requests={requests} cities={cities} selectedCityId={cityFilter} onSelectCity={setCityFilter} />
+
+      {/* المحاولات مقابل الاحتياج الفعلي — عميل يعيد الطلب يُحسب احتياجاً واحداً */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+        {[
+          { label: 'المحاولات (الطلبات)', value: customerDemand.attempts, hint: 'كل طلب أُرسل' },
+          { label: 'العملاء', value: customerDemand.uniqueCustomers, hint: 'بدون تكرار' },
+          { label: 'احتياج فعلي', value: customerDemand.needs, hint: 'طلبات العميل خلال ٣ ساعات = احتياج واحد' },
+          { label: 'احتياج تمت خدمته', value: customerDemand.servedNeeds, hint: 'اكتمل بطلب واحد على الأقل' },
+        ].map((tile) => (
+          <div key={tile.label} className="bg-white rounded-xl border border-gray-100 p-3" title={tile.hint}>
+            <div className="text-[11px] font-semibold text-gray-500">{tile.label}</div>
+            <div className="text-xl font-black text-gray-900 mt-0.5">{tile.value}</div>
+          </div>
+        ))}
+      </div>
+
       {/* ── قائمة الطلبات ── */}
-      <div className="flex items-center justify-between mb-3 px-1">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3 px-1">
+        <ExportButtons baseName="orders" columns={buildOrderExportColumns} rows={filteredRequests} />
         <span className="text-sm text-gray-500 font-medium">
           يعرض <strong className="text-gray-800">{filteredRequests.length}</strong> طلب
           {statusFilter === 'low_rating' && (

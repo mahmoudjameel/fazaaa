@@ -62,18 +62,11 @@ const requestCoords = (r) => {
   return null;
 };
 
-/**
- * @param {Array} requests طلبات الفترة (data + id)
- * @param {Array} cities مستندات cities (name, coordinates, serviceRadius)
- * @returns {Array<{ key, label, isCity, noNetwork, noCoverage, notAccepted, total, lat, lng, nearestCity, distanceFromCityKm }>}
- *   مرتبة تنازلياً بعدد طلبات «لا يوجد شبكة»
- */
-export function groupNoCoverageByArea(requests, cities) {
+/** أقرب مدينة يغطيها نطاقها، وإلا منطقة شبكية خارج المدن */
+const buildAreaLocator = (cities) => {
   const cityList = (cities || [])
     .map((c) => ({ ...c, pos: cityCoords(c) }))
     .filter((c) => c.pos);
-  const areas = new Map();
-
   const areaFor = (lat, lng) => {
     // أقرب مدينة يغطي نطاقها النقطة (مدينة صغيرة أقرب لا تحجب مدينة كبيرة تغطيها)
     let covering = null;
@@ -102,16 +95,38 @@ export function groupNoCoverageByArea(requests, cities) {
     return nearest;
   };
 
+  return { areaFor, nearestCityTo };
+};
+
+/** مدينة الطلب من إحداثياته — الطلب لا يحمل حقل مدينة */
+export function resolveRequestCityName(request, cities) {
+  const pos = requestCoords(request);
+  if (!pos) return '';
+  return buildAreaLocator(cities).areaFor(pos.lat, pos.lng).label || 'خارج المدن';
+}
+
+/**
+ * @param {Array} requests طلبات الفترة (data + id)
+ * @param {Array} cities مستندات cities (name, coordinates, serviceRadius)
+ * @returns {Array<{ key, cityId, label, isCity, noNetwork, noCoverage, notAccepted, total, lat, lng, nearestCity, distanceFromCityKm }>}
+ *   كل المناطق التي فيها طلبات، مرتبة تنازلياً بعدد طلبات «لا يوجد شبكة»
+ */
+export function groupRequestsByArea(requests, cities) {
+  const { areaFor, nearestCityTo } = buildAreaLocator(cities);
+  const areas = new Map();
+
   (requests || []).forEach((r) => {
     const pos = requestCoords(r);
     if (!pos) return;
     const { lat, lng } = pos;
     const a = areaFor(lat, lng);
     if (!areas.has(a.key)) {
-      areas.set(a.key, { ...a, noNetwork: 0, noCoverage: 0, total: 0, sumLat: 0, sumLng: 0, pointCount: 0 });
+      areas.set(a.key, { ...a, noNetwork: 0, noCoverage: 0, total: 0, sumLat: 0, sumLng: 0, pointCount: 0, allLat: 0, allLng: 0 });
     }
     const area = areas.get(a.key);
     area.total += 1;
+    area.allLat += lat;
+    area.allLng += lng;
     if (isNetworkTimeoutRequest(r)) {
       area.noNetwork += 1;
       if (!(Array.isArray(r.notifiedProviders) && r.notifiedProviders.length > 0)) area.noCoverage += 1;
@@ -122,10 +137,9 @@ export function groupNoCoverageByArea(requests, cities) {
   });
 
   return [...areas.values()]
-    .filter((a) => a.noNetwork > 0)
     .map((a) => {
-      const lat = a.sumLat / a.pointCount;
-      const lng = a.sumLng / a.pointCount;
+      const lat = a.pointCount ? a.sumLat / a.pointCount : a.allLat / a.total;
+      const lng = a.pointCount ? a.sumLng / a.pointCount : a.allLng / a.total;
       let label = a.label;
       let distanceFromCityKm = null;
       const nearest = a.isCity ? a.nearest : nearestCityTo(lat, lng);
@@ -137,6 +151,7 @@ export function groupNoCoverageByArea(requests, cities) {
       }
       return {
         key: a.key,
+        cityId: a.nearest?.id ?? null,
         label,
         isCity: a.isCity,
         noNetwork: a.noNetwork,
@@ -151,3 +166,7 @@ export function groupNoCoverageByArea(requests, cities) {
     })
     .sort((x, y) => y.noNetwork - x.noNetwork || y.noCoverage - x.noCoverage);
 }
+
+/** مناطق فيها طلبات «لا يوجد شبكة» فقط */
+export const groupNoCoverageByArea = (requests, cities) =>
+  groupRequestsByArea(requests, cities).filter((a) => a.noNetwork > 0);

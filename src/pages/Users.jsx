@@ -1,3 +1,5 @@
+import { ExportButtons } from '../components/ExportButtons';
+import { formatPhoneForExport } from '../utils/exportTable';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, Users as UsersIcon, Mail, Phone, Calendar, MapPin, Filter, Loader2, Package, Clock, AlertCircle, XCircle, Plus, ShieldBan, ShieldOff, Trash2, Award, UserX, ArrowUpDown } from 'lucide-react';
@@ -54,6 +56,8 @@ function matchRequestServiceIds(req, services) {
 
   return ids;
 }
+
+const USER_STATUS_LABELS = { active: 'نشط', inactive: 'غير نشط', banned: 'محظور' };
 
 export const Users = () => {
   const [usersList, setUsersList] = useState([]);
@@ -428,6 +432,18 @@ export const Users = () => {
     }
   };
 
+  const buildUserExportColumns = () => [
+    { header: 'الاسم', value: (u) => u.name || [u.firstName, u.lastName].filter(Boolean).join(' ') },
+    { header: 'الجوال', value: (u) => formatPhoneForExport(u.phone || u.phoneNumber) },
+    { header: 'البريد', value: (u) => u.email || '' },
+    { header: 'المدينة', value: (u) => canonicalCityName(u.cityId || u.city) || '' },
+    { header: 'الحالة', value: (u) => USER_STATUS_LABELS[u.status] || u.status || '' },
+    { header: 'عدد الطلبات', value: (u) => u.orderCount || 0 },
+    { header: 'طلبات مكتملة', value: (u) => u.completedOrderCount || 0 },
+    { header: 'آخر طلب', value: (u) => (u.lastOrderAt ? new Date(u.lastOrderAt) : null) },
+    { header: 'تاريخ التسجيل', value: (u) => { const ms = getUserCreatedMs(u); return ms ? new Date(ms) : null; } },
+  ];
+
   const filterUsers = () => {
     let filtered = usersList;
 
@@ -651,6 +667,7 @@ export const Users = () => {
       {/* Filters */}
       <div className="bg-white rounded-xl sm:rounded-2xl shadow-lg p-4 sm:p-5 md:p-6 mb-4 sm:mb-6">
         <div className="flex flex-col gap-3 sm:gap-4">
+          <ExportButtons baseName="customers" columns={buildUserExportColumns} rows={filteredUsers} className="justify-end" />
           <div className="flex flex-col md:flex-row gap-3 sm:gap-4">
             <div className="flex-1 relative">
               <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />

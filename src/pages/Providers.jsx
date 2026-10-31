@@ -1,3 +1,6 @@
+import { ExportButtons } from '../components/ExportButtons';
+import { formatPhoneForExport } from '../utils/exportTable';
+import { providerCityName } from '../utils/cityLabel';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Search, CheckCircle, XCircle, Clock, Eye, Phone, Mail, Star, Power,
@@ -74,6 +77,8 @@ import { hasLocationTrackingIssue, inferLocationTrackingIssue, FRESH_MS, OK_MS }
 import { PhoneWithActions } from '../components/PhoneWithActions';
 import { normalizePricing, validateTopUpAmount, DEFAULT_PRICING, resolveNextDeductionAmount } from '../utils/providerPricing';
 import SAUDI_CITIES_RAW from '../services/cities.json';
+
+const APPROVAL_STATUS_LABELS = { pending: 'قيد المراجعة', approved: 'موافق عليه', rejected: 'مرفوض', suspended: 'موقوف مؤقتاً' };
 
 export const NATIONALITIES = [
   { value: 'sa', label: 'السعودية' },
@@ -192,6 +197,7 @@ export const Providers = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [verifiedFilter, setVerifiedFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
   const [groupFilter, setGroupFilter] = useState('all');
   const [serviceFilter, setServiceFilter] = useState('all');
@@ -431,7 +437,7 @@ export const Providers = () => {
 
   useEffect(() => {
     filterProviders();
-  }, [providers, mainServices, searchTerm, statusFilter, typeFilter, groupFilter, serviceFilter, cityFilter, nationalityFilter, lowBalanceFilter, pricingSettings, executedOrdersFilter, locationIssueFilter, providerIdsWithCompletedOrders, executedOrdersCounts, cancelFreqFilter, cancelCounts, perfMostExecuted, perfLeastCancel, perfTopRated, perfCancelCounts, monthlyRank, monthlyPerf]);
+  }, [providers, mainServices, searchTerm, statusFilter, verifiedFilter, typeFilter, groupFilter, serviceFilter, cityFilter, nationalityFilter, lowBalanceFilter, pricingSettings, executedOrdersFilter, locationIssueFilter, providerIdsWithCompletedOrders, executedOrdersCounts, cancelFreqFilter, cancelCounts, perfMostExecuted, perfLeastCancel, perfTopRated, perfCancelCounts, monthlyRank, monthlyPerf]);
 
   // أداء آخر 30 يوماً — يُحمّل مرة واحدة عند اختيار أي ترتيب شهري
   useEffect(() => {
@@ -1211,6 +1217,10 @@ export const Providers = () => {
       });
     }
 
+    if (verifiedFilter !== 'all') {
+      filtered = filtered.filter((p) => (p.isVerifiedProvider === true) === (verifiedFilter === 'verified'));
+    }
+
     if (statusFilter !== 'all') {
       // استخدام approvalStatus بدلاً من status (status قد يكون "online"/"offline")
       filtered = filtered.filter((p) => {
@@ -1325,6 +1335,18 @@ export const Providers = () => {
 
     setFilteredProviders(filtered);
   };
+
+  const buildProviderExportColumns = () => [
+    { header: 'الاسم', value: (p) => [p.firstName, p.lastName].filter(Boolean).join(' ') || p.name || '' },
+    { header: 'اسم المنشأة', value: (p) => p.shopName || '' },
+    { header: 'الجوال', value: (p) => formatPhoneForExport(p.phone) },
+    { header: 'المدينة', value: (p) => providerCityName(p) },
+    { header: 'حالة الاعتماد', value: (p) => APPROVAL_STATUS_LABELS[p.approvalStatus] || p.approvalStatus || '' },
+    { header: 'موثّق', value: (p) => (p.isVerifiedProvider === true ? 'نعم' : 'لا') },
+    { header: 'طلبات منفذة', value: (p) => getExecutedCount(p) },
+    { header: 'التقييم', value: (p) => { const avg = getProviderRatingAvg(p); return avg > 0 ? Number(avg.toFixed(1)) : null; } },
+    { header: 'الرصيد', value: (p) => Number(p.wallet?.balance) || 0 },
+  ];
 
   const getMonthlyStats = (p) => monthlyPerf?.[String(p.id)] || null;
 
@@ -1899,7 +1921,18 @@ export const Providers = () => {
                 />
               </div>
 
+              <ExportButtons baseName="providers" columns={buildProviderExportColumns} rows={filteredProviders} className="justify-end" />
+
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                <select
+                  value={verifiedFilter}
+                  onChange={(e) => setVerifiedFilter(e.target.value)}
+                  className="w-full min-w-0 px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none text-sm md:text-base"
+                >
+                  <option value="all">الموثقون وغير الموثقين</option>
+                  <option value="verified">مزودون موثقون</option>
+                  <option value="not_verified">غير موثقين</option>
+                </select>
                 <select
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
