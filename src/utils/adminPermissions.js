@@ -14,6 +14,8 @@ export const ADMIN_PERMISSION_DEFS = [
   { id: 'orders', path: '/admin/orders', category: 'management', label: 'الطلبات' },
   { id: 'sla_tracking', path: '/admin/sla-tracking', category: 'management', label: 'متابعة SLA' },
   { id: 'escalations', path: '/admin/escalations', category: 'management', label: 'تصعيدات النظام' },
+  { id: 'memberships', path: '/admin/memberships', category: 'management', label: 'باقات العضوية' },
+  { id: 'provider_earnings', path: '/admin/provider-earnings', category: 'management', label: 'مستحقات المزودين' },
   { id: 'city_report', path: '/admin/city-report', category: 'management', label: 'تقرير المدن' },
   { id: 'provider_performance', path: '/admin/provider-performance', category: 'management', label: 'أداء المزودين' },
   { id: 'provider_cancellations', path: '/admin/provider-cancellations', category: 'management', label: 'متابعة إلغاءات المزودين' },

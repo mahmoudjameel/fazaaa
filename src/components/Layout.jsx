@@ -1,3 +1,4 @@
+import { listenToWaitingMembershipPayments } from '../services/membershipsService';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Users, ShoppingBag, LogOut, Menu, X,
@@ -5,7 +6,7 @@ import {
   UserCog, CreditCard, Banknote, AlertCircle, Shield,
   ChevronLeft, UserPlus, Bell, ImageIcon, Ticket, Timer,
   PanelRight, PanelLeft,   Route, Globe, AlertTriangle, Stethoscope, FlaskConical, Ban, FileText, BarChart3, Wallet,
-  UserX, WifiOff, FileUp, QrCode, TrendingUp, Gauge, Map as MapIcon
+  UserX, WifiOff, FileUp, QrCode, TrendingUp, Gauge, Map as MapIcon, BadgeCheck, Landmark
 } from 'lucide-react';
 import { useState, useEffect, useRef, Fragment } from 'react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
@@ -32,6 +33,8 @@ export const Layout = () => {
   const [newEscalationsCount, setNewEscalationsCount] = useState(0);
   const [generalEscalationsCount, setGeneralEscalationsCount] = useState(0);
   const [pendingComplaintsCount, setPendingComplaintsCount] = useState(0);
+  const [waitingMembershipsCount, setWaitingMembershipsCount] = useState(0);
+  const membershipPaymentsPrimedRef = useRef(false);
   const [alertToasts, setAlertToasts] = useState([]);
   const [sessionVersion, setSessionVersion] = useState(0);
   const lastPendingReviewCountRef = useRef(0);
@@ -130,6 +133,24 @@ export const Layout = () => {
       });
     });
 
+    const unsubMembershipPayments = listenToWaitingMembershipPayments((snapshot) => {
+      setWaitingMembershipsCount(snapshot.size);
+      if (!membershipPaymentsPrimedRef.current) {
+        membershipPaymentsPrimedRef.current = true;
+        return;
+      }
+      const added = snapshot.docChanges().filter((c) => c.type === 'added');
+      if (added.length === 0) return;
+      const first = added[0].doc.data() || {};
+      raiseAlert({
+        kind: 'membership',
+        title: 'دفع عضوية عميل أو شركة',
+        body: [first.payerName, `${first.amount} ر.س`, first.trackId].filter(Boolean).join(' — '),
+        path: '/admin/memberships',
+        tag: `membership-${added[0].doc.id}`,
+      });
+    });
+
     const pq = query(collection(db, 'cities'), where('escalationPriority', '==', true));
     const unsubPriorityCities = onSnapshot(pq, (snapshot) => {
       priorityCitiesRef.current = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -194,6 +215,7 @@ export const Layout = () => {
       unsubscribe();
       unsubTickets();
       unsubComplaints();
+      unsubMembershipPayments();
       unsubPriorityCities();
       unsubEscalations();
       window.removeEventListener(ESCALATIONS_SEEN_EVENT, onSeenUpdated);
@@ -240,6 +262,8 @@ export const Layout = () => {
     { id: 'orders',                  path: '/admin/orders',                   icon: ShoppingBag,     label: 'الطلبات',                  category: 'management' },
     { id: 'sla_tracking',            path: '/admin/sla-tracking',             icon: Timer,           label: 'متابعة SLA',               category: 'management' },
     { id: 'escalations',             path: '/admin/escalations',              icon: AlertTriangle,   label: 'تصعيدات النظام',           category: 'management' },
+    { id: 'memberships',             path: '/admin/memberships',              icon: BadgeCheck,      label: 'باقات العضوية',            category: 'management' },
+    { id: 'provider_earnings',       path: '/admin/provider-earnings',        icon: Landmark,        label: 'مستحقات المزودين',         category: 'management' },
     { id: 'city_report',             path: '/admin/city-report',              icon: MapIcon,         label: 'تقرير المدن',              category: 'management' },
     { id: 'provider_performance',    path: '/admin/provider-performance',     icon: Gauge,           label: 'أداء المزودين',            category: 'management' },
     { id: 'provider_cancellations',  path: '/admin/provider-cancellations',   icon: UserX,           label: 'متابعة إلغاءات المزودين',  category: 'management' },
@@ -328,6 +352,11 @@ export const Layout = () => {
                 {pendingComplaintsCount}
               </span>
             )}
+            {item.id === 'memberships' && waitingMembershipsCount > 0 && (
+              <span className="bg-teal-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
+                {waitingMembershipsCount}
+              </span>
+            )}
             {item.id === 'escalations' && generalEscalationsCount > 0 && (
               <span className="bg-white/15 text-white/70 text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center" title="تصعيدات عامة">
                 {generalEscalationsCount}
@@ -354,6 +383,7 @@ export const Layout = () => {
               escalation_priority: { box: 'bg-red-600 border-red-700', Icon: AlertTriangle },
               ticket: { box: 'bg-blue-600 border-blue-700', Icon: Ticket },
               complaint: { box: 'bg-purple-600 border-purple-700', Icon: MessageSquare },
+              membership: { box: 'bg-teal-600 border-teal-700', Icon: BadgeCheck },
             }[t.kind] || { box: 'bg-gray-800 border-gray-900', Icon: Bell };
             const ToastIcon = tone.Icon;
             return (

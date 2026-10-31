@@ -36,6 +36,9 @@ const SupportTickets = lazy(() => import('./pages/SupportTickets').then((m) => (
 const AddProvider = lazy(() => import('./pages/AddProvider').then((m) => ({ default: m.AddProvider })));
 const SLATracking = lazy(() => import('./pages/SLATracking').then((m) => ({ default: m.SLATracking })));
 const Escalations = lazy(() => import('./pages/Escalations').then((m) => ({ default: m.Escalations })));
+const Memberships = lazy(() => import('./pages/Memberships').then((m) => ({ default: m.Memberships })));
+const ProviderEarnings = lazy(() => import('./pages/ProviderEarnings').then((m) => ({ default: m.ProviderEarnings })));
+const PartnerPortal = lazy(() => import('./pages/PartnerPortal').then((m) => ({ default: m.PartnerPortal })));
 const CityReport = lazy(() => import('./pages/CityReport').then((m) => ({ default: m.CityReport })));
 const ProviderPerformance = lazy(() => import('./pages/ProviderPerformance').then((m) => ({ default: m.ProviderPerformance })));
 const ProviderCancellations = lazy(() => import('./pages/ProviderCancellations').then((m) => ({ default: m.ProviderCancellations })));
@@ -120,6 +123,7 @@ function App() {
           <Route path="/support" element={<Support />} />
           <Route path="/delete-account" element={<DeleteAccount />} />
           <Route path="/q" element={<SiteQr />} />
+          <Route path="/p/:slug" element={<PartnerPortal />} />
           <Route path="/app" element={<AppLinkPage />} />
 
           {/* Admin login */}
@@ -147,6 +151,8 @@ function App() {
             <Route path="notifications" element={<Notifications />} />
             <Route path="sla-tracking" element={<SLATracking />} />
             <Route path="escalations" element={<Escalations />} />
+            <Route path="memberships" element={<Memberships />} />
+            <Route path="provider-earnings" element={<ProviderEarnings />} />
             <Route path="city-report" element={<CityReport />} />
             <Route path="provider-performance" element={<ProviderPerformance />} />
             <Route path="provider-cancellations" element={<ProviderCancellations />} />
