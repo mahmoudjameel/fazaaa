@@ -43,6 +43,8 @@ const getStatusLabel = (status) => {
 
 const isWebsiteTicket = (t) => t?.source === 'website' || t?.category === 'website';
 
+const FINAL_TICKET_STATUSES = ['resolved', 'closed'];
+
 export const SupportTickets = () => {
   const [tickets, setTickets] = useState([]);
   const [filteredTickets, setFilteredTickets] = useState([]);
@@ -75,7 +77,8 @@ export const SupportTickets = () => {
     let filtered = [...tickets];
     if (statusFilter !== 'all') {
       // التذكرة التي فُتحت تبقى ظاهرة بعد تغيّر حالتها بالرد
-      filtered = filtered.filter(t => t.status === statusFilter || isOpenedUnderFilter(openedIds, t.id, statusFilter));
+      filtered = filtered.filter(t => t.status === statusFilter
+        || (!FINAL_TICKET_STATUSES.includes(t.status) && isOpenedUnderFilter(openedIds, t.id, statusFilter)));
     }
     if (categoryFilter !== 'all') {
       filtered = filtered.filter(t => t.category === categoryFilter);

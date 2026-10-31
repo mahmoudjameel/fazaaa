@@ -5,7 +5,7 @@ import {
   UserCog, CreditCard, Banknote, AlertCircle, Shield,
   ChevronLeft, UserPlus, Bell, ImageIcon, Ticket, Timer,
   PanelRight, PanelLeft,   Route, Globe, AlertTriangle, Stethoscope, FlaskConical, Ban, FileText, BarChart3, Wallet,
-  UserX, WifiOff, FileUp, QrCode, TrendingUp
+  UserX, WifiOff, FileUp, QrCode, TrendingUp, Gauge
 } from 'lucide-react';
 import { useState, useEffect, useRef, Fragment } from 'react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
@@ -240,6 +240,7 @@ export const Layout = () => {
     { id: 'orders',                  path: '/admin/orders',                   icon: ShoppingBag,     label: 'الطلبات',                  category: 'management' },
     { id: 'sla_tracking',            path: '/admin/sla-tracking',             icon: Timer,           label: 'متابعة SLA',               category: 'management' },
     { id: 'escalations',             path: '/admin/escalations',              icon: AlertTriangle,   label: 'تصعيدات النظام',           category: 'management' },
+    { id: 'provider_performance',    path: '/admin/provider-performance',     icon: Gauge,           label: 'أداء المزودين',            category: 'management' },
     { id: 'provider_cancellations',  path: '/admin/provider-cancellations',   icon: UserX,           label: 'متابعة إلغاءات المزودين',  category: 'management' },
     { id: 'service_upgrades',        path: '/admin/service-upgrades',         icon: TrendingUp,      label: 'ترقيات الخدمة من المزودين', category: 'management' },
     { id: 'inactive_providers',      path: '/admin/inactive-providers',       icon: WifiOff,         label: 'المزودون غير النشطين',     category: 'management' },

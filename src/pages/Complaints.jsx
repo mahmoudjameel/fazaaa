@@ -8,6 +8,8 @@ import { ar } from 'date-fns/locale';
 import { formatOrderNumberLabel } from '../utils/orderNumber';
 import { loadOpenedIds, rememberOpenedId, isOpenedUnderFilter } from '../utils/openedItems';
 
+const FINAL_COMPLAINT_STATUSES = ['resolved', 'rejected'];
+
 export const Complaints = () => {
   const [complaintsList, setComplaintsList] = useState([]);
   const [filteredComplaints, setFilteredComplaints] = useState([]);
@@ -127,8 +129,9 @@ export const Complaints = () => {
     let filtered = complaintsList;
 
     if (statusFilter !== 'all') {
-      // الشكوى التي فُتحت تبقى ظاهرة بعد تغيّر حالتها
-      filtered = filtered.filter((c) => c.status === statusFilter || isOpenedUnderFilter(openedIds, c.id, statusFilter));
+      // الشكوى التي فُتحت تبقى ظاهرة بعد تغيّر حالتها — إلا إذا أُغلقت، فلا تبدو غير محلولة
+      filtered = filtered.filter((c) => c.status === statusFilter
+        || (!FINAL_COMPLAINT_STATUSES.includes(c.status) && isOpenedUnderFilter(openedIds, c.id, statusFilter)));
     }
 
     if (typeFilter !== 'all') {

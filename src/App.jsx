@@ -36,6 +36,7 @@ const SupportTickets = lazy(() => import('./pages/SupportTickets').then((m) => (
 const AddProvider = lazy(() => import('./pages/AddProvider').then((m) => ({ default: m.AddProvider })));
 const SLATracking = lazy(() => import('./pages/SLATracking').then((m) => ({ default: m.SLATracking })));
 const Escalations = lazy(() => import('./pages/Escalations').then((m) => ({ default: m.Escalations })));
+const ProviderPerformance = lazy(() => import('./pages/ProviderPerformance').then((m) => ({ default: m.ProviderPerformance })));
 const ProviderCancellations = lazy(() => import('./pages/ProviderCancellations').then((m) => ({ default: m.ProviderCancellations })));
 const ServiceUpgrades = lazy(() => import('./pages/ServiceUpgrades').then((m) => ({ default: m.ServiceUpgrades })));
 const InactiveProviders = lazy(() => import('./pages/InactiveProviders').then((m) => ({ default: m.InactiveProviders })));
@@ -145,6 +146,7 @@ function App() {
             <Route path="notifications" element={<Notifications />} />
             <Route path="sla-tracking" element={<SLATracking />} />
             <Route path="escalations" element={<Escalations />} />
+            <Route path="provider-performance" element={<ProviderPerformance />} />
             <Route path="provider-cancellations" element={<ProviderCancellations />} />
             <Route path="service-upgrades" element={<ServiceUpgrades />} />
             <Route path="inactive-providers" element={<InactiveProviders />} />

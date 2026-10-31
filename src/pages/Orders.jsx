@@ -62,6 +62,7 @@ import { db } from '../services/firebase';
 import SAUDI_CITIES_FALLBACK from '../services/cities.json';
 import { formatOrderNumberLabel } from '../utils/orderNumber';
 import { resolveServiceChange, serviceChangeBadge } from '../utils/serviceUpgrade';
+import { resolveActualArrivalMinutes } from '../utils/providerPerformance';
 
 /** تحويل أكواد الإلغاء القديمة (إنجليزي) لنص عربي — النص الحر يُعرض كما هو */
 const CANCEL_REASON_LABELS_AR = {
@@ -738,24 +739,6 @@ export const Orders = () => {
   };
 
   const SLOW_ARRIVAL_MINUTES = 25;
-
-  /** آخر وقت لحالة في history (اختيارياً قبل وقت معيّن) — إلغاء المزود يعيد الطلب للبحث فيتكرر assigned */
-  const findLastHistoryStatusMs = (order, status, beforeMs = Infinity) => {
-    const history = Array.isArray(order?.history) ? order.history : Object.values(order?.history || {});
-    return history.reduce((latest, h) => {
-      if (h?.status !== status) return latest;
-      const ms = toFirestoreMs(h.timestamp);
-      return ms && ms <= beforeMs && ms > latest ? ms : latest;
-    }, 0);
-  };
-
-  /** الوصول الفعلي بالدقائق: من قبول المزود حتى ضغطه «وصلت» — null إن نقص أحد الوقتين */
-  const resolveActualArrivalMinutes = (order) => {
-    const arrivedMs = toFirestoreMs(order?.arrivedAt) || findLastHistoryStatusMs(order, 'arrived');
-    const assignedMs = toFirestoreMs(order?.assignedAt) || findLastHistoryStatusMs(order, 'assigned', arrivedMs || Infinity);
-    if (!assignedMs || !arrivedMs || arrivedMs < assignedMs) return null;
-    return Math.round((arrivedMs - assignedMs) / 60000);
-  };
 
   const SEARCH_WINDOW_MS = 3 * 60 * 1000;
 

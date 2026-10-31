@@ -27,6 +27,7 @@ import { withNormalizedProviderWallet } from '../utils/providerWallet';
 import { normalizePricing, validateTopUpAmount, applyTopUpCredits, ensureWalletCreditsShape } from '../utils/providerPricing';
 import { diagnoseProviderForRequest, evaluateProviderEligibility } from '../utils/dispatchDiagnostics';
 import { getCached, setCached, createSharedSnapshotListener } from '../utils/adminQueryCache';
+import { resolveProviderOrderOutcome } from '../utils/providerPerformance';
 
 // Providers Management
 
@@ -2735,34 +2736,7 @@ export async function compensateStuckBankTopup({ providerId, topupId, amount, re
  * @param {string} providerId - معرف المزود
  * @returns {Promise<Object>}
  */
-const PROVIDER_CANCELLED_STATUSES = ['canceled_by_provider', 'canceled_by_provider_with_reason', 'canceled_by_client', 'canceled_by_client_with_reason', 'canceled_by_admin', 'timed_out'];
-const PROVIDER_ACTIVE_STATUSES = ['searching', 'accepted', 'assigned', 'en_route', 'arrived', 'in_progress', 'pending_legal_docs', 'arriving', 'pending_client_confirmation', 'pending_review'];
-
-/**
- * نتيجة الطلب بالنسبة لهذا المزود تحديداً:
- * طلب اعتذر عنه المزود ثم أكمله مزود آخر = «اعتذار» لهذا المزود وليس «مكتمل».
- */
-export const resolveProviderOrderOutcome = (order, providerId) => {
-  const pid = String(providerId || '');
-  const isCurrentProvider = String(order?.providerId || '') === pid;
-  const history = Array.isArray(order?.history) ? order.history : [];
-  const providerCancelledIt =
-    String(order?.cancelledBy || '') === pid ||
-    String(order?.previousProviderId || '') === pid ||
-    history.some((h) => String(h?.providerId || '') === pid && (
-      h?.action === 'provider_cancellation' ||
-      h?.status === 'canceled_by_provider' ||
-      h?.status === 'canceled_by_provider_with_reason'
-    ));
-
-  if (!isCurrentProvider) return providerCancelledIt ? 'provider_cancelled' : 'other';
-  if (order.status === 'completed') return 'completed';
-  if (order.status === 'canceled_by_provider' || order.status === 'canceled_by_provider_with_reason') return 'provider_cancelled';
-  if (order.status === 'canceled_by_client' || order.status === 'canceled_by_client_with_reason') return 'client_cancelled';
-  if (PROVIDER_CANCELLED_STATUSES.includes(order.status)) return 'other_cancelled';
-  if (PROVIDER_ACTIVE_STATUSES.includes(order.status)) return 'active';
-  return 'other';
-};
+export { resolveProviderOrderOutcome };
 
 /** طلب وصل المزود فرفضه ولم يُسند إليه — حالته العامة (مثل «انتهت المهلة») لا تخصّه */
 export const didProviderRejectOrder = (order, providerId) => {
