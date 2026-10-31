@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
 import { BarChart3, ChevronDown, ChevronUp } from 'lucide-react';
 import { groupRequestsByArea } from '../utils/noCoverage';
+import { PRIORITY_CITY_NAMES } from '../utils/cityReport';
 
 const VISIBLE_ROWS = 10;
-const PRIORITY_CITY_NAMES = ['مكة المكرمة', 'المدينة المنورة', 'الرياض', 'جدة', 'الدمام', 'الخبر', 'بريدة', 'الجبيل'];
 
 /** مدن الأولوية تظهر كلها دائماً، حتى من لا طلبات فيها خلال الفترة */
 const priorityCityRows = (areas, cities) => PRIORITY_CITY_NAMES.map((name) => (

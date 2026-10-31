@@ -2834,6 +2834,38 @@ export const getRequestsCreatedBetween = async (fromMs, toMs = Date.now()) => {
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 };
 
+/** لقطة حالة المزودين وقت البحث + سجل الحلقات — لتشخيص طلب واحد */
+export const getRequestDispatchDetails = async (requestId) => {
+  const [auditSnap, stagesSnap] = await Promise.all([
+    getDoc(doc(db, 'dispatch_audits', requestId)),
+    getDocs(collection(db, 'requests', requestId, 'dispatch_log')),
+  ]);
+  return {
+    audit: auditSnap.exists() ? auditSnap.data() : null,
+    stages: stagesSnap.docs.map((d) => d.data()).sort((a, b) => (a.stage || 0) - (b.stage || 0)),
+  };
+};
+
+export const getDispatchAuditsSince = async (fromMs) => {
+  const snap = await getDocs(query(
+    collection(db, 'dispatch_audits'),
+    where('recordedAt', '>=', Timestamp.fromMillis(fromMs))
+  ));
+  return new Map(snap.docs.map((d) => [d.id, d.data()]));
+};
+
+/** المسؤول عن الإلغاء تحدده الإدارة — منفصل عمّن ضغط الإلغاء، ولا يغيّر حالة الطلب */
+export const setCancelResponsibility = async (requestId, { party, note = '' }) => {
+  const cancelResponsibility = {
+    party,
+    note: String(note).trim(),
+    byEmail: auth.currentUser?.email || null,
+    at: new Date().toISOString(),
+  };
+  await updateDoc(doc(db, 'requests', requestId), { cancelResponsibility });
+  return cancelResponsibility;
+};
+
 export const getProviderCancellationCounts = async (days = 7) => {
   const cutoffMs = Date.now() - days * 24 * 60 * 60 * 1000;
   // الإلغاء يحدث عادة خلال ساعات من الإنشاء — يوم إضافي هامش أمان

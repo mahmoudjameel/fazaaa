@@ -68,6 +68,7 @@ import { formatPhoneForExport } from '../utils/exportTable';
 import { resolveRequestCityName } from '../utils/noCoverage';
 import { ExportButtons } from '../components/ExportButtons';
 import { CityRanking } from '../components/CityRanking';
+import { RequestDiagnosticsCard } from '../components/RequestDiagnosticsCard';
 
 /** سبب إلغاء الطلب الحالي، أو null إن لم يُلغَ */
 function extractOrderCancelReason(order) {
@@ -3253,6 +3254,8 @@ export const Orders = () => {
                 )}
 
                 {/* الطلب الأصلي ↔ النهائي + سجل تعديلات الخدمة (مزود ↔ عميل ↔ إدارة) */}
+                <RequestDiagnosticsCard order={selectedRequest} />
+
                 {(() => {
                   const info = resolveServiceChange(selectedRequest);
                   if (!info || (!info.changed && !info.pendingProposal && !info.unansweredProposal && info.events.length === 0)) {
