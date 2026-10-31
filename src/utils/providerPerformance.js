@@ -28,6 +28,20 @@ export const SCORE_LEVELS = {
   poor: { min: 0, label: 'عليه ملاحظات' },
 };
 
+/** تحويل أكواد الإلغاء القديمة (إنجليزي) لنص عربي — النص الحر يُعرض كما هو */
+const CANCEL_REASON_LABELS_AR = {
+  price_high: 'السعر مرتفع جداً',
+  problem_resolved: 'تم حل المشكلة',
+  wrong_service: 'اخترت نوع خدمة خاطئ',
+  provider_behavior: 'سلوك مزود الخدمة',
+  other: 'سبب آخر',
+};
+
+export function formatCancelReasonLabel(reason) {
+  if (!reason || typeof reason !== 'string') return reason || '';
+  return CANCEL_REASON_LABELS_AR[reason] || reason;
+}
+
 const PROVIDER_CANCELLED_STATUSES = ['canceled_by_provider', 'canceled_by_provider_with_reason', 'canceled_by_client', 'canceled_by_client_with_reason', 'canceled_by_admin', 'timed_out'];
 const PROVIDER_ACTIVE_STATUSES = ['searching', 'accepted', 'assigned', 'en_route', 'arrived', 'in_progress', 'pending_legal_docs', 'arriving', 'pending_client_confirmation', 'pending_review'];
 
@@ -98,6 +112,23 @@ export const resolveOrderDelay = (order) => {
   };
 };
 
+const NO_REASON_LABEL = 'بدون سبب';
+const cancelReasonLabel = (reason) => formatCancelReasonLabel(String(reason || '').trim()) || NO_REASON_LABEL;
+
+/** سبب اعتذار هذا المزود تحديداً — الطلب قد يتكرر فيه أكثر من مزود */
+const providerCancelReasonOf = (order, providerId) => {
+  const event = [...historyOf(order)].reverse().find((h) => String(h?.providerId || '') === providerId && (
+    h?.action === 'provider_cancellation' || String(h?.status || '').startsWith('canceled_by_provider')
+  ));
+  // بعد الاعتذار يعود الطلب للبحث، فسبب الطلب العام قد يخص من ألغاه لاحقاً
+  const orderReason = String(order?.status || '').startsWith('canceled_by_provider') ? order.cancelReason : null;
+  return cancelReasonLabel(event?.cancelReason || event?.reason || orderReason);
+};
+
+const countReason = (reasons, reason) => {
+  reasons[reason] = (reasons[reason] || 0) + 1;
+};
+
 const orderRating = (order) => {
   const stars = Math.round(Number(order?.rating));
   return order?.rating != null && stars >= 1 && stars <= 5 ? stars : null;
@@ -114,7 +145,8 @@ const involvedProviderIds = (order) => {
 
 const emptyStats = (id) => ({
   id, completed: 0, providerCancelled: 0, clientCancelled: 0,
-  ratingSum: 0, ratingCount: 0, measured: 0, delayed: [],
+  active: 0, ratingSum: 0, ratingCount: 0, measured: 0, delayed: [],
+  providerCancelReasons: {}, clientCancelReasons: {},
 });
 
 const smoothedRate = (bad, total, platformRate) => (bad + platformRate * SMOOTHING_ORDERS) / (total + SMOOTHING_ORDERS);
@@ -158,7 +190,7 @@ const scoreProvider = (stats, platform) => {
     { id: 'clientCancel', adjustedValue: `${Math.round(clientCancelRate * 100)}%` },
   ].map((factor) => ({ ...factor, points: Math.round(deductions[factor.id] * 10) / 10 }));
 
-  return { ...stats, handled, score, level, mainIssue, factors, averageRating: stats.ratingCount ? stats.ratingSum / stats.ratingCount : null };
+  return { ...stats, handled, score, level, mainIssue, factors, completionRate: ratio(stats.completed, handled), averageRating: stats.ratingCount ? stats.ratingSum / stats.ratingCount : null };
 };
 
 /**
@@ -176,8 +208,15 @@ export const buildProviderPerformance = (orders, providerIds) => {
     involvedProviderIds(order).filter((id) => providerIds.has(id)).forEach((id) => {
       const outcome = resolveProviderOrderOutcome(order, id);
       const stats = statsFor(id);
-      if (outcome === 'provider_cancelled') stats.providerCancelled += 1;
-      if (outcome === 'client_cancelled') stats.clientCancelled += 1;
+      if (outcome === 'active') stats.active += 1;
+      if (outcome === 'provider_cancelled') {
+        stats.providerCancelled += 1;
+        countReason(stats.providerCancelReasons, providerCancelReasonOf(order, id));
+      }
+      if (outcome === 'client_cancelled') {
+        stats.clientCancelled += 1;
+        countReason(stats.clientCancelReasons, cancelReasonLabel(order.cancelReason));
+      }
       if (outcome !== 'completed') return;
 
       stats.completed += 1;

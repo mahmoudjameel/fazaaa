@@ -65,6 +65,24 @@ const Stat = ({ label, value }) => (
   </div>
 );
 
+const percent = (part, whole) => (whole > 0 ? Math.round((part / whole) * 100) : 0);
+
+const CancelReasons = ({ title, reasons }) => {
+  const sorted = Object.entries(reasons).sort((a, b) => b[1] - a[1]);
+  if (sorted.length === 0) return null;
+  return (
+    <div className="space-y-1">
+      <div className="text-xs font-black text-gray-800">{title}</div>
+      {sorted.map(([reason, count]) => (
+        <div key={reason} className="flex items-start justify-between gap-3 text-xs text-gray-600">
+          <span className="min-w-0 break-words">{reason}</span>
+          <span className="font-black text-gray-900 flex-shrink-0">{count}</span>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 const DelayedOrders = ({ delayed }) => {
   if (delayed.length === 0) {
     return <div className="px-4 py-4 text-sm text-gray-500">لا توجد طلبات متأخرة في هذه الفترة.</div>;
@@ -127,7 +145,7 @@ const ProviderRow = ({ row, tab, open, onToggle }) => {
             {provider?.phone && <span className="flex items-center gap-1"><Phone className="w-3.5 h-3.5" /><span dir="ltr">{provider.phone}</span></span>}
             <span className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5" />{providerCityName(provider)}</span>
             {showsDelays
-              ? <span className="font-bold text-red-700">من {row.measured} طلب مكتمل</span>
+              ? <span className="font-bold text-red-700">{percent(row.delayed.length, row.measured)}% من {row.measured} طلب مكتمل</span>
               : row.mainIssue && row.level !== 'good' && row.level !== 'insufficient' && (
                 <span className="font-bold text-amber-700">أكبر خصم: {SCORE_FACTORS[row.mainIssue].label}</span>
               )}
@@ -139,16 +157,24 @@ const ProviderRow = ({ row, tab, open, onToggle }) => {
         <div className="border-t border-gray-100 bg-gray-50/60">
           {!showsDelays && (
             <div className="p-4 flex flex-wrap gap-2 border-b border-gray-100">
+              <Stat label="نسبة الإكمال" value={`${Math.round(row.completionRate * 100)}%`} />
               <Stat label="مكتملة" value={row.completed} />
               <Stat label="إلغاء من المزود" value={row.providerCancelled} />
               <Stat label="إلغاء من العميل" value={row.clientCancelled} />
-              <Stat label="متأخرة" value={`${row.delayed.length} من ${row.measured}`} />
+              <Stat label="متأخرة" value={`${row.delayed.length} من ${row.measured} (${percent(row.delayed.length, row.measured)}%)`} />
               <Stat
                 label="التقييم"
                 value={row.averageRating == null
                   ? 'لا يوجد'
                   : <span className="inline-flex items-center gap-1"><Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />{row.averageRating.toFixed(1)} ({row.ratingCount})</span>}
               />
+              {row.active > 0 && <Stat label="جارية (لا تُحسب)" value={row.active} />}
+            </div>
+          )}
+          {!showsDelays && (row.providerCancelled > 0 || row.clientCancelled > 0) && (
+            <div className="p-4 border-b border-gray-100 grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <CancelReasons title="أسباب إلغاء المزود" reasons={row.providerCancelReasons} />
+              <CancelReasons title="أسباب إلغاء العميل" reasons={row.clientCancelReasons} />
             </div>
           )}
           {!showsDelays && (
@@ -286,6 +312,7 @@ export const ProviderPerformance = () => {
           <p>
             الطلب المكتمل يُعد متأخراً إذا بلغ الوقت الفعلي ضعف الوقت المتوقع
             (المتوقع ١٠ د: ١٩ د مقبول و٢٠ د متأخر). يظهر هنا من عنده {MIN_DELAYS_TO_FLAG} حالات فأكثر.
+            القائمة للمتابعة فقط، ولا توجد أي عقوبة آلية بسبب ظهور الاسم.
             {result && <> متوسط المنصة: {Math.round(result.platform.delayRate * 100)}% من الطلبات متأخرة.</>}
           </p>
         ) : (

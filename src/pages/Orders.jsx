@@ -62,26 +62,12 @@ import { db } from '../services/firebase';
 import SAUDI_CITIES_FALLBACK from '../services/cities.json';
 import { formatOrderNumberLabel } from '../utils/orderNumber';
 import { resolveServiceChange, serviceChangeBadge } from '../utils/serviceUpgrade';
-import { resolveActualArrivalMinutes } from '../utils/providerPerformance';
+import { formatCancelReasonLabel, resolveActualArrivalMinutes } from '../utils/providerPerformance';
 import { summarizeCustomerDemand, buildAttemptLookup } from '../utils/customerDemand';
 import { formatPhoneForExport } from '../utils/exportTable';
 import { resolveRequestCityName } from '../utils/noCoverage';
 import { ExportButtons } from '../components/ExportButtons';
 import { CityRanking } from '../components/CityRanking';
-
-/** تحويل أكواد الإلغاء القديمة (إنجليزي) لنص عربي — النص الحر يُعرض كما هو */
-const CANCEL_REASON_LABELS_AR = {
-  price_high: 'السعر مرتفع جداً',
-  problem_resolved: 'تم حل المشكلة',
-  wrong_service: 'اخترت نوع خدمة خاطئ',
-  provider_behavior: 'سلوك مزود الخدمة',
-  other: 'سبب آخر',
-};
-
-function formatCancelReasonLabel(reason) {
-  if (!reason || typeof reason !== 'string') return reason || '';
-  return CANCEL_REASON_LABELS_AR[reason] || reason;
-}
 
 /** سبب إلغاء الطلب الحالي، أو null إن لم يُلغَ */
 function extractOrderCancelReason(order) {
