@@ -53,7 +53,7 @@ export const isNoCoverageRequest = (r) =>
 
 /** إحداثيات الطلب: coordinates ثم address، بصيغة lat/lng أو latitude/longitude. null/'' و(0,0) غير صالحة */
 const toCoord = (v) => (v == null || v === '' ? NaN : Number(v));
-const requestCoords = (r) => {
+export const requestCoords = (r) => {
   for (const c of [r?.coordinates, r?.address]) {
     const lat = toCoord(c?.latitude ?? c?.lat);
     const lng = toCoord(c?.longitude ?? c?.lng);

@@ -8,8 +8,10 @@ import {
   buildProviderPerformance,
   MIN_DELAYS_TO_FLAG,
   MIN_ORDERS_TO_SCORE,
+  RATING_FULL_DEDUCTION_STARS,
   SCORE_FACTORS,
   SCORE_LEVELS,
+  SMOOTHING_ORDERS,
   toMs,
 } from '../utils/providerPerformance';
 
@@ -149,6 +151,17 @@ const ProviderRow = ({ row, tab, open, onToggle }) => {
               />
             </div>
           )}
+          {!showsDelays && (
+            <div className="p-4 border-b border-gray-100 space-y-1.5">
+              <div className="text-xs font-black text-gray-800">كيف حُسبت الدرجة: 100 ناقص الخصومات</div>
+              {row.factors.map((factor) => (
+                <div key={factor.id} className="flex items-center justify-between gap-3 text-xs text-gray-600">
+                  <span>{SCORE_FACTORS[factor.id].label} (بعد التعديل بمتوسط المنصة: {factor.adjustedValue})</span>
+                  <span className="font-black text-red-700" dir="ltr">-{factor.points}</span>
+                </div>
+              ))}
+            </div>
+          )}
           <DelayedOrders delayed={row.delayed} />
         </div>
       )}
@@ -276,13 +289,25 @@ export const ProviderPerformance = () => {
             {result && <> متوسط المنصة: {Math.round(result.platform.delayRate * 100)}% من الطلبات متأخرة.</>}
           </p>
         ) : (
-          <p>
-            الدرجة من ١٠٠: إلغاء المزود {SCORE_FACTORS.providerCancel.weight}، التقييم {SCORE_FACTORS.rating.weight}،
-            التأخير {SCORE_FACTORS.delay.weight}، إلغاء العميل {SCORE_FACTORS.clientCancel.weight}.
-            كل مزود يبدأ من متوسط المنصة، فكلما زادت طلباته اعتمدت درجته على أدائه هو.
-            مثال: ٢٠ مكتمل و٥ إلغاء عميل أفضل بوضوح من ٢ مكتمل و٥ إلغاء عميل.
-            من له أقل من {MIN_ORDERS_TO_SCORE} طلبات لا يُحكم عليه.
-          </p>
+          <div className="space-y-1.5">
+            <p className="font-black">تجريبي: المعادلة بانتظار اعتماد الإدارة، والدرجة للمتابعة فقط.</p>
+            <p>الدرجة = 100 ناقص خصم كل عامل. الخصم = وزن العامل × (نسبة المزود ÷ الحد الأقصى)، ولا يتجاوز الوزن:</p>
+            <ul className="list-disc pr-5">
+              <li>{SCORE_FACTORS.providerCancel.label}: حتى {SCORE_FACTORS.providerCancel.weight} نقطة، الخصم الكامل عند {SCORE_FACTORS.providerCancel.worst * 100}%</li>
+              <li>{SCORE_FACTORS.rating.label}: حتى {SCORE_FACTORS.rating.weight} نقطة، لا خصم عند ٥ نجوم والخصم الكامل عند {RATING_FULL_DEDUCTION_STARS}</li>
+              <li>{SCORE_FACTORS.delay.label}: حتى {SCORE_FACTORS.delay.weight} نقطة، الخصم الكامل عند {SCORE_FACTORS.delay.worst * 100}%</li>
+              <li>{SCORE_FACTORS.clientCancel.label}: حتى {SCORE_FACTORS.clientCancel.weight} نقطة، الخصم الكامل عند {SCORE_FACTORS.clientCancel.worst * 100}%</li>
+            </ul>
+            <p>
+              حتى لا يُظلم صاحب الطلبات القليلة: تُحسب النسبة كأن لكل مزود {SMOOTHING_ORDERS} طلبات إضافية بمتوسط المنصة.
+              مثال: ٢٠ مكتمل و٥ إلغاء عميل أفضل من ٢ مكتمل و٥ إلغاء عميل.
+            </p>
+            <p>
+              {SCORE_LEVELS.good.label}: {SCORE_LEVELS.good.min} فأكثر · {SCORE_LEVELS.watch.label}: {SCORE_LEVELS.watch.min} فأكثر ·
+              {' '}{SCORE_LEVELS.poor.label}: أقل من ذلك · أقل من {MIN_ORDERS_TO_SCORE} طلبات: لا يُحكم عليه.
+              افتح أي مزود لترى تفاصيل خصوماته.
+            </p>
+          </div>
         )}
       </div>
 

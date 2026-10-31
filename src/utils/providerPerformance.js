@@ -2,16 +2,18 @@ import { resolveProviderAppArrival } from './providerEtaDisplay';
 
 /**
  * مؤشر أداء المزود — يقارن بعدل بين من نفّذ كثيراً ومن نفّذ قليلاً.
- * كل نسبة تُنعَّم بمتوسط المنصة (Bayesian): المزود يبدأ كأنه نفّذ PRIOR_ORDERS طلبات
+ * كل نسبة تُنعَّم بمتوسط المنصة (Bayesian): المزود يبدأ كأنه نفّذ SMOOTHING_ORDERS طلبات
  * بأداء متوسط، فلا تحكم حالتان على مزود جديد، وتتغلب بياناته كلما زادت طلباته.
  */
 export const DELAY_MULTIPLIER = 2; // متأخر عند ضعف الوقت المتوقع فأكثر: المتوقع 10 د → 19 د مقبول و20 د متأخر
 export const MIN_DELAYS_TO_FLAG = 3;
 export const MIN_ORDERS_TO_SCORE = 5;
-const PRIOR_ORDERS = 10;
 const PRIOR_RATINGS = 5;
 
 /** الوزن = أثر العامل على الدرجة، worst = القيمة التي يُخصم عندها الوزن كاملاً */
+export const RATING_FULL_DEDUCTION_STARS = 3;
+export const SMOOTHING_ORDERS = 10;
+
 export const SCORE_FACTORS = {
   providerCancel: { label: 'إلغاء من المزود', weight: 35, worst: 0.25 },
   rating: { label: 'التقييم', weight: 25 },
@@ -19,7 +21,6 @@ export const SCORE_FACTORS = {
   clientCancel: { label: 'إلغاء العميل', weight: 20, worst: 0.6 }, // وزن أقل: قد لا يكون ذنب المزود
 };
 const RATING_NO_PENALTY = 5;
-const RATING_FULL_PENALTY = 3;
 
 export const SCORE_LEVELS = {
   good: { min: 70, label: 'جيد' },
@@ -116,7 +117,7 @@ const emptyStats = (id) => ({
   ratingSum: 0, ratingCount: 0, measured: 0, delayed: [],
 });
 
-const smoothedRate = (bad, total, platformRate) => (bad + platformRate * PRIOR_ORDERS) / (total + PRIOR_ORDERS);
+const smoothedRate = (bad, total, platformRate) => (bad + platformRate * SMOOTHING_ORDERS) / (total + SMOOTHING_ORDERS);
 const ratio = (part, whole) => (whole > 0 ? part / whole : 0);
 const penaltyOf = (value, worst) => Math.min(1, value / worst);
 
@@ -126,7 +127,7 @@ const scoreProvider = (stats, platform) => {
   const clientCancelRate = smoothedRate(stats.clientCancelled, handled, platform.clientCancelRate);
   const delayRate = smoothedRate(stats.delayed.length, stats.measured, platform.delayRate);
   const smoothedStars = (stats.ratingSum + platform.averageRating * PRIOR_RATINGS) / (stats.ratingCount + PRIOR_RATINGS);
-  const ratingPenalty = Math.max(0, Math.min(1, (RATING_NO_PENALTY - smoothedStars) / (RATING_NO_PENALTY - RATING_FULL_PENALTY)));
+  const ratingPenalty = Math.max(0, Math.min(1, (RATING_NO_PENALTY - smoothedStars) / (RATING_NO_PENALTY - RATING_FULL_DEDUCTION_STARS)));
 
   const deductions = {
     providerCancel: SCORE_FACTORS.providerCancel.weight * penaltyOf(providerCancelRate, SCORE_FACTORS.providerCancel.worst),
@@ -150,7 +151,14 @@ const scoreProvider = (stats, platform) => {
     ? 'insufficient'
     : Object.keys(SCORE_LEVELS).find((key) => score >= SCORE_LEVELS[key].min);
 
-  return { ...stats, handled, score, level, mainIssue, averageRating: stats.ratingCount ? stats.ratingSum / stats.ratingCount : null };
+  const factors = [
+    { id: 'providerCancel', adjustedValue: `${Math.round(providerCancelRate * 100)}%` },
+    { id: 'rating', adjustedValue: smoothedStars.toFixed(1) },
+    { id: 'delay', adjustedValue: `${Math.round(delayRate * 100)}%` },
+    { id: 'clientCancel', adjustedValue: `${Math.round(clientCancelRate * 100)}%` },
+  ].map((factor) => ({ ...factor, points: Math.round(deductions[factor.id] * 10) / 10 }));
+
+  return { ...stats, handled, score, level, mainIssue, factors, averageRating: stats.ratingCount ? stats.ratingSum / stats.ratingCount : null };
 };
 
 /**

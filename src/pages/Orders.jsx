@@ -2343,7 +2343,7 @@ export const Orders = () => {
         {[
           { label: 'المحاولات (الطلبات)', value: customerDemand.attempts, hint: 'كل طلب أُرسل' },
           { label: 'العملاء', value: customerDemand.uniqueCustomers, hint: 'بدون تكرار' },
-          { label: 'احتياج فعلي', value: customerDemand.needs, hint: 'طلبات العميل خلال ٣ ساعات = احتياج واحد' },
+          { label: 'احتياج فعلي', value: customerDemand.needs, hint: 'نفس العميل والقسم، خلال ٣ ساعات و٢ كم، والمحاولة السابقة لم تكتمل = احتياج واحد' },
           { label: 'احتياج تمت خدمته', value: customerDemand.servedNeeds, hint: 'اكتمل بطلب واحد على الأقل' },
         ].map((tile) => (
           <div key={tile.label} className="bg-white rounded-xl border border-gray-100 p-3" title={tile.hint}>
