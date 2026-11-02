@@ -126,6 +126,7 @@ function App() {
           <Route path="/q" element={<SiteQr />} />
           <Route path="/p/:slug" element={<PartnerPortal />} />
           <Route path="/app" element={<AppLinkPage />} />
+          <Route path="/provider-app" element={<AppLinkPage audience="provider" />} />
 
           {/* Admin login */}
           <Route path="/login" element={<Login onLogin={() => setIsAuthenticated(true)} />} />

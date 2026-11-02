@@ -2,7 +2,7 @@ import { resolveRequestCityName, requestCoords } from './noCoverage';
 import { diagnoseLostRequest, isLostRequest } from './lossDiagnosis';
 import { withoutRepeatedFailures } from './customerDemand';
 
-export const PRIORITY_CITY_NAMES = ['مكة المكرمة', 'المدينة المنورة', 'الرياض', 'جدة', 'الدمام', 'الخبر', 'بريدة', 'الجبيل'];
+export const PRIORITY_CITY_NAMES = ['مكة المكرمة', 'المدينة المنورة', 'الرياض', 'جدة', 'الدمام', 'الخبر', 'بريدة', 'الجبيل', 'خميس مشيط', 'الهفوف'];
 
 const UNKNOWN_AREA = 'غير محدد';
 const ACTIVE_STATUSES = ['searching', 'assigned', 'en_route', 'arrived', 'in_progress', 'pending_legal_docs', 'pending_client_confirmation', 'pending_review'];

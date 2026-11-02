@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
-import { appLinkQrSvg } from '../utils/appLink';
+import { APP_LINK_PATH, appLinkQrSvg } from '../utils/appLink';
 
-export function AppLinkQr({ size = 168, color = '#1C1917' }) {
+export function AppLinkQr({ size = 168, color = '#1C1917', path = APP_LINK_PATH }) {
   const [svg, setSvg] = useState('');
 
   useEffect(() => {
     let alive = true;
-    appLinkQrSvg(color).then((markup) => {
+    appLinkQrSvg(color, path).then((markup) => {
       if (alive) setSvg(markup);
     }).catch(() => {
       if (alive) setSvg('');
@@ -14,7 +14,7 @@ export function AppLinkQr({ size = 168, color = '#1C1917' }) {
     return () => {
       alive = false;
     };
-  }, [color]);
+  }, [color, path]);
 
   return (
     <div

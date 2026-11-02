@@ -3,15 +3,40 @@ import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { AppLinkQr } from '../components/AppLinkQr';
 import {
+  APP_LINK_PATH,
+  DEFAULT_APP_LINK_COPY,
   DEFAULT_APP_STORES,
+  DEFAULT_PROVIDER_APP_LINK_COPY,
+  DEFAULT_PROVIDER_APP_STORES,
+  PROVIDER_APP_LINK_PATH,
   appLinkCopy,
   customerStoreUrls,
   detectPlatform,
   OFFICIAL_ORIGIN,
+  providerStoreUrls,
 } from '../utils/appLink';
 
 const SETTINGS_WAIT_MS = 1200;
 const BRAND_DELAY_MS = 700;
+
+const AUDIENCES = {
+  customer: {
+    documentTitle: 'تطبيق فزاعين',
+    path: APP_LINK_PATH,
+    defaultStores: DEFAULT_APP_STORES,
+    defaultCopy: DEFAULT_APP_LINK_COPY,
+    storesFrom: customerStoreUrls,
+    copyFrom: (apps) => apps.appLink,
+  },
+  provider: {
+    documentTitle: 'تطبيق مزود فزاعين',
+    path: PROVIDER_APP_LINK_PATH,
+    defaultStores: DEFAULT_PROVIDER_APP_STORES,
+    defaultCopy: DEFAULT_PROVIDER_APP_LINK_COPY,
+    storesFrom: providerStoreUrls,
+    copyFrom: (apps) => apps.providerAppLink,
+  },
+};
 
 function AppleIcon() {
   return (
@@ -66,15 +91,16 @@ function Dots() {
   );
 }
 
-export default function AppLinkPage() {
+export default function AppLinkPage({ audience = 'customer' }) {
+  const config = AUDIENCES[audience];
   const [platform] = useState(() => detectPlatform());
-  const [stores, setStores] = useState(DEFAULT_APP_STORES);
-  const [copy, setCopy] = useState(() => appLinkCopy());
+  const [stores, setStores] = useState(config.defaultStores);
+  const [copy, setCopy] = useState(() => appLinkCopy({}, config.defaultCopy));
   const [logoUrl, setLogoUrl] = useState('/fzaeen-logo.jpeg');
 
   useEffect(() => {
-    document.title = 'تطبيق فزاعين';
-  }, []);
+    document.title = config.documentTitle;
+  }, [config]);
 
   useEffect(() => {
     let alive = true;
@@ -84,10 +110,11 @@ export default function AppLinkPage() {
     const apply = (data) => {
       if (!alive) return;
       const apps = data?.apps || {};
-      setStores(customerStoreUrls(apps));
-      setCopy(appLinkCopy(apps.appLink));
+      const nextStores = config.storesFrom(apps);
+      setStores(nextStores);
+      setCopy(appLinkCopy(config.copyFrom(apps), config.defaultCopy));
       if (data?.header?.logoUrl) setLogoUrl(data.header.logoUrl);
-      return customerStoreUrls(apps);
+      return nextStores;
     };
 
     const load = getDoc(doc(db, 'settings', 'landingContent'))
@@ -109,7 +136,7 @@ export default function AppLinkPage() {
       }, BRAND_DELAY_MS);
     };
 
-    const fallbackTimer = window.setTimeout(() => begin(DEFAULT_APP_STORES), SETTINGS_WAIT_MS);
+    const fallbackTimer = window.setTimeout(() => begin(config.defaultStores), SETTINGS_WAIT_MS);
     load.then((data) => {
       window.clearTimeout(fallbackTimer);
       const next = apply(data);
@@ -121,7 +148,7 @@ export default function AppLinkPage() {
       window.clearTimeout(fallbackTimer);
       window.clearTimeout(redirectTimer);
     };
-  }, [platform]);
+  }, [platform, config]);
 
   const storeHref = platform === 'ios' ? stores.appStoreUrl : stores.playStoreUrl;
   const domain = OFFICIAL_ORIGIN.replace(/^https?:\/\/(www\.)?/i, '');
@@ -141,7 +168,7 @@ export default function AppLinkPage() {
           <>
             <p className="mt-3 text-sm text-neutral-400">{copy.desktopText}</p>
             <div className="mt-6">
-              <AppLinkQr size={232} />
+              <AppLinkQr size={232} path={config.path} />
             </div>
             <div className="mt-6 flex gap-3" dir="ltr">
               <StoreButton store="google" href={stores.playStoreUrl} />

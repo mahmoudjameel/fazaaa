@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Check, Copy, Share2 } from 'lucide-react';
 import { AppLinkQr } from './AppLinkQr';
 import {
+  APP_LINK_PATH,
   appLinkLabel,
   copyText,
   detectPlatform,
@@ -16,12 +17,12 @@ function AppleMark() {
   );
 }
 
-export function AppOneLink({ copy, appStoreUrl, playStoreUrl }) {
+export function AppOneLink({ copy, appStoreUrl, playStoreUrl, path = APP_LINK_PATH }) {
   const [platform] = useState(() => detectPlatform());
   const [copied, setCopied] = useState(false);
   const canShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
-  const label = appLinkLabel();
-  const shareUrl = officialAppLinkUrl();
+  const shareUrl = officialAppLinkUrl(path);
+  const label = appLinkLabel(shareUrl);
 
   const onCopy = async () => {
     const ok = await copyText(shareUrl);
@@ -51,7 +52,7 @@ export function AppOneLink({ copy, appStoreUrl, playStoreUrl }) {
         <div className="flex-1 min-w-0 text-right">
           <h3 className="text-xl font-black text-white">{copy.linkTitle}</h3>
           <p className="mt-1 text-sm text-white/50">{copy.linkText}</p>
-          <a href="/app" className="mt-3 inline-block font-mono text-lg font-bold text-amber-300" dir="ltr">
+          <a href={path} className="mt-3 inline-block font-mono text-lg font-bold text-amber-300" dir="ltr">
             {label}
           </a>
           <div className="mt-4 flex flex-wrap gap-2">
@@ -84,7 +85,7 @@ export function AppOneLink({ copy, appStoreUrl, playStoreUrl }) {
         </div>
         {platform === 'desktop' && (
           <div className="shrink-0">
-            <AppLinkQr size={168} />
+            <AppLinkQr size={168} path={path} />
           </div>
         )}
       </div>

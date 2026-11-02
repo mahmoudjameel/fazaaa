@@ -1,10 +1,16 @@
 export const APP_LINK_PATH = '/app';
+export const PROVIDER_APP_LINK_PATH = '/provider-app';
 export const OFFICIAL_ORIGIN = 'https://fzaeen.com';
 
 /** روابط تطبيق العميل كما في اللاندنق، إذا الإعدادات فاضية أو عامة */
 export const DEFAULT_APP_STORES = {
   appStoreUrl: 'https://apps.apple.com/sa/app/fzaeen-%D9%81%D8%B2%D8%A7%D8%B9%D9%8A%D9%86/id6748981486',
   playStoreUrl: 'https://play.google.com/store/apps/details?id=com.londonerazooz.app',
+};
+
+export const DEFAULT_PROVIDER_APP_STORES = {
+  appStoreUrl: 'https://apps.apple.com/sa/app/%D9%81%D8%B2%D8%A7%D8%B9%D9%8A%D9%86-%D8%A7%D9%84%D9%85%D8%B2%D9%88%D8%AF-fzaeen-provider/id6761298718',
+  playStoreUrl: 'https://play.google.com/store/apps/details?id=com.fazaa.provider',
 };
 
 export const DEFAULT_APP_LINK_COPY = {
@@ -16,14 +22,23 @@ export const DEFAULT_APP_LINK_COPY = {
   linkText: 'شاركه أو اطبعه، ويفتح متجر الجوال اللي يمسحه',
 };
 
-export function appLinkUrl() {
+export const DEFAULT_PROVIDER_APP_LINK_COPY = {
+  eyebrow: 'تطبيق المزود',
+  title: 'استقبل الطلبات القريبة منك',
+  redirectText: 'جاري فتح المتجر',
+  desktopText: 'امسح الكود',
+  linkTitle: 'رابط واحد لتطبيق المزود',
+  linkText: 'شاركه مع المزودين، ويفتح متجر الجوال اللي يمسحه',
+};
+
+export function appLinkUrl(path = APP_LINK_PATH) {
   const origin = typeof window !== 'undefined' ? window.location.origin : OFFICIAL_ORIGIN;
-  return `${origin}${APP_LINK_PATH}`;
+  return `${origin}${path}`;
 }
 
 /** للطباعة والمشاركة خارج الموقع */
-export function officialAppLinkUrl() {
-  return `${OFFICIAL_ORIGIN}${APP_LINK_PATH}`;
+export function officialAppLinkUrl(path = APP_LINK_PATH) {
+  return `${OFFICIAL_ORIGIN}${path}`;
 }
 
 export function appLinkLabel(url = officialAppLinkUrl()) {
@@ -60,9 +75,17 @@ export function customerStoreUrls(apps = {}) {
   };
 }
 
-export function appLinkCopy(raw = {}) {
-  const copy = { ...DEFAULT_APP_LINK_COPY };
-  Object.keys(DEFAULT_APP_LINK_COPY).forEach((key) => {
+/** روابط متاجر تطبيق المزود من settings/landingContent.apps */
+export function providerStoreUrls(apps = {}) {
+  return {
+    appStoreUrl: usableStoreUrl(apps.providerAppleHref, DEFAULT_PROVIDER_APP_STORES.appStoreUrl),
+    playStoreUrl: usableStoreUrl(apps.providerGoogleHref, DEFAULT_PROVIDER_APP_STORES.playStoreUrl),
+  };
+}
+
+export function appLinkCopy(raw = {}, defaults = DEFAULT_APP_LINK_COPY) {
+  const copy = { ...defaults };
+  Object.keys(defaults).forEach((key) => {
     const value = String(raw?.[key] || '').trim();
     if (value) copy[key] = value;
   });
@@ -92,9 +115,9 @@ export async function copyText(text) {
 }
 
 /** QR كـ SVG. يشاور على /app نفسه، مو على متجر معيّن. */
-export async function appLinkQrSvg(color = '#1C1917') {
+export async function appLinkQrSvg(color = '#1C1917', path = APP_LINK_PATH) {
   const QR = (await import('qrcode')).default;
-  return QR.toString(appLinkUrl(), {
+  return QR.toString(appLinkUrl(path), {
     type: 'svg',
     margin: 0,
     errorCorrectionLevel: 'M',

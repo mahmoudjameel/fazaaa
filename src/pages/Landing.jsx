@@ -17,7 +17,7 @@ import { db } from '../services/firebase';
 import { useMarketingPageView } from '../hooks/useMarketingPageView';
 import { useLandingDownloadTracking } from '../hooks/useLandingDownloadTracking';
 import { AppOneLink } from '../components/AppOneLink';
-import { DEFAULT_APP_LINK_COPY, appLinkCopy } from '../utils/appLink';
+import { DEFAULT_APP_LINK_COPY, appLinkCopy, DEFAULT_PROVIDER_APP_LINK_COPY, PROVIDER_APP_LINK_PATH } from '../utils/appLink';
 
 const SCROLL_LINKS = [
   { label: 'الرئيسية', href: '#hero' },
@@ -881,6 +881,13 @@ export const Landing = () => {
             copy={appLinkCopy(landingContent.apps?.appLink)}
             appStoreUrl={appleHref}
             playStoreUrl={googleHref}
+          />
+
+          <AppOneLink
+            copy={appLinkCopy(landingContent.apps?.providerAppLink, DEFAULT_PROVIDER_APP_LINK_COPY)}
+            appStoreUrl={providerAppleHref}
+            playStoreUrl={providerGoogleHref}
+            path={PROVIDER_APP_LINK_PATH}
           />
 
           <div className="grid md:grid-cols-2 gap-5 sm:gap-6 max-w-4xl mx-auto">
