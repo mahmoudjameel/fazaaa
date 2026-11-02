@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { Loader2, Plus, Search, Upload } from 'lucide-react';
+import { CompanySaasEditor } from '../components/CompanySaasEditor';
 import { PartnerFleetUpload, readFleetSheet } from '../components/PartnerFleetUpload';
 import { ReplacePlateCell } from '../components/ReplacePlateCell';
 import { exportTable } from '../utils/exportTable';
@@ -30,7 +31,7 @@ const STATUS_LABELS = {
   expired: 'منتهية',
   cancelled: 'ملغاة',
 };
-const CHANGE_LABELS = { added: 'إضافة', replaced: 'استبدال', suspended: 'إيقاف', resumed: 'إعادة تشغيل', payment_cancelled: 'إلغاء دفعة' };
+const CHANGE_LABELS = { added: 'إضافة', replaced: 'استبدال', suspended: 'إيقاف', resumed: 'إعادة تشغيل', payment_cancelled: 'إلغاء دفعة', saas_updated: 'اشتراك لوحة الشركة' };
 const REPLACE_COLUMNS = [
   { key: 'currentPlate', header: 'اللوحة الحالية' },
   { key: 'plate', header: 'اللوحة الجديدة' },
@@ -399,6 +400,7 @@ const CompanyDetails = ({ partner, plan, plans, onPartnerChanged }) => {
         </p>
       </div>
       <ContractEditor key={partner.id} partner={partner} plans={plans} onSaved={onPartnerChanged} />
+      {partner.type === 'rental' && <CompanySaasEditor key={`saas-${partner.id}`} partner={partner} onSaved={onPartnerChanged} />}
       <FleetUploadSection partner={partner} plan={plan} reload={reload} />
       <UnpaidBatches partner={partner} reloadKey={vehicles} reload={reload} />
       <AddVehicleForm partner={partner} reload={reload} />

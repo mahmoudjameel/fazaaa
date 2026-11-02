@@ -39,6 +39,7 @@ const Escalations = lazy(() => import('./pages/Escalations').then((m) => ({ defa
 const Memberships = lazy(() => import('./pages/Memberships').then((m) => ({ default: m.Memberships })));
 const Fleets = lazy(() => import('./pages/Fleets').then((m) => ({ default: m.Fleets })));
 const ProviderEarnings = lazy(() => import('./pages/ProviderEarnings').then((m) => ({ default: m.ProviderEarnings })));
+const CompanyConsole = lazy(() => import('./pages/CompanyConsole').then((m) => ({ default: m.CompanyConsole })));
 const PartnerPortal = lazy(() => import('./pages/PartnerPortal').then((m) => ({ default: m.PartnerPortal })));
 const CityReport = lazy(() => import('./pages/CityReport').then((m) => ({ default: m.CityReport })));
 const ProviderPerformance = lazy(() => import('./pages/ProviderPerformance').then((m) => ({ default: m.ProviderPerformance })));
@@ -125,6 +126,7 @@ function App() {
           <Route path="/delete-account" element={<DeleteAccount />} />
           <Route path="/q" element={<SiteQr />} />
           <Route path="/p/:slug" element={<PartnerPortal />} />
+          <Route path="/company" element={<CompanyConsole />} />
           <Route path="/app" element={<AppLinkPage />} />
           <Route path="/provider-app" element={<AppLinkPage audience="provider" />} />
 

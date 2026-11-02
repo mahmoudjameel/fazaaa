@@ -49,6 +49,7 @@ export const listFleetChanges = async (partnerId) => {
   const snap = await getDocs(query(collection(db, 'fleet_changes'), where('partnerId', '==', partnerId)));
   return snap.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => (b.at?.toMillis?.() ?? 0) - (a.at?.toMillis?.() ?? 0));
 };
+export const setCompanySaas = (payload) => call('adminSetCompanySaas', payload);
 export const cancelPartnerPayment = (paymentRecordId) => call('adminCancelPartnerPayment', { paymentRecordId });
 export const listPackagePlans = () => listAll('package_plans');
 export const replacePartnerVehicle = (payload) => call('adminReplacePartnerVehicle', payload);

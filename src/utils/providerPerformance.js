@@ -66,9 +66,15 @@ const findLastHistoryStatusMs = (order, status, beforeMs = Infinity) =>
   }, 0);
 
 /** الوصول الفعلي بالدقائق: من قبول المزود حتى ضغطه «وصلت» — null إن نقص أحد الوقتين */
+const GEOFENCE_ONLY_SINCE_MS = Date.parse('2026-11-03T00:00:00+03:00');
+
 export const resolveActualArrivalMinutes = (order) => {
-  // السياج الجغرافي أدق: كثير من المزودين يبدأون العمل قبل ضغط «وصلت»
-  const arrivedMs = toMs(order?.actual_geofence_arrival_at) || toMs(order?.arrivedAt) || findLastHistoryStatusMs(order, 'arrived');
+  // الوصول الفعلي = دخول 500م من موقع العميل. زر «وصلت» للطلبات القديمة فقط،
+  // وبعدها طلب بلا قراءة موقع يبقى بلا رقم حتى لا يُحسب وصول مبكر أو متأخر غير حقيقي
+  const geofenceMs = toMs(order?.actual_geofence_arrival_at);
+  const usesButtonArrival = !geofenceMs && toMs(order?.createdAt) < GEOFENCE_ONLY_SINCE_MS;
+  const arrivedMs = geofenceMs
+    || (usesButtonArrival ? toMs(order?.arrivedAt) || findLastHistoryStatusMs(order, 'arrived') : 0);
   const assignedMs = toMs(order?.assignedAt) || findLastHistoryStatusMs(order, 'assigned', arrivedMs || Infinity);
   if (!assignedMs || !arrivedMs || arrivedMs < assignedMs) return null;
   return Math.round((arrivedMs - assignedMs) / 60000);

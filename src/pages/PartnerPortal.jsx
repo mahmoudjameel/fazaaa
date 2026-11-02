@@ -49,7 +49,7 @@ const Screen = ({ title, children }) => (
 
 const Card = ({ children }) => <section className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">{children}</section>;
 
-const PhoneStep = ({ onSignedIn }) => {
+export const PhoneStep = ({ onSignedIn }) => {
   const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState('');
   const [sentTo, setSentTo] = useState(null);
@@ -148,11 +148,9 @@ const RequestStep = ({ memberships, services, onCreated, plate }) => {
   const [error, setError] = useState('');
   const membership = usable.find((m) => m.id === membershipId);
   const options = membership
-    ? services.filter((service) => {
-      const key = groupKeyOf(membership, service);
-      return key && available(membership, key) > 0;
-    })
+    ? services.filter((service) => groupKeyOf(membership, service))
     : [];
+  const isUsedUp = (service) => available(membership, groupKeyOf(membership, service)) <= 0;
 
   const locate = () => {
     setError('');
@@ -208,10 +206,9 @@ const RequestStep = ({ memberships, services, onCreated, plate }) => {
       <label className="block text-sm font-bold text-gray-800">الخدمة
         <select value={subServiceId} onChange={(e) => setSubServiceId(e.target.value)} className={`${inputCls} mt-1`}>
           <option value="">اختر الخدمة</option>
-          {options.map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}
+          {options.map((service) => <option key={service.id} value={service.id}>{service.name}{isUsedUp(service) ? ' (استُهلكت)' : ''}</option>)}
         </select>
       </label>
-      {options.length === 0 && <p className="text-sm text-gray-600">استُهلكت كل خدمات الباقة.</p>}
       <button type="button" onClick={locate} className="w-full min-h-[48px] inline-flex items-center justify-center gap-2 rounded-xl border border-gray-300 text-base font-bold text-gray-800">
         <MapPin className="w-5 h-5" /> {position ? 'تم تحديد موقعك' : 'حدد موقعي'}
       </button>
