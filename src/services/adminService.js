@@ -1796,7 +1796,62 @@ export const listenToActiveMapRequests = (callback) => {
   }
 };
 
+const CUSTOMER_REQUEST_FIELDS = [
+  'customerId', 'userId', 'status', 'createdAt',
+  'serviceId', 'parentServiceId', 'serviceName', 'category', 'serviceCategory',
+];
+const REQUESTS_SUMMARY_PAGE_SIZE = 1000;
 
+const readRestValue = (value = {}) => {
+  if (value.integerValue != null) return Number(value.integerValue);
+  return value.stringValue ?? value.timestampValue ?? value.doubleValue;
+};
+
+/**
+ * حقول الطلبات اللازمة لإحصائيات العملاء فقط. عبر REST لأن Web SDK لا يدعم اختيار الحقول،
+ * وتحميل كل الطلبات كاملة يتجاوز 100MB فيُسقط تبويب Safari على الجوال.
+ */
+export const getCustomerRequestsSummary = async () => {
+  const token = await auth.currentUser?.getIdToken();
+  const { projectId } = db.app.options;
+  const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery`;
+  const summaries = [];
+  let lastDocumentName = null;
+
+  for (;;) {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({
+        structuredQuery: {
+          from: [{ collectionId: 'requests' }],
+          select: { fields: CUSTOMER_REQUEST_FIELDS.map((fieldPath) => ({ fieldPath })) },
+          orderBy: [{ field: { fieldPath: '__name__' } }],
+          limit: REQUESTS_SUMMARY_PAGE_SIZE,
+          ...(lastDocumentName
+            ? { startAt: { values: [{ referenceValue: lastDocumentName }], before: false } }
+            : {}),
+        },
+      }),
+    });
+    if (!response.ok) throw new Error(`requests summary failed: ${response.status}`);
+
+    const documents = (await response.json()).map((row) => row.document).filter(Boolean);
+    documents.forEach(({ fields = {} }) => {
+      const summary = {};
+      CUSTOMER_REQUEST_FIELDS.forEach((field) => {
+        if (fields[field]) summary[field] = readRestValue(fields[field]);
+      });
+      summaries.push(summary);
+    });
+
+    if (documents.length < REQUESTS_SUMMARY_PAGE_SIZE) return summaries;
+    lastDocumentName = documents[documents.length - 1].name;
+  }
+};
 
 /**
  * إحصائيات طلبات العملاء من مجموعة requests (customerId أو userId)

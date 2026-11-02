@@ -15,6 +15,7 @@ import {
   BLOCK_REASON_LABELS,
   permanentlyDeleteCustomer,
   buildCustomerOrderStats,
+  getCustomerRequestsSummary,
   banPhoneNumber,
   unbanPhoneNumber,
   isPhoneBlocked,
@@ -261,7 +262,7 @@ export const Users = () => {
     try {
       // العملاء يظهرون فوراً، والطلبات الأثقل تُكمل الإحصائيات بعدها
       const ordersPromise = Promise.all([
-        fetchCollectionDocs('requests'),
+        getCustomerRequestsSummary(),
         fetchCollectionDocs('emergency-services').catch(() => []),
       ]);
       ordersPromise.catch(() => {});
@@ -305,7 +306,7 @@ export const Users = () => {
         setLoading(false);
       }
 
-      const [requestDocs, serviceDocs] = await ordersPromise;
+      const [requests, serviceDocs] = await ordersPromise;
 
       const catalog = serviceDocs.map((d) => {
         const data = d.data();
@@ -317,13 +318,10 @@ export const Users = () => {
       }).filter((s) => s.name);
       setServiceOptions(catalog);
 
-      const orderStats = buildCustomerOrderStats(
-        requestDocs.map((d) => ({ id: d.id, ...d.data() }))
-      );
+      const orderStats = buildCustomerOrderStats(requests);
 
       const serviceIdsByCustomer = new Map();
-      requestDocs.forEach((d) => {
-        const req = d.data();
+      requests.forEach((req) => {
         const customerId = req.customerId || req.userId;
         if (!customerId) return;
         const matched = matchRequestServiceIds(req, catalog);
