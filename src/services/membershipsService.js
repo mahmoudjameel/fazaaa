@@ -37,6 +37,8 @@ export const createPartner = (partner) => addDoc(collection(db, 'partners'), {
 export const setPartnerStatus = (partnerId, status) => updateDoc(doc(db, 'partners', partnerId), { status });
 
 export const registerPartnerVehicles = (payload) => call('adminRegisterPartnerVehicles', payload);
+export const validatePartnerVehicles = (payload) => call('adminValidatePartnerVehicles', payload);
+export const replacePartnerVehicle = (payload) => call('adminReplacePartnerVehicle', payload);
 export const confirmPartnerPayment = (paymentRecordId) => call('adminConfirmPartnerPayment', { paymentRecordId });
 export const recordPartnerPayment = (payload) => call('adminRecordPartnerPayment', payload);
 export const authorizeRenter = (payload) => call('adminAuthorizeRenter', payload);
