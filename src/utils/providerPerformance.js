@@ -67,7 +67,8 @@ const findLastHistoryStatusMs = (order, status, beforeMs = Infinity) =>
 
 /** الوصول الفعلي بالدقائق: من قبول المزود حتى ضغطه «وصلت» — null إن نقص أحد الوقتين */
 export const resolveActualArrivalMinutes = (order) => {
-  const arrivedMs = toMs(order?.arrivedAt) || findLastHistoryStatusMs(order, 'arrived');
+  // السياج الجغرافي أدق: كثير من المزودين يبدأون العمل قبل ضغط «وصلت»
+  const arrivedMs = toMs(order?.actual_geofence_arrival_at) || toMs(order?.arrivedAt) || findLastHistoryStatusMs(order, 'arrived');
   const assignedMs = toMs(order?.assignedAt) || findLastHistoryStatusMs(order, 'assigned', arrivedMs || Infinity);
   if (!assignedMs || !arrivedMs || arrivedMs < assignedMs) return null;
   return Math.round((arrivedMs - assignedMs) / 60000);

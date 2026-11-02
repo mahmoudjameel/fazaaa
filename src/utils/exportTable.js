@@ -4,15 +4,27 @@ import { format } from 'date-fns';
  * تصدير جدول إلى Excel أو CSV.
  * columns: [{ header, value(row) }] — القيمة نص أو رقم أو Date أو null.
  */
-const DATE_TEXT_FORMAT = 'yyyy-MM-dd HH:mm';
 const MIN_COLUMN_WIDTH = 12;
 const MAX_COLUMN_WIDTH = 42;
 
 const dateStamp = () => format(new Date(), 'yyyy-MM-dd');
 
+const RIYADH_DATE_TIME = new Intl.DateTimeFormat('sv-SE', {
+  timeZone: 'Asia/Riyadh',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+});
+
+/** التقارير بتوقيت السعودية مهما كان توقيت جهاز من صدّرها */
+const formatRiyadhDateTime = (date) => RIYADH_DATE_TIME.format(date);
+
 const toCellText = (value) => {
   if (value == null) return '';
-  return value instanceof Date ? format(value, DATE_TEXT_FORMAT) : String(value);
+  return value instanceof Date ? formatRiyadhDateTime(value) : String(value);
 };
 
 /** اسم يبدأ بـ = أو + ينفّذه Excel كمعادلة عند فتح CSV — البادئة ' تبقيه نصاً */
@@ -48,7 +60,7 @@ const columnWidth = (column, rows) => {
 export const buildExcelSheet = (columns, rows) => {
   const toExcelCell = (value) => {
     if (value == null || value === '') return null;
-    if (value instanceof Date) return { value: format(value, DATE_TEXT_FORMAT), type: String };
+    if (value instanceof Date) return { value: formatRiyadhDateTime(value), type: String };
     return typeof value === 'number' ? { value, type: Number } : { value: String(value), type: String };
   };
   return [

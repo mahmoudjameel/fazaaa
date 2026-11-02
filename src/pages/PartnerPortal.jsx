@@ -107,7 +107,39 @@ const PhoneStep = ({ onSignedIn }) => {
   );
 };
 
-const RequestStep = ({ memberships, services, onCreated }) => {
+/** التأجير: المستأجر يكتب لوحة سيارته، والتحقق من التغطية والرصيد على السيرفر */
+const FleetPlateLookup = ({ slug, onFound }) => {
+  const [plate, setPlate] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const lookup = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      onFound(await call('lookupFleetVehicle', { slug, plate }), plate);
+    } catch (e) {
+      console.error(e);
+      setError(e?.message || 'تعذر التحقق من اللوحة');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card>
+      <label className="block text-sm font-bold text-gray-800">لوحة السيارة
+        <input value={plate} onChange={(e) => setPlate(e.target.value)} placeholder="مثال: 1234 ا ب ح" className={`${inputCls} mt-1`} />
+      </label>
+      {error && <p className="text-sm font-bold text-red-700">{error}</p>}
+      <button type="button" disabled={busy || !plate.trim()} onClick={lookup} className={primaryCls}>
+        {busy && <Loader2 className="w-5 h-5 animate-spin" />} تحقق من السيارة
+      </button>
+    </Card>
+  );
+};
+
+const RequestStep = ({ memberships, services, onCreated, plate }) => {
   const usable = useMemo(() => memberships.filter((m) => m.status === 'active'), [memberships]);
   const [membershipId, setMembershipId] = useState(usable[0]?.id || '');
   const [subServiceId, setSubServiceId] = useState('');
@@ -139,7 +171,7 @@ const RequestStep = ({ memberships, services, onCreated }) => {
     setBusy(true);
     setError('');
     try {
-      const { requestId } = await call('createPartnerRequest', { membershipId, subServiceId, coordinates: position, location: 'موقع محدد من صفحة الشركة' });
+      const { requestId } = await call('createPartnerRequest', { membershipId, subServiceId, plate, coordinates: position, location: 'موقع محدد من صفحة الشركة' });
       onCreated(requestId);
     } catch (e) {
       console.error(e);
@@ -212,6 +244,7 @@ export const PartnerPortal = () => {
   const [failed, setFailed] = useState(false);
   const [memberships, setMemberships] = useState(null);
   const [requestId, setRequestId] = useState(null);
+  const [fleetVehicle, setFleetVehicle] = useState(null);
 
   useEffect(() => {
     call('getPartnerBySlug', { slug }).then(setPartnerData).catch((e) => {
@@ -235,6 +268,17 @@ export const PartnerPortal = () => {
   const title = partnerData.partner.name;
   if (requestId) return <Screen title={title}><TrackingStep requestId={requestId} /></Screen>;
   if (!memberships) return <Screen title={title}><PhoneStep onSignedIn={loadMemberships} /></Screen>;
+  if (partnerData.partner.type === 'rental') {
+    return (
+      <Screen title={title}>
+        {fleetVehicle ? (
+          <RequestStep key={fleetVehicle.membership.id} memberships={[fleetVehicle.membership]} plate={fleetVehicle.plate} services={partnerData.services} onCreated={setRequestId} />
+        ) : (
+          <FleetPlateLookup slug={slug} onFound={(membership, plate) => setFleetVehicle({ membership, plate })} />
+        )}
+      </Screen>
+    );
+  }
   return (
     <Screen title={title}>
       <RequestStep memberships={memberships} services={partnerData.services} onCreated={setRequestId} />

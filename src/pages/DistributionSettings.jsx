@@ -20,6 +20,7 @@ export const DistributionSettings = () => {
   const [stages, setStages] = useState(DEFAULT_STAGES);
   const [vipEnabled, setVipEnabled] = useState(false);
   const [rejectBlockMinutes, setRejectBlockMinutes] = useState(60);
+  const [movementWatchdogEnabled, setMovementWatchdogEnabled] = useState(false);
   const [customerMapRefreshSeconds, setCustomerMapRefreshSeconds] = useState(60);
   const [pricing, setPricing] = useState({ ...DEFAULT_PRICING });
   const [loading, setLoading] = useState(true);
@@ -47,6 +48,7 @@ export const DistributionSettings = () => {
           })));
         }
         if (typeof d.vipEnabled === 'boolean') setVipEnabled(d.vipEnabled);
+        setMovementWatchdogEnabled(d.movementWatchdogEnabled === true);
         if (d.rejectBlockMinutes === 0 || Number.isFinite(Number(d.rejectBlockMinutes))) {
           const n = Number(d.rejectBlockMinutes);
           setRejectBlockMinutes(Number.isFinite(n) && n >= 0 ? n : 60);
@@ -147,6 +149,7 @@ export const DistributionSettings = () => {
         searchStages: stages,
         vipEnabled,
         rejectBlockMinutes: Number(rejectBlockMinutes) || 0,
+        movementWatchdogEnabled,
         // سقف التوزيع = أعلى مرحلة في السيناريو (تتغير إذا زِدت مراحل من اللوحة)
         maxSearchRadiusKm: stageMax,
         customerMapRefreshSeconds: Number(customerMapRefreshSeconds) || 60,
@@ -421,6 +424,18 @@ export const DistributionSettings = () => {
             <span className="text-sm text-gray-500 font-medium">دقيقة</span>
           </div>
         </div>
+
+        <div className="bg-white rounded-2xl border border-gray-100 p-5 flex items-center justify-between gap-4">
+          <div>
+            <h3 className="font-bold text-gray-800">مراقبة تحرك المزود بعد القبول</h3>
+            <p className="text-xs text-gray-500 mt-1 leading-relaxed max-w-xl">
+              بعد 4 دقائق بلا حركة يسأل المزود، وإذا اختار «أحتاج وقتاً» أو تجاهل يُسحب الطلب ويبدأ بحث جديد.
+              <strong> لا تفعّلها قبل وصول تحديث تطبيقي العميل والمزود لأغلب المستخدمين.</strong>
+            </p>
+          </div>
+          <input type="checkbox" checked={movementWatchdogEnabled} onChange={(e) => setMovementWatchdogEnabled(e.target.checked)} aria-label="تفعيل مراقبة تحرك المزود" className="w-5 h-5 flex-shrink-0" />
+        </div>
+
         <p className="text-xs text-gray-400 mt-3">
           الحالي: {Number(rejectBlockMinutes) === 0
             ? 'الحظر معطّل'

@@ -34,10 +34,23 @@ export const listPartnerLedger = async (partnerId) => {
 export const createPartner = (partner) => addDoc(collection(db, 'partners'), {
   ...partner, status: 'active', balanceDue: 0, createdAt: serverTimestamp(),
 });
+export const updatePartnerContract = (partnerId, contract) => updateDoc(doc(db, 'partners', partnerId), contract);
 export const setPartnerStatus = (partnerId, status) => updateDoc(doc(db, 'partners', partnerId), { status });
 
 export const registerPartnerVehicles = (payload) => call('adminRegisterPartnerVehicles', payload);
 export const validatePartnerVehicles = (payload) => call('adminValidatePartnerVehicles', payload);
+export const replaceFleetVehicles = (payload) => call('adminReplaceFleetVehicles', payload);
+export const setFleetVehiclesSuspended = (payload) => call('adminSetFleetVehiclesSuspended', payload);
+export const listFleetMemberships = async (partnerId) => {
+  const snap = await getDocs(query(collection(db, 'memberships'), where('partnerId', '==', partnerId)));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+};
+export const listFleetChanges = async (partnerId) => {
+  const snap = await getDocs(query(collection(db, 'fleet_changes'), where('partnerId', '==', partnerId)));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => (b.at?.toMillis?.() ?? 0) - (a.at?.toMillis?.() ?? 0));
+};
+export const cancelPartnerPayment = (paymentRecordId) => call('adminCancelPartnerPayment', { paymentRecordId });
+export const listPackagePlans = () => listAll('package_plans');
 export const replacePartnerVehicle = (payload) => call('adminReplacePartnerVehicle', payload);
 export const confirmPartnerPayment = (paymentRecordId) => call('adminConfirmPartnerPayment', { paymentRecordId });
 export const recordPartnerPayment = (payload) => call('adminRecordPartnerPayment', payload);

@@ -20,13 +20,13 @@ const downloadTemplate = () => exportTable({
 });
 
 /** أعمدة الملف بعنوانها لا بترتيبها، والأرقام تصل من Excel كقيم عددية */
-const readFleetFile = async (file) => {
+export const readFleetSheet = async (file, columns, requiredKey) => {
   const { readSheet } = await import('read-excel-file/browser');
   const [headerRow = [], ...dataRows] = await readSheet(file);
   const headers = headerRow.map((cell) => String(cell ?? '').trim());
-  const columnIndexes = FLEET_COLUMNS.map((c) => [c.key, headers.indexOf(c.header)]);
-  if (columnIndexes.some(([key, index]) => key === 'plate' && index < 0)) {
-    throw new Error('لم يُعثر على عمود «اللوحة». استخدم القالب.');
+  const columnIndexes = columns.map((c) => [c.key, headers.indexOf(c.header)]);
+  if (columnIndexes.some(([key, index]) => key === requiredKey && index < 0)) {
+    throw new Error('لم يُعثر على عمود اللوحة. استخدم القالب.');
   }
   return dataRows
     .map((row, rowIndex) => ({ row, sheetLine: rowIndex + 2 }))
@@ -62,17 +62,20 @@ export const PartnerFleetUpload = ({ partner, plan, termsAccepted, reload }) => 
     if (!file) return;
     setPreview(null);
     runStep(async () => {
-      const vehicles = await readFleetFile(file);
-      const { rows } = await validatePartnerVehicles({ partnerId: partner.id, vehicles });
-      setPreview({ vehicles, rows });
+      const vehicles = await readFleetSheet(file, FLEET_COLUMNS, 'plate');
+      const validation = await validatePartnerVehicles({ partnerId: partner.id, vehicles });
+      setPreview({ vehicles, ...validation });
     });
   };
 
   const invalidRows = preview?.rows.filter((row) => row.errors.length > 0) ?? [];
   const validVehicles = preview?.vehicles.filter((_, index) => preview.rows[index].errors.length === 0) ?? [];
 
+  const seatsLeft = preview?.maxVehicles ? preview.maxVehicles - preview.seated : Infinity;
+  const exceedsContract = validVehicles.length > seatsLeft;
+
   const approve = () => runStep(async () => {
-    await registerPartnerVehicles({ partnerId: partner.id, planId: plan?.id, vehicles: validVehicles, termsAccepted });
+    await registerPartnerVehicles({ partnerId: partner.id, planId: partner.planId || plan?.id, vehicles: validVehicles, termsAccepted });
     setPreview(null);
     await reload?.();
   });
@@ -104,10 +107,15 @@ export const PartnerFleetUpload = ({ partner, plan, termsAccepted, reload }) => 
               ))}
             </ul>
           )}
+          {exceedsContract && (
+            <p className="text-sm font-bold text-red-700">
+              المتبقي في العقد {seatsLeft} سيارة من {preview.maxVehicles}. احذف الزائد من الملف أو ارفع عدد السيارات.
+            </p>
+          )}
           {!termsAccepted && <p className="text-xs text-gray-600">أكد موافقة الجهة على الشروط أعلاه قبل الاعتماد.</p>}
           <button
             type="button"
-            disabled={busy || !plan || !termsAccepted || validVehicles.length === 0}
+            disabled={busy || !plan || !termsAccepted || exceedsContract || validVehicles.length === 0}
             onClick={approve}
             className="px-3 py-2 rounded-xl bg-teal-600 text-white text-sm font-bold disabled:opacity-50"
           >

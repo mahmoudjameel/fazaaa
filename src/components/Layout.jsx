@@ -6,7 +6,7 @@ import {
   UserCog, CreditCard, Banknote, AlertCircle, Shield,
   ChevronLeft, UserPlus, Bell, ImageIcon, Ticket, Timer,
   PanelRight, PanelLeft,   Route, Globe, AlertTriangle, Stethoscope, FlaskConical, Ban, FileText, BarChart3, Wallet,
-  UserX, WifiOff, FileUp, QrCode, TrendingUp, Gauge, Map as MapIcon, BadgeCheck, Landmark
+  UserX, WifiOff, FileUp, QrCode, TrendingUp, Gauge, Map as MapIcon, BadgeCheck, Landmark, CarFront
 } from 'lucide-react';
 import { useState, useEffect, useRef, Fragment } from 'react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
@@ -263,6 +263,7 @@ export const Layout = () => {
     { id: 'sla_tracking',            path: '/admin/sla-tracking',             icon: Timer,           label: 'متابعة SLA',               category: 'management' },
     { id: 'escalations',             path: '/admin/escalations',              icon: AlertTriangle,   label: 'تصعيدات النظام',           category: 'management' },
     { id: 'memberships',             path: '/admin/memberships',              icon: BadgeCheck,      label: 'باقات العضوية',            category: 'management' },
+    { id: 'fleets',                  path: '/admin/fleets',                   icon: CarFront,        label: 'إدارة أساطيل الشركات',     category: 'management' },
     { id: 'provider_earnings',       path: '/admin/provider-earnings',        icon: Landmark,        label: 'مستحقات المزودين',         category: 'management' },
     { id: 'city_report',             path: '/admin/city-report',              icon: MapIcon,         label: 'تقرير المدن',              category: 'management' },
     { id: 'provider_performance',    path: '/admin/provider-performance',     icon: Gauge,           label: 'أداء المزودين',            category: 'management' },

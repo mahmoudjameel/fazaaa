@@ -1,3 +1,4 @@
+import { ReplacePlateCell } from '../components/ReplacePlateCell';
 import { PartnerFleetUpload } from '../components/PartnerFleetUpload';
 import { useEffect, useMemo, useState } from 'react';
 import { BadgeCheck, Copy, Loader2, Plus, RefreshCw, Search } from 'lucide-react';
@@ -15,7 +16,6 @@ import {
   listPartners,
   recordPartnerPayment,
   registerPartnerVehicles,
-  replacePartnerVehicle,
   saveMembershipPlan,
   setPartnerStatus,
 } from '../services/membershipsService';
@@ -171,43 +171,6 @@ const PaymentsTab = ({ payments, reload }) => {
         ]}
       />
     </div>
-  );
-};
-
-const EMPTY_REPLACEMENT = { plate: '', make: '', model: '', color: '', reason: '' };
-
-const ReplacePlateCell = ({ membership, busy, run }) => {
-  const [form, setForm] = useState(null);
-  const history = membership.vehicleHistory || [];
-  if (!form) {
-    return (
-      <span className="block min-w-[120px]">
-        <button type="button" onClick={() => setForm(EMPTY_REPLACEMENT)} className="text-teal-700 font-bold">استبدال</button>
-        {history.map((change) => (
-          <span key={change.at} className="block text-xs text-gray-500">{change.from?.plate} ← {change.to?.plate} · {change.reason} · {change.at.slice(0, 10)}</span>
-        ))}
-      </span>
-    );
-  }
-  return (
-    <span className="flex flex-col gap-2 min-w-[180px]">
-      {[['plate', 'اللوحة الجديدة'], ['make', 'النوع'], ['model', 'الموديل'], ['color', 'اللون'], ['reason', 'سبب الاستبدال']].map(([key, label]) => (
-        <input key={key} value={form[key]} onChange={(e) => setForm({ ...form, [key]: e.target.value })} placeholder={label} className={inputCls} />
-      ))}
-      <button
-        type="button"
-        disabled={busy}
-        className={primaryCls}
-        onClick={() => run(async () => {
-          const { reason, ...vehicle } = form;
-          await replacePartnerVehicle({ membershipId: membership.id, vehicle, reason });
-          setForm(null);
-        })}
-      >
-        حفظ
-      </button>
-      <button type="button" onClick={() => setForm(null)} className="text-xs font-bold text-gray-600">إلغاء</button>
-    </span>
   );
 };
 

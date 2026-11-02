@@ -37,6 +37,7 @@ const AddProvider = lazy(() => import('./pages/AddProvider').then((m) => ({ defa
 const SLATracking = lazy(() => import('./pages/SLATracking').then((m) => ({ default: m.SLATracking })));
 const Escalations = lazy(() => import('./pages/Escalations').then((m) => ({ default: m.Escalations })));
 const Memberships = lazy(() => import('./pages/Memberships').then((m) => ({ default: m.Memberships })));
+const Fleets = lazy(() => import('./pages/Fleets').then((m) => ({ default: m.Fleets })));
 const ProviderEarnings = lazy(() => import('./pages/ProviderEarnings').then((m) => ({ default: m.ProviderEarnings })));
 const PartnerPortal = lazy(() => import('./pages/PartnerPortal').then((m) => ({ default: m.PartnerPortal })));
 const CityReport = lazy(() => import('./pages/CityReport').then((m) => ({ default: m.CityReport })));
@@ -152,6 +153,7 @@ function App() {
             <Route path="sla-tracking" element={<SLATracking />} />
             <Route path="escalations" element={<Escalations />} />
             <Route path="memberships" element={<Memberships />} />
+            <Route path="fleets" element={<Fleets />} />
             <Route path="provider-earnings" element={<ProviderEarnings />} />
             <Route path="city-report" element={<CityReport />} />
             <Route path="provider-performance" element={<ProviderPerformance />} />
