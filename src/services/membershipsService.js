@@ -19,6 +19,11 @@ export const saveMembershipPlan = (plan) => setDoc(doc(db, 'package_plans', 'def
   activationHours: Number(plan.activationHours),
   services: plan.services,
   laborOnlyNotice: plan.laborOnlyNotice,
+  termsText: plan.termsText || '',
+  individualSalesEnabled: plan.individualSalesEnabled === true,
+  entryVisible: plan.entryVisible !== false,
+  entryLabel: String(plan.entryLabel || '').trim() || 'باقاتي',
+  registrationDocMode: plan.registrationDocMode || 'required',
   active: true,
   updatedAt: serverTimestamp(),
 }, { merge: true });

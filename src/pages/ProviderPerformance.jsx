@@ -7,7 +7,6 @@ import { formatOrderNumberLabel } from '../utils/orderNumber';
 import {
   buildProviderPerformance,
   MIN_DELAYS_TO_FLAG,
-  MIN_ORDERS_TO_SCORE,
   RATING_FULL_DEDUCTION_STARS,
   SCORE_FACTORS,
   SCORE_LEVELS,
@@ -306,37 +305,17 @@ export const ProviderPerformance = () => {
         )}
       </div>
 
+      {tab === 'delays' && (
       <div className="bg-teal-50 border border-teal-100 rounded-2xl p-4 text-sm text-teal-900 flex gap-2.5">
         <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
-        {tab === 'delays' ? (
           <p>
             الطلب المكتمل يُعد متأخراً إذا بلغ الوقت الفعلي ضعف الوقت المتوقع
             (المتوقع ١٠ د: ١٩ د مقبول و٢٠ د متأخر). يظهر هنا من عنده {MIN_DELAYS_TO_FLAG} حالات فأكثر.
             القائمة للمتابعة فقط، ولا توجد أي عقوبة آلية بسبب ظهور الاسم.
             {result && <> متوسط المنصة: {Math.round(result.platform.delayRate * 100)}% من الطلبات متأخرة.</>}
           </p>
-        ) : (
-          <div className="space-y-1.5">
-            <p className="font-black">تجريبي: المعادلة بانتظار اعتماد الإدارة، والدرجة للمتابعة فقط.</p>
-            <p>الدرجة = 100 ناقص خصم كل عامل. الخصم = وزن العامل × (نسبة المزود ÷ الحد الأقصى)، ولا يتجاوز الوزن:</p>
-            <ul className="list-disc pr-5">
-              <li>{SCORE_FACTORS.providerCancel.label}: حتى {SCORE_FACTORS.providerCancel.weight} نقطة، الخصم الكامل عند {SCORE_FACTORS.providerCancel.worst * 100}%</li>
-              <li>{SCORE_FACTORS.rating.label}: حتى {SCORE_FACTORS.rating.weight} نقطة، لا خصم عند ٥ نجوم والخصم الكامل عند {RATING_FULL_DEDUCTION_STARS}</li>
-              <li>{SCORE_FACTORS.delay.label}: حتى {SCORE_FACTORS.delay.weight} نقطة، الخصم الكامل عند {SCORE_FACTORS.delay.worst * 100}%</li>
-              <li>{SCORE_FACTORS.clientCancel.label}: حتى {SCORE_FACTORS.clientCancel.weight} نقطة، الخصم الكامل عند {SCORE_FACTORS.clientCancel.worst * 100}%</li>
-            </ul>
-            <p>
-              حتى لا يُظلم صاحب الطلبات القليلة: تُحسب النسبة كأن لكل مزود {SMOOTHING_ORDERS} طلبات إضافية بمتوسط المنصة.
-              مثال: ٢٠ مكتمل و٥ إلغاء عميل أفضل من ٢ مكتمل و٥ إلغاء عميل.
-            </p>
-            <p>
-              {SCORE_LEVELS.good.label}: {SCORE_LEVELS.good.min} فأكثر · {SCORE_LEVELS.watch.label}: {SCORE_LEVELS.watch.min} فأكثر ·
-              {' '}{SCORE_LEVELS.poor.label}: أقل من ذلك · أقل من {MIN_ORDERS_TO_SCORE} طلبات: لا يُحكم عليه.
-              افتح أي مزود لترى تفاصيل خصوماته.
-            </p>
-          </div>
-        )}
       </div>
+      )}
 
       {failed ? (
         <div className="bg-white rounded-2xl border border-red-100 py-12 text-center">

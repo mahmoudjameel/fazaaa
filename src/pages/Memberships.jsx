@@ -99,6 +99,7 @@ const MembershipsTab = ({ memberships, reload }) => {
           { header: 'الجهة', render: (m) => m.partnerName || 'فرد' },
           { header: 'الحالة', render: (m) => STATUS_LABELS[m.status] || m.status },
           { header: 'المتبقي', render: remainingText },
+          { header: 'الاستمارة', render: (m) => (m.registrationImageUrl ? <a href={m.registrationImageUrl} target="_blank" rel="noreferrer" className="font-bold text-teal-700 underline">عرض</a> : '—') },
           { header: 'التفعيل', render: (m) => <span dir="ltr">{formatMs(m.activatesAtMs)}</span> },
           { header: 'الانتهاء', render: (m) => <span dir="ltr">{formatMs(m.expiresAtMs)}</span> },
           {
@@ -355,6 +356,27 @@ const PlanTab = ({ plan, reload }) => {
       </div>
       <label className="block text-sm font-semibold text-gray-700">نص الموافقة قبل الشراء
         <textarea value={form.laborOnlyNotice} onChange={(e) => setForm({ ...form, laborOnlyNotice: e.target.value })} rows={3} className={`${inputCls} mt-1`} />
+      </label>
+      <label className="block text-sm font-semibold text-gray-700">شروط الباقة
+        <textarea value={form.termsText || ''} onChange={(e) => setForm({ ...form, termsText: e.target.value })} rows={8} placeholder="اكتب كل شرط في سطر" className={`${inputCls} mt-1`} />
+      </label>
+      <label className="block text-sm font-semibold text-gray-700">صورة استمارة السيارة عند الشراء
+        <select value={form.registrationDocMode || 'required'} onChange={(e) => setForm({ ...form, registrationDocMode: e.target.value })} className={`${inputCls} mt-1`}>
+          <option value="required">إجبارية</option>
+          <option value="optional">اختيارية</option>
+          <option value="off">غير مطلوبة</option>
+        </select>
+      </label>
+      <label className="block text-sm font-semibold text-gray-700">اسم الصف في تطبيق العميل
+        <input value={form.entryLabel ?? ''} onChange={(e) => setForm({ ...form, entryLabel: e.target.value })} placeholder="باقاتي" className={`${inputCls} mt-1`} />
+      </label>
+      <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+        <input type="checkbox" checked={form.entryVisible !== false} onChange={(e) => setForm({ ...form, entryVisible: e.target.checked })} />
+        إظهار الصف في تطبيق العميل (للمشتركين، وللجميع إذا فُتح الشراء)
+      </label>
+      <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+        <input type="checkbox" checked={form.individualSalesEnabled === true} onChange={(e) => setForm({ ...form, individualSalesEnabled: e.target.checked })} />
+        فتح الشراء للأفراد من التطبيق
       </label>
       {error && <p className="text-sm font-bold text-red-600">{error}</p>}
       <p className="text-xs text-gray-500">التعديل يسري على المشتريات الجديدة، والعضويات القائمة تبقى بشروطها.</p>

@@ -31,7 +31,10 @@ export const SCORE_LEVELS = {
 /** تحويل أكواد الإلغاء القديمة (إنجليزي) لنص عربي — النص الحر يُعرض كما هو */
 const CANCEL_REASON_LABELS_AR = {
   price_high: 'السعر مرتفع جداً',
-  problem_resolved: 'تم حل المشكلة',
+  problem_resolved: 'تم حل المشكلة أو لم أعد بحاجة للخدمة',
+  wrong_selection: 'اخترت الخدمة أو الموقع بالخطأ',
+  provider_delay: 'تأخر المزود أو تعذر التواصل معه',
+  price_or_provider: 'مشكلة في السعر أو التعامل مع المزود',
   wrong_service: 'اخترت نوع خدمة خاطئ',
   provider_behavior: 'سلوك مزود الخدمة',
   other: 'سبب آخر',
