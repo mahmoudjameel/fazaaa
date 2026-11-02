@@ -63,7 +63,7 @@ import SAUDI_CITIES_FALLBACK from '../services/cities.json';
 import { formatOrderNumberLabel } from '../utils/orderNumber';
 import { resolveServiceChange, serviceChangeBadge } from '../utils/serviceUpgrade';
 import { formatCancelReasonLabel, resolveActualArrivalMinutes } from '../utils/providerPerformance';
-import { summarizeCustomerDemand, buildAttemptLookup } from '../utils/customerDemand';
+import { summarizeCustomerDemand, buildAttemptLookup, lastFailedAttemptIds } from '../utils/customerDemand';
 import { formatPhoneForExport } from '../utils/exportTable';
 import { resolveRequestCityName } from '../utils/noCoverage';
 import { ExportButtons } from '../components/ExportButtons';
@@ -261,6 +261,8 @@ const MapPickerWidget = ({ coordinates, onLocationSelect }) => {
     </div>
   );
 };
+
+const NO_PROVIDER_CANCEL_REASONS = ['لا يوجد مزودين متاحين', 'ضغط على الشبكة', 'انتهى وقت البحث', 'لايوجد شبكة متاحة', 'نعتذر لايوجد شبكة متاحة في منطقتكم', 'نعتذر يوجد ضغط على الشبكة في الوقت الحالي'];
 
 export const Orders = () => {
   const location = useLocation();
@@ -782,6 +784,18 @@ export const Orders = () => {
     return raw;
   };
 
+  const isNoProviderFailure = (order) => {
+    if (resolveDisplayStatus(order) === 'timed_out' || order.status === 'timed_out') return true;
+    if (order.status !== 'canceled_by_client' && order.status !== 'canceled_by_client_with_reason') return false;
+    const wasAccepted = order.assignedAt || (Array.isArray(order.history) && order.history.some((h) => h.status === 'assigned'));
+    if (wasAccepted) return false;
+    const cancelReason = order.cancelReason || (Array.isArray(order.history) ? order.history.find((h) => h.cancelReason)?.cancelReason : '') || '';
+    return NO_PROVIDER_CANCEL_REASONS.some((reason) => cancelReason.includes(reason));
+  };
+
+  // العميل الذي يعيد الطلب بلا شبكة فشل واحد، لا عدة فشل
+  const failedNeedAttemptIds = useMemo(() => lastFailedAttemptIds(requests, isNoProviderFailure), [requests]);
+
   /** تقييم الطلب الحقيقي (1–5) أو null إن لم يُقيَّم */
   const getOrderRating = (order) => {
     if (!order) return null;
@@ -991,17 +1005,7 @@ export const Orders = () => {
       } else if (statusFilter === 'cancelled_by_provider') {
         filtered = filtered.filter(wasCancelledByProvider);
       } else if (statusFilter === 'no_providers_timeout') {
-        filtered = filtered.filter(o => {
-          if (resolveDisplayStatus(o) === 'timed_out' || o.status === 'timed_out') return true;
-          if (o.status !== 'canceled_by_client' && o.status !== 'canceled_by_client_with_reason') {
-            return false;
-          }
-          const wasAccepted = o.assignedAt || (Array.isArray(o.history) && o.history.some(h => h.status === 'assigned'));
-          if (wasAccepted) return false;
-          const cancelReason = o.cancelReason || (Array.isArray(o.history) ? o.history.find(h => h.cancelReason)?.cancelReason : '') || '';
-          const timeoutReasons = ['لا يوجد مزودين متاحين', 'ضغط على الشبكة', 'انتهى وقت البحث', 'لايوجد شبكة متاحة', 'ضغط على الشبكة', 'نعتذر لايوجد شبكة متاحة في منطقتكم', 'نعتذر يوجد ضغط على الشبكة في الوقت الحالي'];
-          return timeoutReasons.some(r => cancelReason.includes(r));
-        });
+        filtered = filtered.filter((o) => failedNeedAttemptIds.has(o.id));
       } else if (statusFilter === 'rejections_after_accept') {
         filtered = filtered.filter(o => {
           const wasAccepted = o.assignedAt || (Array.isArray(o.history) && o.history.some(h => h.status === 'assigned'));
@@ -1722,14 +1726,7 @@ export const Orders = () => {
             key: 'no_providers_timeout',
             label: 'انتهاء المهلة',
             icon: XCircle,
-            value: requests.filter(o => {
-              if (resolveDisplayStatus(o) === 'timed_out' || o.status === 'timed_out') return true;
-              if (o.status !== 'canceled_by_client' && o.status !== 'canceled_by_client_with_reason') return false;
-              const wasAccepted = o.assignedAt || (Array.isArray(o.history) && o.history.some(h => h.status === 'assigned'));
-              if (wasAccepted) return false;
-              const cancelReason = o.cancelReason || (Array.isArray(o.history) ? o.history.find(h => h.cancelReason)?.cancelReason : '') || '';
-              return ['لا يوجد مزودين متاحين','ضغط على الشبكة','انتهى وقت البحث','لايوجد شبكة متاحة','نعتذر لايوجد شبكة متاحة في منطقتكم'].some(r => cancelReason.includes(r));
-            }).length,
+            value: failedNeedAttemptIds.size,
             dot: 'bg-purple-500',
             active: 'bg-purple-600 border-purple-600 text-white',
             inactive: 'bg-white border-gray-200 hover:border-purple-300 text-gray-800',
@@ -1818,43 +1815,7 @@ export const Orders = () => {
 
       {/* No Providers / Timeout - Alert Section */}
       {(() => {
-        const noProvidersTimeoutOrders = requests.filter(o => {
-          if (o.status === 'timed_out') return true;
-
-          // التحقق من أن الطلب ملغي من العميل
-          if (o.status !== 'canceled_by_client' && o.status !== 'canceled_by_client_with_reason') {
-            return false;
-          }
-
-          // التحقق من أن الطلب لم يتم قبوله (لا يوجد assignedAt)
-          const wasAccepted = o.assignedAt ||
-            (Array.isArray(o.history) && o.history.some(h => h.status === 'assigned'));
-
-          if (wasAccepted) {
-            return false; // تم قبوله، لا نعرضه هنا
-          }
-
-          // التحقق من سبب الإلغاء
-          const cancelReason = o.cancelReason || '';
-          const historyCancelReason = Array.isArray(o.history)
-            ? o.history.find(h => h.cancelReason)?.cancelReason || ''
-            : '';
-
-          const reason = cancelReason || historyCancelReason;
-
-          // الأسباب المتعلقة بعدم وجود مزودين أو انتهاء المهلة
-          const timeoutReasons = [
-            'لا يوجد مزودين متاحين',
-            'ضغط على الشبكة',
-            'انتهى وقت البحث',
-            'نعتذر لايوجد شبكة متاحة في منطقتكم',
-            'نعتذر يوجد ضغط على الشبكة في الوقت الحالي',
-            'لايوجد شبكة متاحة',
-            'ضغط على الشبكة'
-          ];
-
-          return timeoutReasons.some(r => reason.includes(r));
-        });
+        const noProvidersTimeoutOrders = requests.filter((o) => failedNeedAttemptIds.has(o.id));
 
         if (noProvidersTimeoutOrders.length > 0 && statusFilter === 'no_providers_timeout') {
           return (

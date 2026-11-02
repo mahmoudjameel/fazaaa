@@ -184,7 +184,17 @@ export const ProviderEarnings = () => {
                 { header: 'الطلب', render: (e) => `#${e.orderNumber ?? ''} ${e.serviceName || ''}` },
                 { header: 'المزود', render: (e) => providerName(data.providers.get(e.providerId)) },
                 { header: 'القيمة', render: (e) => `${e.amount} ر.س` },
-                { header: 'اللوحة المسجلة', render: (e) => <b>{e.plateExpected || '—'}</b> },
+                {
+                  header: 'السيارة المسجلة',
+                  render: (e) => (
+                    <span>
+                      <b className="block">{e.plateExpected || '—'}</b>
+                      <span className="block text-xs">{[e.vehicleExpected?.make, e.vehicleExpected?.model, e.vehicleExpected?.color].filter(Boolean).join(' ')}</span>
+                      <span className="block text-xs">{e.beneficiaryName || ''}</span>
+                      {e.vehicleConfirmedBeforeStart === false && <span className="block text-xs font-bold text-red-600">لم يؤكد المزود السيارة قبل البدء</span>}
+                    </span>
+                  ),
+                },
                 {
                   header: 'صورة اللوحة',
                   render: (e) => (e.plateImage ? (

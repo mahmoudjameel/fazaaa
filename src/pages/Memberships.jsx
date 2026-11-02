@@ -215,7 +215,7 @@ const PartnerCard = ({ partner, plan, reload }) => {
           <div className="space-y-2">
             <h3 className="text-sm font-black text-gray-800">تسجيل سيارة</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-              {[['plate', 'اللوحة (عربي أو إنجليزي)'], ['make', 'النوع'], ['model', 'الموديل'], ['color', 'اللون'], ['ownerName', 'اسم المستفيد'], ['ownerPhone', 'جوال المستفيد']].map(([key, label]) => (
+              {[['plate', 'اللوحة (عربي أو إنجليزي)'], ['make', 'النوع'], ['model', 'الموديل'], ['color', 'اللون'], ['ownerName', partner.type === 'rental' ? 'اسم المستفيد (اختياري)' : 'اسم المالك الجديد'], ['ownerPhone', partner.type === 'rental' ? 'جوال المستفيد (اختياري)' : 'جوال المالك الجديد']].map(([key, label]) => (
                 <input key={key} value={vehicle[key]} onChange={(e) => setVehicle({ ...vehicle, [key]: e.target.value })} placeholder={label} className={inputCls} />
               ))}
             </div>

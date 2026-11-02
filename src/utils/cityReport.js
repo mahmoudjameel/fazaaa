@@ -1,5 +1,6 @@
 import { resolveRequestCityName, requestCoords } from './noCoverage';
 import { diagnoseLostRequest, isLostRequest } from './lossDiagnosis';
+import { withoutRepeatedFailures } from './customerDemand';
 
 export const PRIORITY_CITY_NAMES = ['مكة المكرمة', 'المدينة المنورة', 'الرياض', 'جدة', 'الدمام', 'الخبر', 'بريدة', 'الجبيل'];
 
@@ -33,8 +34,10 @@ const increment = (map, key, by = 1) => map.set(key, (map.get(key) || 0) + by);
 const sortedEntries = (map) => [...map.entries()].sort((a, b) => b[1] - a[1]);
 
 export const buildCityReport = (orders, cityName, cities, auditsById) => {
-  const inCity = orders.filter((order) => resolveRequestCityName(order, cities) === cityName);
+  const cityOrders = orders.filter((order) => resolveRequestCityName(order, cities) === cityName);
+  const inCity = withoutRepeatedFailures(cityOrders, isLostRequest);
   const report = {
+    repeatedAttempts: cityOrders.length - inCity.length,
     total: inCity.length, completed: 0, cancelled: 0, lost: 0, active: 0,
     hours: Array.from({ length: 24 }, () => ({ total: 0, lost: 0 })),
     points: [], approximateLost: 0,

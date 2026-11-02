@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { WifiOff, ExternalLink, Loader2 } from 'lucide-react';
 import { collection, getDocs, query, where, Timestamp } from 'firebase/firestore';
 import { db } from '../services/firebase';
-import { groupNoCoverageByArea } from '../utils/noCoverage';
+import { groupNoCoverageByArea, isNetworkTimeoutRequest } from '../utils/noCoverage';
+import { withoutRepeatedFailures } from '../utils/customerDemand';
 
 const PERIOD_DAYS = 30;
 const THRESHOLD_OPTIONS = [5, 10, 20];
@@ -27,7 +28,7 @@ export function NoCoverageReport({ cities }) {
   }, []);
 
   const areas = useMemo(
-    () => (requests ? groupNoCoverageByArea(requests, cities) : []),
+    () => (requests ? groupNoCoverageByArea(withoutRepeatedFailures(requests, isNetworkTimeoutRequest), cities) : []),
     [requests, cities]
   );
   const shown = onlyAboveThreshold ? areas.filter((a) => a.noNetwork >= threshold) : areas;

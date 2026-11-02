@@ -1,6 +1,6 @@
 import { ExportButtons } from '../components/ExportButtons';
 import { formatPhoneForExport } from '../utils/exportTable';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, Users as UsersIcon, Mail, Phone, Calendar, MapPin, Filter, Loader2, Package, Clock, AlertCircle, XCircle, Plus, ShieldBan, ShieldOff, Trash2, Award, UserX, ArrowUpDown } from 'lucide-react';
 import { collection, getDocs, query, orderBy, where, doc, setDoc, serverTimestamp } from 'firebase/firestore';
@@ -59,15 +59,25 @@ function matchRequestServiceIds(req, services) {
 
 const USER_STATUS_LABELS = { active: 'نشط', inactive: 'غير نشط', banned: 'محظور' };
 
+// رسم آلاف البطاقات دفعة واحدة يستنزف ذاكرة المتصفح فيعيد تحميل التبويب عند التمرير
+const USERS_PAGE_SIZE = 50;
+const USERS_CACHE_TTL_MS = 5 * 60 * 1000;
+
+// جلب كل الطلبات مكلف؛ نحتفظ بالنتيجة أثناء التنقل بين صفحات اللوحة
+let usersCache = null;
+
 export const Users = () => {
-  const [usersList, setUsersList] = useState([]);
-  const [filteredUsers, setFilteredUsers] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [usersList, setUsersList] = useState(() => usersCache?.usersList || []);
+  const [filteredUsers, setFilteredUsers] = useState(() => usersCache?.usersList || []);
+  const [loading, setLoading] = useState(!usersCache);
+  const [ordersStatus, setOrdersStatus] = useState(usersCache ? 'ready' : 'loading');
+  const [visibleCount, setVisibleCount] = useState(USERS_PAGE_SIZE);
+  const loadMoreRef = useRef(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [cityFilter, setCityFilter] = useState('all');
   const [serviceFilter, setServiceFilter] = useState('all');
-  const [serviceOptions, setServiceOptions] = useState([]);
+  const [serviceOptions, setServiceOptions] = useState(() => usersCache?.serviceOptions || []);
   const [behaviorFilter, setBehaviorFilter] = useState('all');
   const [sortBy, setSortBy] = useState('registered_newest');
   const [cities, setCities] = useState(SAUDI_CITIES_FALLBACK);
@@ -103,12 +113,33 @@ export const Users = () => {
     };
     fetchCities();
 
-    fetchUsers();
+    if (!usersCache || Date.now() - usersCache.loadedAt > USERS_CACHE_TTL_MS) {
+      fetchUsers();
+    }
   }, []);
 
   useEffect(() => {
     filterUsers();
   }, [usersList, searchTerm, statusFilter, cityFilter, serviceFilter, behaviorFilter, sortBy]);
+
+  useEffect(() => {
+    setVisibleCount(USERS_PAGE_SIZE);
+  }, [searchTerm, statusFilter, cityFilter, serviceFilter, behaviorFilter, sortBy]);
+
+  const hasMoreUsers = visibleCount < filteredUsers.length;
+
+  useEffect(() => {
+    const sentinel = loadMoreRef.current;
+    if (!sentinel) return undefined;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) setVisibleCount((count) => count + USERS_PAGE_SIZE);
+      },
+      { root: sentinel.closest('main'), rootMargin: '600px' }
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [loading, hasMoreUsers, visibleCount]);
 
   // جلب طلبات المستخدم عند فتح Modal
   useEffect(() => {
@@ -228,26 +259,16 @@ export const Users = () => {
 
   const fetchUsers = async () => {
     try {
-      const [customerDocs, legacyUserDocs, requestDocs, serviceDocs] = await Promise.all([
-        fetchCollectionDocs('customers'),
-        fetchCollectionDocs('users'),
+      // العملاء يظهرون فوراً، والطلبات الأثقل تُكمل الإحصائيات بعدها
+      const ordersPromise = Promise.all([
         fetchCollectionDocs('requests'),
         fetchCollectionDocs('emergency-services').catch(() => []),
       ]);
-
-      const catalog = serviceDocs.map((d) => {
-        const data = d.data();
-        return {
-          id: d.id,
-          name: data.name || '',
-          subServices: Array.isArray(data.subServices) ? data.subServices : [],
-        };
-      }).filter((s) => s.name);
-      setServiceOptions(catalog);
-
-      const orderStats = buildCustomerOrderStats(
-        requestDocs.map((d) => ({ id: d.id, ...d.data() }))
-      );
+      ordersPromise.catch(() => {});
+      const [customerDocs, legacyUserDocs] = await Promise.all([
+        fetchCollectionDocs('customers'),
+        fetchCollectionDocs('users'),
+      ]);
 
       const merged = new Map();
 
@@ -278,6 +299,28 @@ export const Users = () => {
       customerDocs.forEach((d) => addEntry(d, 'customers'));
       legacyUserDocs.forEach((d) => addEntry(d, 'users'));
 
+      const byNewest = (a, b) => getUserCreatedMs(b) - getUserCreatedMs(a);
+      if (!usersCache) {
+        setUsersList(Array.from(merged.values()).sort(byNewest));
+        setLoading(false);
+      }
+
+      const [requestDocs, serviceDocs] = await ordersPromise;
+
+      const catalog = serviceDocs.map((d) => {
+        const data = d.data();
+        return {
+          id: d.id,
+          name: data.name || '',
+          subServices: Array.isArray(data.subServices) ? data.subServices : [],
+        };
+      }).filter((s) => s.name);
+      setServiceOptions(catalog);
+
+      const orderStats = buildCustomerOrderStats(
+        requestDocs.map((d) => ({ id: d.id, ...d.data() }))
+      );
+
       const serviceIdsByCustomer = new Map();
       requestDocs.forEach((d) => {
         const req = d.data();
@@ -299,11 +342,14 @@ export const Users = () => {
           lastOrderAt: stats.lastOrderMs || null,
           serviceIds: Array.from(serviceIdsByCustomer.get(user.id) || []),
         };
-      }).sort((a, b) => getUserCreatedMs(b) - getUserCreatedMs(a));
+      }).sort(byNewest);
 
+      usersCache = { usersList: usersData, serviceOptions: catalog, loadedAt: Date.now() };
       setUsersList(usersData);
+      setOrdersStatus('ready');
     } catch (error) {
       console.error('Error fetching users:', error);
+      setOrdersStatus((status) => (status === 'ready' ? status : 'failed'));
     } finally {
       setLoading(false);
     }
@@ -387,6 +433,12 @@ export const Users = () => {
     }
   };
 
+  const markUserBanned = (userId, isBanned) => {
+    const withBanFlag = (list) => list.map((u) => (u.id === userId ? { ...u, isBanned } : u));
+    if (usersCache) usersCache = { ...usersCache, usersList: withBanFlag(usersCache.usersList) };
+    setUsersList(withBanFlag);
+  };
+
   const handleBanUserPhone = async () => {
     if (!selectedUser?.phone) {
       alert('لا يوجد رقم جوال لهذا الحساب');
@@ -407,6 +459,7 @@ export const Users = () => {
         bannedByName: localStorage.getItem('admin_name') || null,
       });
       setUserPhoneBanned(true);
+      markUserBanned(selectedUser.id, true);
       setSelectedUser((prev) => (prev ? { ...prev, isBanned: true } : prev));
       alert('تم حظر الرقم بنجاح');
     } catch (error) {
@@ -423,6 +476,7 @@ export const Users = () => {
     try {
       await unbanPhoneNumber(selectedUser.phone);
       setUserPhoneBanned(false);
+      markUserBanned(selectedUser.id, false);
       setSelectedUser((prev) => (prev ? { ...prev, isBanned: false } : prev));
       alert('تم إلغاء الحظر');
     } catch (error) {
@@ -618,14 +672,14 @@ export const Users = () => {
             <UserX className="text-amber-500 w-5 h-5 sm:w-6 sm:h-6" />
             <span className="text-xs sm:text-sm text-gray-600">سجّلوا ولم يطلبوا</span>
           </div>
-          <p className="text-2xl sm:text-3xl font-black text-gray-800">{behaviorCounts.no_orders}</p>
+          <p className="text-2xl sm:text-3xl font-black text-gray-800">{ordersStatus === 'ready' ? behaviorCounts.no_orders : '…'}</p>
         </div>
         <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-5 md:p-6 shadow-lg">
           <div className="flex items-center justify-between mb-2">
             <Award className="text-purple-500 w-5 h-5 sm:w-6 sm:h-6" />
             <span className="text-xs sm:text-sm text-gray-600">أكثر من 3 طلبات</span>
           </div>
-          <p className="text-2xl sm:text-3xl font-black text-gray-800">{behaviorCounts.loyal_3plus}</p>
+          <p className="text-2xl sm:text-3xl font-black text-gray-800">{ordersStatus === 'ready' ? behaviorCounts.loyal_3plus : '…'}</p>
         </div>
       </div>
 
@@ -635,7 +689,7 @@ export const Users = () => {
             <Package className="text-teal-500 w-5 h-5 sm:w-6 sm:h-6" />
             <span className="text-xs sm:text-sm text-gray-600">طلبوا خدمة</span>
           </div>
-          <p className="text-2xl sm:text-3xl font-black text-gray-800">{behaviorCounts.has_orders}</p>
+          <p className="text-2xl sm:text-3xl font-black text-gray-800">{ordersStatus === 'ready' ? behaviorCounts.has_orders : '…'}</p>
         </div>
         <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-5 md:p-6 shadow-lg">
           <div className="flex items-center justify-between mb-2">
@@ -760,12 +814,19 @@ export const Users = () => {
 
       {/* Users List */}
       <div className="space-y-4">
+        {ordersStatus !== 'ready' && (
+          <p className="text-sm text-gray-500 text-center">
+            {ordersStatus === 'loading'
+              ? 'جاري حساب طلبات العملاء… الأرقام وفلاتر الطلبات تكتمل بعد قليل'
+              : 'تعذّر جلب طلبات العملاء — أعد فتح الصفحة لعرض أرقام الطلبات'}
+          </p>
+        )}
         {filteredUsers.length === 0 ? (
           <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
             <p className="text-gray-500">لا توجد مستخدمين</p>
           </div>
         ) : (
-          filteredUsers.map((user) => {
+          filteredUsers.slice(0, visibleCount).map((user) => {
             const statusBadge = getStatusBadge(user.status);
             return (
               <div
@@ -785,7 +846,7 @@ export const Users = () => {
                         >
                           {statusBadge.text}
                         </span>
-                        {(user.orderCount ?? 0) === 0 ? (
+                        {ordersStatus !== 'ready' ? null : (user.orderCount ?? 0) === 0 ? (
                           <span className="inline-flex items-center gap-1 px-2 sm:px-3 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 whitespace-nowrap">
                             <UserX className="w-3 h-3" />
                             لم يطلب بعد
@@ -871,6 +932,16 @@ export const Users = () => {
               </div>
             );
           })
+        )}
+        {hasMoreUsers && (
+          <button
+            ref={loadMoreRef}
+            type="button"
+            onClick={() => setVisibleCount((count) => count + USERS_PAGE_SIZE)}
+            className="w-full py-3 bg-white rounded-xl shadow text-sm font-semibold text-teal-700 hover:bg-teal-50 transition-all"
+          >
+            عرض المزيد ({Math.min(visibleCount, filteredUsers.length)} من {filteredUsers.length})
+          </button>
         )}
       </div>
 

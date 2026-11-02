@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { BarChart3, ChevronDown, ChevronUp } from 'lucide-react';
-import { groupRequestsByArea } from '../utils/noCoverage';
+import { groupRequestsByArea, isNetworkTimeoutRequest } from '../utils/noCoverage';
+import { withoutRepeatedFailures } from '../utils/customerDemand';
 import { PRIORITY_CITY_NAMES } from '../utils/cityReport';
 
 const VISIBLE_ROWS = 10;
@@ -32,7 +33,7 @@ export const CityRanking = ({ requests, cities, selectedCityId, onSelectCity }) 
 
   const rows = useMemo(() => {
     if (!open) return [];
-    const areas = groupRequestsByArea(requests, cities);
+    const areas = groupRequestsByArea(withoutRepeatedFailures(requests, isNetworkTimeoutRequest), cities);
     const byMode = (a, b) => mode.sortValue(b) - mode.sortValue(a);
     if (priorityOnly) return priorityCityRows(areas, cities || []).sort(byMode);
     return areas.filter((area) => mode.sortValue(area) > 0).sort(byMode).slice(0, VISIBLE_ROWS);

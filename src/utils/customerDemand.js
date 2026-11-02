@@ -69,6 +69,34 @@ export const summarizeCustomerDemand = (orders) => {
   };
 };
 
+const LIVE_NEED_STATUSES = [
+  'completed', 'searching', 'assigned', 'en_route', 'arrived', 'in_progress',
+  'pending_legal_docs', 'pending_client_confirmation', 'pending_review',
+];
+
+/**
+ * فشل العثور على مزود يُحسب مرة لكل احتياج: آخر محاولة فاشلة تمثله.
+ * احتياج خُدم أو ما زال جارياً لا يُعد فاشلاً مهما سبقته محاولات.
+ * @returns {Set<string>} معرّفات المحاولات الممثلة للاحتياجات الفاشلة
+ */
+export const lastFailedAttemptIds = (orders, isFailed) => {
+  const ids = new Set();
+  groupByCustomer(orders).forEach((customerOrders) => {
+    splitIntoNeeds(customerOrders).forEach((need) => {
+      if (need.some((order) => LIVE_NEED_STATUSES.includes(order.status) && !isFailed(order))) return;
+      const failedAttempts = need.filter(isFailed);
+      if (failedAttempts.length) ids.add(failedAttempts[failedAttempts.length - 1].id);
+    });
+  });
+  return ids;
+};
+
+/** يبقي كل الطلبات، ويستبعد تكرار المحاولات الفاشلة لنفس الاحتياج */
+export const withoutRepeatedFailures = (orders, isFailed) => {
+  const keptIds = lastFailedAttemptIds(orders, isFailed);
+  return orders.filter((order) => !isFailed(order) || keptIds.has(order.id));
+};
+
 /** @returns {Map<string, { attempt: number, needAttempts: number }>} ترتيب كل طلب داخل احتياجه */
 export const buildAttemptLookup = (orders) => {
   const lookup = new Map();

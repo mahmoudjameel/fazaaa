@@ -198,7 +198,7 @@ export const CityReport = () => {
       ) : (
         <>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            <Tile label="كل الطلبات" value={report.total} />
+            <Tile label={`كل الطلبات${report.repeatedAttempts ? ` (بدون ${report.repeatedAttempts} محاولة مكررة)` : ''}`} value={report.total} />
             <Tile label="مكتملة" value={report.completed} />
             <Tile label="ملغاة" value={report.cancelled} hint="بعد القبول، أو من الإدارة، أو مصعّدة" />
             <Tile label="غير مخدومة" value={`${report.lost} (${lostShare}%)`} hint="انتهت مهلتها أو تركها العميل قبل القبول" />
