@@ -16,11 +16,28 @@ const DEFAULT_STAGES = [
   { maxRadius: 19, waitTime: 40, maxProviders: 3, vipOnly: false },
 ];
 
+// نفس افتراضيات السيرفر (functions/lib/lastResortWave.js) — غياب الحقل = مفعّلة
+const DEFAULT_LAST_RESORT = { enabled: true, radiusKm: 19, maxLocationAgeDays: 30, waitSeconds: 90, maxProviders: 30 };
+const LAST_RESORT_LIMITS = {
+  radiusKm: [1, 60, 'النطاق', 'كم'],
+  maxLocationAgeDays: [1, 365, 'أقصى عمر للموقع', 'يوم'],
+  waitSeconds: [30, 240, 'مدة الموجة', 'ثانية'],
+  maxProviders: [1, 50, 'أقصى عدد مزودين', 'مزود'],
+};
+// قيمة الحقل نص أثناء الكتابة — الفارغ والـnull ليسا صفراً
+const isValidLastResortValue = (key, value) => {
+  if (value === '' || value == null) return false;
+  const n = Number(value);
+  const [min, max] = LAST_RESORT_LIMITS[key];
+  return Number.isFinite(n) && n >= min && n <= max;
+};
+
 export const DistributionSettings = () => {
   const [stages, setStages] = useState(DEFAULT_STAGES);
   const [vipEnabled, setVipEnabled] = useState(false);
   const [rejectBlockMinutes, setRejectBlockMinutes] = useState(60);
   const [movementWatchdogEnabled, setMovementWatchdogEnabled] = useState(false);
+  const [lastResort, setLastResort] = useState({ ...DEFAULT_LAST_RESORT });
   const [customerMapRefreshSeconds, setCustomerMapRefreshSeconds] = useState(60);
   const [pricing, setPricing] = useState({ ...DEFAULT_PRICING });
   const [loading, setLoading] = useState(true);
@@ -49,6 +66,13 @@ export const DistributionSettings = () => {
         }
         if (typeof d.vipEnabled === 'boolean') setVipEnabled(d.vipEnabled);
         setMovementWatchdogEnabled(d.movementWatchdogEnabled === true);
+        const lr = d.lastResortWave || {};
+        setLastResort({
+          enabled: typeof lr.enabled === 'boolean' ? lr.enabled : DEFAULT_LAST_RESORT.enabled,
+          ...Object.fromEntries(Object.keys(LAST_RESORT_LIMITS).map((key) => [
+            key, isValidLastResortValue(key, lr[key]) ? Number(lr[key]) : DEFAULT_LAST_RESORT[key],
+          ])),
+        });
         if (d.rejectBlockMinutes === 0 || Number.isFinite(Number(d.rejectBlockMinutes))) {
           const n = Number(d.rejectBlockMinutes);
           setRejectBlockMinutes(Number.isFinite(n) && n >= 0 ? n : 60);
@@ -115,6 +139,10 @@ export const DistributionSettings = () => {
     if (!Number.isFinite(Number(rejectBlockMinutes)) || rejectBlockMinutes < 0 || rejectBlockMinutes > 1440) {
       return 'مدة حظر الرفض يجب أن تكون بين 0 و1440 دقيقة (0 = بدون حظر)';
     }
+    // الموجة المطفأة لا تمنع حفظ باقي الإعدادات (القيمة غير الصالحة تُحفظ بالافتراضي)
+    for (const [key, [min, max, label, unit]] of lastResort.enabled ? Object.entries(LAST_RESORT_LIMITS) : []) {
+      if (!isValidLastResortValue(key, lastResort[key])) return `الموجة الأخيرة: ${label} بين ${min} و${max} ${unit}`;
+    }
     if (
       !Number.isFinite(Number(customerMapRefreshSeconds)) ||
       customerMapRefreshSeconds < 15 ||
@@ -150,6 +178,12 @@ export const DistributionSettings = () => {
         vipEnabled,
         rejectBlockMinutes: Number(rejectBlockMinutes) || 0,
         movementWatchdogEnabled,
+        lastResortWave: {
+          enabled: lastResort.enabled,
+          ...Object.fromEntries(Object.keys(LAST_RESORT_LIMITS).map((key) => [
+            key, isValidLastResortValue(key, lastResort[key]) ? Math.round(Number(lastResort[key])) : DEFAULT_LAST_RESORT[key],
+          ])),
+        },
         // سقف التوزيع = أعلى مرحلة في السيناريو (تتغير إذا زِدت مراحل من اللوحة)
         maxSearchRadiusKm: stageMax,
         customerMapRefreshSeconds: Number(customerMapRefreshSeconds) || 60,
@@ -394,6 +428,54 @@ export const DistributionSettings = () => {
           <span>أقصى نطاق: <strong className="text-gray-700">{maxRadius} كم</strong> <span className="text-xs text-gray-400">(من أعلى مرحلة — المزودون الأبعد لا يُشعَرون)</span></span>
           <span>أقصى مزودين: <strong className="text-gray-700">{stages.reduce((s, r) => s + (r.maxProviders || 0), 0)}</strong></span>
         </div>
+      </div>
+
+      {/* Last-resort wave */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <div className="p-2 rounded-xl bg-teal-50">
+              <RefreshCw size={22} className="text-teal-600" />
+            </div>
+            <div>
+              <h3 className="font-bold text-gray-800">الموجة الأخيرة (المزودون غير المتصلين)</h3>
+              <p className="text-xs text-gray-500 mt-1 leading-relaxed max-w-xl">
+                إذا انتهى البحث بلا قبول، أو لم يوجد مزود متصل أصلاً، يرن الطلب <strong>دفعة واحدة</strong> عند كل مزود معتمد
+                ضمن النطاق مهما كان آخر ظهور له (حتى الحد المحدد)، ومنهم من فُصل تلقائياً. لا تشمل من أوقف نفسه يدوياً.
+                الأقرب أولاً حتى أقصى عدد. من يرفض منها لا يُحظر عن العميل.
+              </p>
+            </div>
+          </div>
+          <input
+            type="checkbox"
+            checked={lastResort.enabled}
+            onChange={(e) => setLastResort((prev) => ({ ...prev, enabled: e.target.checked }))}
+            aria-label="تفعيل الموجة الأخيرة"
+            className="w-5 h-5 flex-shrink-0 mt-1"
+          />
+        </div>
+        <div className={`grid grid-cols-2 md:grid-cols-4 gap-3 mt-4 ${lastResort.enabled ? '' : 'opacity-50'}`}>
+          {Object.entries(LAST_RESORT_LIMITS).map(([key, [min, max, label, unit]]) => (
+            <label key={key} className="block">
+              <span className="text-xs font-bold text-gray-600">{label}</span>
+              <div className="flex items-center gap-2 mt-1">
+                <input
+                  type="number"
+                  min={min}
+                  max={max}
+                  value={lastResort[key]}
+                  disabled={!lastResort.enabled}
+                  onChange={(e) => setLastResort((prev) => ({ ...prev, [key]: e.target.value }))}
+                  className="w-full px-3 py-2 text-center border border-gray-200 rounded-xl text-sm font-bold focus:outline-none focus:border-amber-400"
+                />
+                <span className="text-xs text-gray-500 whitespace-nowrap">{unit}</span>
+              </div>
+            </label>
+          ))}
+        </div>
+        <p className="text-xs text-gray-400 mt-3">
+          تضيف حتى {lastResort.waitSeconds} ثانية لعداد العميل، فقط عند وجود مزودين لن يصلهم البحث العادي.
+        </p>
       </div>
 
       {/* Reject block duration */}
