@@ -736,17 +736,39 @@ export const Orders = () => {
 
   const customerDemand = useMemo(() => summarizeCustomerDemand(filteredRequests), [filteredRequests]);
 
-  const buildOrderExportColumns = () => {
+  /** الطلب يحفظ customerId فقط (لا customerName/customerPhone) — الاسم والجوال من customers */
+  const fetchCustomersForExport = async (orders) => {
+    const ids = [...new Set(orders.map((o) => o.customerId || o.userId || o.uid).filter(Boolean))];
+    const chunks = [];
+    for (let i = 0; i < ids.length; i += 30) chunks.push(ids.slice(i, i + 30));
+    const snaps = await Promise.all(chunks.map((chunk) => getDocs(query(collection(db, 'customers'), where(documentId(), 'in', chunk)))
+      .catch((e) => { console.warn('Export: customers chunk failed', e?.code || e?.message); return null; })));
+    const map = new Map();
+    snaps.forEach((snap) => snap?.forEach((d) => map.set(d.id, d.data())));
+    return map;
+  };
+
+  const buildOrderExportColumns = async (rows = []) => {
     const attempts = buildAttemptLookup(requests);
     const providerOf = (order) => providersDict[order.providerId];
+    const customers = await fetchCustomersForExport(rows);
+    const customerOf = (o) => customers.get(o.customerId || o.userId || o.uid) || {};
+    const customerName = (o) => {
+      const c = customerOf(o);
+      return o.customerName || c.name || c.fullName || [c.firstName, c.lastName].filter(Boolean).join(' ');
+    };
+    const customerPhone = (o) => {
+      const c = customerOf(o);
+      return o.customerPhone || c.verifiedPhone || c.phone || c.phoneNumber || '';
+    };
     return [
       { header: 'رقم الطلب', value: (o) => o.orderNumber ?? o.id },
       { header: 'التاريخ', value: (o) => { const ms = getRequestCreatedMs(o); return ms ? new Date(ms) : null; } },
       { header: 'الحالة', value: (o) => getStatusBadge(resolveDisplayStatus(o)).text },
       { header: 'الخدمة', value: (o) => o.serviceName || o.serviceType || '' },
       { header: 'السعر', value: (o) => (o.servicePrice == null || o.servicePrice === '' || !Number.isFinite(Number(o.servicePrice)) ? null : Number(o.servicePrice)) },
-      { header: 'العميل', value: (o) => o.customerName || '' },
-      { header: 'جوال العميل', value: (o) => formatPhoneForExport(o.customerPhone) },
+      { header: 'العميل', value: customerName },
+      { header: 'جوال العميل', value: (o) => formatPhoneForExport(customerPhone(o)) },
       { header: 'المحاولة', value: (o) => attempts.get(o.id)?.attempt ?? null },
       { header: 'محاولات نفس الاحتياج', value: (o) => attempts.get(o.id)?.needAttempts ?? null },
       { header: 'المدينة', value: (o) => resolveRequestCityName(o, cities) },

@@ -16,7 +16,8 @@ export const ExportButtons = ({ baseName, columns, rows, className = '' }) => {
     setExporting(fileFormat);
     setFailed(false);
     try {
-      await exportTable({ baseName, columns: columns(), rows, fileFormat });
+      // columns قد تحتاج جلب بيانات قبل التصدير (مثل بيانات العملاء في الطلبات)
+      await exportTable({ baseName, columns: await columns(rows), rows, fileFormat });
     } catch (e) {
       console.error('Export failed:', e);
       setFailed(true);
