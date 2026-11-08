@@ -252,7 +252,8 @@ export const Layout = () => {
   };
 
   const menuItems = [
-    { id: 'dashboard',               path: '/admin',                          icon: LayoutDashboard, label: 'لوحة التحكم',             category: 'main' },
+    { id: 'dashboard',               path: '/admin',                          icon: LayoutDashboard, label: 'مركز القرار',             category: 'main' },
+    { id: 'dashboard_stats',         path: '/admin/stats',                    icon: BarChart3,       label: 'الإحصاءات العامة',        category: 'main' },
     { id: 'complaints',              path: '/admin/complaints',               icon: MessageSquare,   label: 'الشكاوي',                  category: 'main' },
     { id: 'support_tickets',         path: '/admin/support-tickets',          icon: Ticket,          label: 'تذاكر الدعم',              category: 'main' },
     { id: 'emergency_services',      path: '/admin/emergency-services',       icon: AlertCircle,     label: 'خدمات الطوارئ',           category: 'services' },
@@ -298,21 +299,23 @@ export const Layout = () => {
   // sessionVersion يُحدَّث بعد مزامنة Firestore لإعادة رسم القائمة حسب الصلاحيات
   void sessionVersion;
   const filteredMenuItems = menuItems.filter((item) => canAccessMenuItem(item, session));
-  const groupedMenuItems = {
-    main:       filteredMenuItems.filter(i => i.category === 'main'),
-    services:   filteredMenuItems.filter(i => i.category === 'services'),
-    management: filteredMenuItems.filter(i => i.category === 'management'),
-    financial:  filteredMenuItems.filter(i => i.category === 'financial'),
-    settings:   filteredMenuItems.filter(i => i.category === 'settings'),
-  };
-
-  const categoryLabels = {
-    main:       'الرئيسية',
-    services:   'الخدمات',
-    management: 'الإدارة',
-    financial:  'المالية',
-    settings:   'الإعدادات',
-  };
+  // الأقسام الستة للتصفح (مستقلة عن category التي تبني عليها الصلاحيات — لا يتغير وصول أي مدير)
+  const MENU_SECTIONS = [
+    { key: 'overview',   label: 'نظرة عامة',          ids: ['dashboard', 'dashboard_stats'] },
+    { key: 'operations', label: 'العمليات',           ids: ['orders', 'sla_tracking', 'escalations', 'complaints', 'support_tickets', 'chats', 'notifications'] },
+    { key: 'coverage',   label: 'التغطية',            ids: ['providers_map', 'city_report', 'dispatch_diagnostics', 'distribution', 'inactive_providers', 'cities', 'city_managers'] },
+    { key: 'people',     label: 'المزودون والعملاء',  ids: ['providers', 'add_provider', 'provider_profile_requests', 'provider_performance', 'provider_cancellations', 'service_upgrades', 'provider_documents', 'users', 'blocked_phones'] },
+    { key: 'finance',    label: 'المالية والنمو',      ids: ['wallet_topups', 'withdrawal_requests', 'provider_earnings', 'memberships', 'fleets', 'marketing_insights', 'qr_link', 'banners', 'landing_settings', 'articles'] },
+    { key: 'admin',      label: 'الإدارة والتقنية',    ids: [] }, // كل ما لم يُذكر أعلاه (الخدمات، الإعدادات، المختبر، المديرون…)
+  ];
+  const sectionOf = (item) => (MENU_SECTIONS.find((sec) => sec.ids.includes(item.id)) || MENU_SECTIONS[MENU_SECTIONS.length - 1]).key;
+  const groupedMenuItems = Object.fromEntries(MENU_SECTIONS.map((sec) => [
+    sec.key,
+    filteredMenuItems
+      .filter((item) => sectionOf(item) === sec.key)
+      .sort((a, b) => (sec.ids.length ? sec.ids.indexOf(a.id) - sec.ids.indexOf(b.id) : 0)),
+  ]));
+  const categoryLabels = Object.fromEntries(MENU_SECTIONS.map((sec) => [sec.key, sec.label]));
 
   // دالة عرض (وليست مكوّناً) — تعريف مكوّن داخل Layout كان يعيد تركيب الأزرار عند كل تحديث فيضيع الضغط
   const renderNavItem = (item) => {

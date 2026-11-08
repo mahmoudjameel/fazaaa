@@ -272,7 +272,8 @@ export const Orders = () => {
   const ORDERS_PAGE_SIZE = 50;
   const [visibleCount, setVisibleCount] = useState(ORDERS_PAGE_SIZE);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
+  // ?q= من مركز القرار يفتح الصفحة على طلب محدد (رقم الطلب)
+  const [searchTerm, setSearchTerm] = useState(() => new URLSearchParams(location.search).get('q') || '');
   const [matchedUids, setMatchedUids] = useState([]);
   const [isSearchingUids, setIsSearchingUids] = useState(false);
   const [statusFilter, setStatusFilter] = useState('all');

@@ -56,6 +56,9 @@ const groupByCustomer = (orders) => {
   return customers;
 };
 
+/** كل الاحتياجات: مصفوفة لكل احتياج بمحاولاته مرتبة زمنياً (نفس قاعدة الدمج أعلاه) */
+export const groupOrdersIntoNeeds = (orders) => [...groupByCustomer(orders).values()].flatMap(splitIntoNeeds);
+
 export const summarizeCustomerDemand = (orders) => {
   const customers = groupByCustomer(orders);
   const needs = [...customers.values()].flatMap(splitIntoNeeds);

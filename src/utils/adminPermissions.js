@@ -4,7 +4,9 @@
 
 /** كل شاشات الأدمن القابلة للتفويض */
 export const ADMIN_PERMISSION_DEFS = [
-  { id: 'dashboard', path: '/admin', exact: true, category: 'main', label: 'لوحة التحكم' },
+  { id: 'dashboard', path: '/admin', exact: true, category: 'main', label: 'مركز القرار (لوحة التحكم)' },
+  // نفس صلاحية لوحة التحكم — من يملكها يرى الإحصاءات القديمة أيضاً
+  { id: 'dashboard', path: '/admin/stats', category: 'main', label: 'الإحصاءات العامة', hiddenInList: true },
   { id: 'emergency_services', path: '/admin/emergency-services', category: 'services', label: 'خدمات الطوارئ' },
   { id: 'services', path: '/admin/services', category: 'services', label: 'الخدمات' },
   { id: 'providers', path: '/admin/providers', category: 'management', label: 'المزودون' },
@@ -49,7 +51,7 @@ export const ADMIN_PERMISSION_DEFS = [
 ];
 
 /** قائمة اختيار الصلاحيات في شاشة إدارة المديرين */
-export const ADMIN_PERMISSIONS_LIST = ADMIN_PERMISSION_DEFS.filter((p) => !p.restricted).map(
+export const ADMIN_PERMISSIONS_LIST = ADMIN_PERMISSION_DEFS.filter((p) => !p.restricted && !p.hiddenInList).map(
   ({ id, label }) => ({ id, label })
 );
 

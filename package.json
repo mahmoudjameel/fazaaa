@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "vite --port 5000 --host 0.0.0.0",
     "build": "node scripts/build-service-pages.mjs && node scripts/build-seo-content.mjs && vite build",
-    "preview": "vite preview --port 5000 --host 0.0.0.0"
+    "preview": "vite preview --port 5000 --host 0.0.0.0",
+    "test:decision-center": "node scripts/test-decision-center.mjs"
   },
   "dependencies": {
     "date-fns": "^2.30.0",

@@ -11,6 +11,7 @@ const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy').then((m) => ({ 
 const Terms = lazy(() => import('./pages/Terms').then((m) => ({ default: m.Terms })));
 const Support = lazy(() => import('./pages/Support').then((m) => ({ default: m.Support })));
 const Dashboard = lazy(() => import('./pages/Dashboard').then((m) => ({ default: m.Dashboard })));
+const DecisionCenter = lazy(() => import('./pages/DecisionCenter').then((m) => ({ default: m.DecisionCenter })));
 const Services = lazy(() => import('./pages/Services').then((m) => ({ default: m.Services })));
 const EmergencyServices = lazy(() => import('./pages/EmergencyServices').then((m) => ({ default: m.EmergencyServices })));
 const Providers = lazy(() => import('./pages/Providers').then((m) => ({ default: m.Providers })));
@@ -138,7 +139,8 @@ function App() {
             path="/admin"
             element={<RequireAuth isAuthenticated={isAuthenticated}><Layout /></RequireAuth>}
           >
-            <Route index element={<Dashboard />} />
+            <Route index element={<DecisionCenter />} />
+            <Route path="stats" element={<Dashboard />} />
             <Route path="services" element={<Services />} />
             <Route path="emergency-services" element={<EmergencyServices />} />
             <Route path="providers" element={<Providers />} />
