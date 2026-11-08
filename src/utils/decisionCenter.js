@@ -9,7 +9,7 @@
  */
 import { groupOrdersIntoNeeds } from './customerDemand';
 import { isLostRequest } from './lossDiagnosis';
-import { isNetworkTimeoutRequest, requestCoords, resolveRequestCityName } from './noCoverage';
+import { createRequestCityResolver, isNetworkTimeoutRequest, requestCoords } from './noCoverage';
 import { resolveAreaName } from './cityReport';
 import { DELAY_MULTIPLIER, formatCancelReasonLabel, resolveActualArrivalMinutes, toMs } from './providerPerformance';
 import { canReceiveRequestsWithWallet } from './providerPricing';
@@ -22,6 +22,25 @@ export const DEFAULT_TARGETS = {
 
 // أرقام الاختبار المعروفة (verifyOTP) — تُضاف إليها قائمة settings/decisionCenter.testPhones
 export const DEFAULT_TEST_PHONES = ['966500000000', '966511111111'];
+
+/**
+ * مدينة كل طلب تُحسب مرة: مخزنة لكل قائمة مدن ولكل طلب (بالمعرّف + الإحداثيات).
+ * كانت أثقل خطوة في الصفحة (~85ms لكل إعادة حساب على 2000 طلب).
+ */
+const cityCaches = new WeakMap();
+const EMPTY_CITIES = [];
+export const cityOfOrder = (order, cities = EMPTY_CITIES) => {
+  const list = cities || EMPTY_CITIES;
+  let entry = cityCaches.get(list);
+  if (!entry) {
+    entry = { resolve: createRequestCityResolver(list), byKey: new Map() };
+    cityCaches.set(list, entry);
+  }
+  const pos = requestCoords(order);
+  const key = `${order?.id || ''}|${pos ? `${pos.lat},${pos.lng}` : ''}`;
+  if (!entry.byKey.has(key)) entry.byKey.set(key, entry.resolve(order));
+  return entry.byKey.get(key);
+};
 
 const MINUTE = 60 * 1000;
 const DAY = 24 * 60 * MINUTE;
@@ -100,7 +119,7 @@ const firstCreatedMs = (need) => toMs(need[0]?.createdAt);
 export const filterOrders = (orders, { city = '', service = '' } = {}, cities = []) => orders.filter((order) => {
   if (service && ![order.parentServiceId, order.serviceCategory, order.serviceId].some((v) => v && String(v) === service)
     && !String(order.serviceId || '').startsWith(`${service}_`)) return false;
-  if (city && resolveRequestCityName(order, cities) !== city) return false;
+  if (city && cityOfOrder(order, cities) !== city) return false;
   return true;
 });
 
@@ -220,7 +239,7 @@ export const buildAreaResolver = (allOrders, cities) => {
   };
   return (order) => {
     const locality = localityOf(order.location);
-    const resolvedCity = resolveRequestCityName(order, cities);
+    const resolvedCity = cityOfOrder(order, cities);
     const cityKnown = Boolean(resolvedCity) && resolvedCity !== 'خارج المدن';
     const city = cityKnown ? resolvedCity : (locality || 'خارج المدن');
     const district = districtOf(order.location) || dominantDistrict(cellOf(order));

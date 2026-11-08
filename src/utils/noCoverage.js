@@ -98,6 +98,19 @@ const buildAreaLocator = (cities) => {
   return { areaFor, nearestCityTo };
 };
 
+/**
+ * نفس resolveRequestCityName لكن المدن تُجهَّز مرة واحدة — للحساب على آلاف الطلبات
+ * (resolveRequestCityName يعيد بناء قائمة المدن مع كل طلب).
+ */
+export function createRequestCityResolver(cities) {
+  const { areaFor } = buildAreaLocator(cities);
+  return (request) => {
+    const pos = requestCoords(request);
+    if (!pos) return '';
+    return areaFor(pos.lat, pos.lng).label || 'خارج المدن';
+  };
+}
+
 /** مدينة الطلب من إحداثياته — الطلب لا يحمل حقل مدينة */
 export function resolveRequestCityName(request, cities) {
   const pos = requestCoords(request);
