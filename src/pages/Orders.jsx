@@ -62,7 +62,7 @@ import { db } from '../services/firebase';
 import SAUDI_CITIES_FALLBACK from '../services/cities.json';
 import { formatOrderNumberLabel } from '../utils/orderNumber';
 import { resolveServiceChange, serviceChangeBadge } from '../utils/serviceUpgrade';
-import { formatCancelReasonLabel, resolveActualArrivalMinutes } from '../utils/providerPerformance';
+import { formatCancelReasonLabel, resolveActualArrivalMinutes, resolveUnverifiedArrivalMinutes, resolveOrderDelay } from '../utils/providerPerformance';
 import { summarizeCustomerDemand, buildAttemptLookup, lastFailedAttemptIds } from '../utils/customerDemand';
 import { formatPhoneForExport } from '../utils/exportTable';
 import { resolveRequestCityName } from '../utils/noCoverage';
@@ -733,7 +733,6 @@ export const Orders = () => {
     return Number.isFinite(parsed) ? parsed : 0;
   };
 
-  const SLOW_ARRIVAL_MINUTES = 25;
 
   const customerDemand = useMemo(() => summarizeCustomerDemand(filteredRequests), [filteredRequests]);
 
@@ -1052,8 +1051,8 @@ export const Orders = () => {
     if (slaFilter === 'completed_slow_arrival') {
       filtered = filtered.filter((req) => {
         if (req.status !== 'completed') return false;
-        const minutes = resolveActualArrivalMinutes(req);
-        return minutes != null && minutes >= SLOW_ARRIVAL_MINUTES;
+        // متأخر = الوصول الفعلي بلغ ضعف المتوقع (نفس صفحة أداء المزودين)
+        return resolveOrderDelay(req)?.isDelayed === true;
       });
     } else if (slaFilter !== 'all') {
       filtered = filtered.filter(req => {
@@ -2236,7 +2235,7 @@ export const Orders = () => {
               <option value="all">كل أوقات الوصول</option>
               <option value="under_15">وصول ١٥ دقيقة أو أقل</option>
               <option value="over_15">وصول أكثر من ١٥ دقيقة</option>
-              <option value="completed_slow_arrival">مكتملة بوصول فعلي ٢٥ دقيقة فأكثر</option>
+              <option value="completed_slow_arrival">مكتملة متأخرة (الفعلي ضعف المتوقع)</option>
             </select>
             <ChevronDown size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           </div>
@@ -2585,7 +2584,7 @@ export const Orders = () => {
                       chips.push(
                         <span
                           key="sla"
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border ${arrivalChip.exceeded ? 'bg-slate-50 text-slate-700 border-slate-200' : 'bg-green-50 text-green-700 border-green-200'}`}
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border bg-green-50 text-green-700 border-green-200`}
                           title={arrivalChip.title}
                         >
                           <Clock size={11} />
@@ -2595,24 +2594,40 @@ export const Orders = () => {
                           ) : (
                             <span className="text-[10px] font-black text-amber-700">تقديري</span>
                           )}
-                          {arrivalChip.exceeded && <span className="text-[10px] font-black">أكثر من 15 د</span>}
                         </span>
                       );
                     }
 
                     const actualArrivalMinutes = resolveActualArrivalMinutes(order);
                     if (actualArrivalMinutes != null) {
-                      const isSlow = actualArrivalMinutes >= SLOW_ARRIVAL_MINUTES;
+                      // أحمر فقط إن بلغ الفعلي ضعف المتوقع؛ دونه أخضر (حد 15 د مؤجل لمرحلة رفع الجودة)
+                      const delay = resolveOrderDelay(order);
+                      const isLate = delay?.isDelayed === true;
                       chips.push(
                         <span
                           key="actual-arrival"
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border ${isSlow ? 'bg-red-50 text-red-700 border-red-200' : 'bg-gray-50 text-gray-700 border-gray-200'}`}
-                          title="من قبول المزود حتى ضغطه «وصلت»"
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border ${isLate ? 'bg-red-50 text-red-700 border-red-200' : delay ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-50 text-gray-700 border-gray-200'}`}
+                          title="من قبول المزود حتى دخوله 500م من موقع العميل (موثّق بالموقع)"
                         >
                           <Clock size={11} />
                           وصل فعلياً خلال {actualArrivalMinutes} د
+                          {isLate && <span className="text-[10px] font-black">متأخر (ضعف المتوقع)</span>}
                         </span>
                       );
+                    } else {
+                      const unverifiedMinutes = resolveUnverifiedArrivalMinutes(order);
+                      if (unverifiedMinutes != null) {
+                        chips.push(
+                          <span
+                            key="actual-arrival"
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border border-dashed bg-amber-50 text-amber-800 border-amber-300"
+                            title="لم يُسجَّل دخول المزود 500م من موقع العميل (توقف إرسال موقعه أثناء المشوار) — هذا وقت ضغطه «وصلت» ولا يدخل مؤشرات الأداء"
+                          >
+                            <Clock size={11} />
+                            ضغط «وصلت» بعد {unverifiedMinutes} د · غير موثّق
+                          </span>
+                        );
+                      }
                     }
 
                     if (chips.length === 0) return null;
@@ -2841,7 +2856,7 @@ export const Orders = () => {
                     if (!arrivalChip) return null;
                     return (
                       <div
-                        className={`mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-bold border ${arrivalChip.exceeded ? 'bg-slate-50 text-slate-700 border-slate-200' : 'bg-green-50 text-green-700 border-green-200'}`}
+                        className={`mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-bold border bg-green-50 text-green-700 border-green-200`}
                         title={arrivalChip.title}
                       >
                         <Clock size={14} />

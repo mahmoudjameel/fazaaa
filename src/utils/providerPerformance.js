@@ -84,6 +84,18 @@ export const resolveActualArrivalMinutes = (order) => {
 };
 
 /**
+ * للعرض فقط (لا يدخل المؤشرات): من القبول حتى ضغط «وصلت» حين لا توجد قراءة سياج 500م —
+ * يحدث إن توقف إرسال موقع المزود أثناء المشوار. null إن وُجد سياج أو نقص وقت.
+ */
+export const resolveUnverifiedArrivalMinutes = (order) => {
+  if (toMs(order?.actual_geofence_arrival_at)) return null;
+  const arrivedMs = toMs(order?.arrivedAt) || findLastHistoryStatusMs(order, 'arrived');
+  const assignedMs = toMs(order?.assignedAt) || findLastHistoryStatusMs(order, 'assigned', arrivedMs || Infinity);
+  if (!assignedMs || !arrivedMs || arrivedMs < assignedMs) return null;
+  return Math.round((arrivedMs - assignedMs) / 60000);
+};
+
+/**
  * نتيجة الطلب بالنسبة لهذا المزود تحديداً:
  * طلب اعتذر عنه المزود ثم أكمله مزود آخر = «اعتذار» لهذا المزود وليس «مكتمل».
  */

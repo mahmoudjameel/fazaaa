@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
     AlertTriangle, MapPin, Clock, CheckCircle, Users,
     Timer, RefreshCw, XCircle, Wrench, PhoneOff,
@@ -6,11 +6,12 @@ import {
 } from 'lucide-react';
 import {
     collection, query, orderBy, onSnapshot, writeBatch,
-    doc, updateDoc, getDoc, serverTimestamp,
+    doc, getDoc, serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { formatEscalationOrderLabel } from '../utils/orderNumber';
 import { isUnresolvedEscalation, markEscalationsSeen } from '../utils/escalationStatus';
+import { groupDuplicateEscalations, isUnresolvedGroup, unresolvedIdsOfGroup } from '../utils/escalationGroups';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ar } from 'date-fns/locale';
 
@@ -149,14 +150,18 @@ export const Escalations = () => {
     }, [escalations, orderNumberByRequestId]);
 
     // ── إجراءات ──────────────────────────────────────────────────────────────
-    const handleResolve = async (id) => {
-        setResolvingId(id);
+    // ids: كل تصعيدات الطلب الواحد المكرر تُحل معاً
+    const handleResolve = async (groupKey, ids) => {
+        setResolvingId(groupKey);
         try {
-            await updateDoc(doc(db, 'admin_escalations', id), {
+            const batch = writeBatch(db);
+            const resolvedBy = localStorage.getItem('admin_role') || 'admin';
+            ids.forEach((id) => batch.update(doc(db, 'admin_escalations', id), {
                 status: 'resolved',
                 resolvedAt: serverTimestamp(),
-                resolvedBy: localStorage.getItem('admin_role') || 'admin',
-            });
+                resolvedBy,
+            }));
+            await batch.commit();
         } catch (e) {
             console.error('Failed to resolve escalation:', e);
         } finally {
@@ -195,13 +200,15 @@ export const Escalations = () => {
         }
     };
 
-    const handleReopen = async (id) => {
+    const handleReopen = async (ids) => {
         try {
-            await updateDoc(doc(db, 'admin_escalations', id), {
+            const batch = writeBatch(db);
+            ids.forEach((id) => batch.update(doc(db, 'admin_escalations', id), {
                 status: 'new',
                 resolvedAt: null,
                 resolvedBy: null,
-            });
+            }));
+            await batch.commit();
         } catch (e) {
             console.error('Failed to reopen escalation:', e);
         }
@@ -219,43 +226,49 @@ export const Escalations = () => {
     };
 
     // ── تصفية ────────────────────────────────────────────────────────────────
-    const filtered = escalations.filter((e) => {
-        const unresolved = isUnresolvedEscalation(e);
+    // الطلب المكرر (أعاد العميل إرساله) = بطاقة واحدة
+    const groups = useMemo(() => groupDuplicateEscalations(escalations), [escalations]);
+
+    const matchesSearch = (e) => {
+        const q = searchText.toLowerCase();
+        const hay = [
+            e.serviceName,
+            e.location,
+            e.requestId,
+            e.customerId,
+            e.orderNumber,
+            orderNumberByRequestId[e.requestId],
+            formatEscalationOrderLabel(e, orderNumberByRequestId),
+        ]
+            .filter(Boolean)
+            .join(' ')
+            .toLowerCase();
+        return hay.includes(q);
+    };
+
+    const filtered = groups.filter((g) => {
+        const unresolved = isUnresolvedGroup(g);
         if (statusFilter === 'new' && !unresolved) return false;
         if (statusFilter === 'resolved' && unresolved) return false;
-        if (typeFilter !== 'all' && e.type !== typeFilter) return false;
-        if (searchText) {
-            const q = searchText.toLowerCase();
-            const orderLabel = formatEscalationOrderLabel(e, orderNumberByRequestId);
-            const hay = [
-                e.serviceName,
-                e.location,
-                e.requestId,
-                e.customerId,
-                e.orderNumber,
-                orderNumberByRequestId[e.requestId],
-                orderLabel,
-            ]
-                .filter(Boolean)
-                .join(' ')
-                .toLowerCase();
-            if (!hay.includes(q)) return false;
-        }
+        if (typeFilter !== 'all' && !g.members.some((e) => e.type === typeFilter)) return false;
+        if (searchText && !g.members.some(matchesSearch)) return false;
         return true;
     });
 
     // ── إحصاءات — «جديد» = غير محلول فقط (المحلولة لا تدخل الرقم) ─────────────
     const counts = {
-        all: escalations.length,
-        new: escalations.filter((e) => isUnresolvedEscalation(e)).length,
-        resolved: escalations.filter((e) => !isUnresolvedEscalation(e)).length,
+        all: groups.length,
+        new: groups.filter(isUnresolvedGroup).length,
+        resolved: groups.filter((g) => !isUnresolvedGroup(g)).length,
     };
+    const countNewOfType = (type) =>
+        groups.filter((g) => g.primary.type === type && isUnresolvedGroup(g)).length;
 
     const typeCountsNew = {
-        no_providers: escalations.filter((e) => e.type === 'no_providers' && isUnresolvedEscalation(e)).length,
-        all_rejected: escalations.filter((e) => e.type === 'all_rejected' && isUnresolvedEscalation(e)).length,
-        search_timeout: escalations.filter((e) => e.type === 'search_timeout' && isUnresolvedEscalation(e)).length,
-        late_arrival: escalations.filter((e) => e.type === 'late_arrival' && isUnresolvedEscalation(e)).length,
+        no_providers: countNewOfType('no_providers'),
+        all_rejected: countNewOfType('all_rejected'),
+        search_timeout: countNewOfType('search_timeout'),
+        late_arrival: countNewOfType('late_arrival'),
     };
 
     // ── مساعد وقت ─────────────────────────────────────────────────────────────
@@ -405,17 +418,19 @@ export const Escalations = () => {
                 </div>
             ) : (
                 <div className="space-y-3">
-                    {filtered.map((esc) => {
+                    {filtered.map((group) => {
+                        const esc = group.primary;
+                        const repeats = group.members.length;
                         const cfg = TYPE_CONFIG[esc.type] || FALLBACK_TYPE;
                         const Icon = cfg.icon;
-                        const isNew = isUnresolvedEscalation(esc);
-                        const isResolving = resolvingId === esc.id;
+                        const isNew = isUnresolvedGroup(group);
+                        const isResolving = resolvingId === group.key;
                         const createdDate = toDate(esc.createdAt);
                         const resolvedDate = toDate(esc.resolvedAt);
 
                         return (
                             <div
-                                key={esc.id}
+                                key={group.key}
                                 className={`bg-white rounded-2xl border-2 overflow-hidden transition-all hover:shadow-md ${
                                     isNew ? cfg.cardBorder : 'border-gray-100'
                                 }`}
@@ -434,7 +449,7 @@ export const Escalations = () => {
                                                 جديد
                                             </span>
                                         )}
-                                        {esc.status === 'resolved' && (
+                                        {!isNew && (
                                             <span className="px-2 py-0.5 rounded-full text-[11px] font-black bg-green-100 text-green-700">
                                                 تم الحل
                                             </span>
@@ -531,6 +546,17 @@ export const Escalations = () => {
                                             </div>
                                             )}
 
+                                            {repeats > 1 && (
+                                                <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 leading-relaxed">
+                                                    <strong>طلب واحد مكرر</strong> — أعاد العميل إرساله {repeats} مرات:{' '}
+                                                    <span dir="ltr" className="font-mono">
+                                                        {[...group.members].reverse()
+                                                            .map((m) => formatEscalationOrderLabel(m, orderNumberByRequestId))
+                                                            .join(' ← ')}
+                                                    </span>
+                                                </div>
+                                            )}
+
                                             {/* سبب التصعيد */}
                                             {esc.reason && (
                                                 <p className="text-xs text-gray-500 bg-gray-50 rounded-xl px-3 py-2 leading-relaxed">
@@ -574,7 +600,7 @@ export const Escalations = () => {
                                         <div className="flex sm:flex-col gap-2 justify-end shrink-0">
                                             {isNew ? (
                                                 <button
-                                                    onClick={() => handleResolve(esc.id)}
+                                                    onClick={() => handleResolve(group.key, unresolvedIdsOfGroup(group))}
                                                     disabled={isResolving}
                                                     className="flex items-center gap-1.5 px-4 py-2.5 bg-green-500 hover:bg-green-600 text-white text-sm font-bold rounded-xl transition-all disabled:opacity-50 whitespace-nowrap"
                                                 >
@@ -583,7 +609,7 @@ export const Escalations = () => {
                                                 </button>
                                             ) : (
                                                 <button
-                                                    onClick={() => handleReopen(esc.id)}
+                                                    onClick={() => handleReopen(group.members.map((m) => m.id))}
                                                     className="flex items-center gap-1.5 px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-600 text-sm font-bold rounded-xl transition-all whitespace-nowrap"
                                                 >
                                                     <RefreshCw size={15} />

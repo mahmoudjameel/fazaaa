@@ -252,6 +252,8 @@ export const Providers = () => {
   openedProviderIdRef.current = selectedProvider?.id || null;
   const isStillOpen = (providerId) => openedProviderIdRef.current === providerId;
   const appliedHighlightRef = useRef(null);
+  // ?tab=orders مع ?highlight — يُطبَّق بعد إعادة ضبط التبويب عند تبديل المزود
+  const pendingHighlightTabRef = useRef(null);
   const [walletHistory, setWalletHistory] = useState([]);
   const [loadingWallet, setLoadingWallet] = useState(false);
   const [loginSessions, setLoginSessions] = useState([]);
@@ -409,7 +411,10 @@ export const Providers = () => {
     const provider = providers.find((p) => p.id === highlightId);
     if (provider) {
       appliedHighlightRef.current = highlightId;
+      const tab = new URLSearchParams(location.search).get('tab');
+      pendingHighlightTabRef.current = ['info', 'wallet', 'orders', 'logins'].includes(tab) ? tab : null;
       setSelectedProvider(provider);
+      if (pendingHighlightTabRef.current) setActiveTab(pendingHighlightTabRef.current);
     }
   }, [providers, location.search]);
 
@@ -686,7 +691,8 @@ export const Providers = () => {
     setOrdersFilter('all');
     setProviderBlocks([]);
     setLoginSessions([]);
-    setActiveTab('info');
+    setActiveTab(pendingHighlightTabRef.current || 'info');
+    pendingHighlightTabRef.current = null;
     // تحميل سابق انقطع بالتبديل لا يُبقي مؤشر التحميل عالقاً
     setLoadingWallet(false);
     setLoadingStats(false);

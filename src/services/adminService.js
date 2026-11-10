@@ -277,10 +277,14 @@ export const createManualProvider = async (providerData) => {
         rating: 0,
         earnings: 0,
       },
+      // عدد الخدمات صريح بسعر العمولة الحالي (10 ر.س): بدونه يعدّ التطبيق والسيرفر
+      // الرصيد بالسعر القديم 5 ر.س فيتحول 50 ر.س إلى 10 خدمات بدل 5
       wallet: {
         balance: 50.0,
         lastUpdated: new Date().toISOString(),
         initialBalance: 50.0,
+        serviceCredits: 5,
+        legacyServiceCredits: 0,
       },
       hasSeenWelcomeAlert: false,
       // تمت إضافة الرصيد الابتدائي يدويًا من لوحة التحكم، لذلك نعتبر بونص الاعتماد مستلمًا

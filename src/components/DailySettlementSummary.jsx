@@ -1,5 +1,7 @@
 import { Fragment, useMemo, useState } from 'react';
-import { ChevronDown, ChevronUp, Landmark } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { ChevronDown, ChevronUp, Landmark, UserRound } from 'lucide-react';
+import { providerOrdersPath } from '../utils/providerLinks';
 
 // رسوم بوابة الدفع على مدى كما تظهر في كشف التسوية: 0.6% + ضريبة 15% على الرسوم
 // (مثال فعلي: 40 ر.س → رسوم 0.24 + ضريبة 0.04 = صافي 39.72)
@@ -141,19 +143,30 @@ export function DailySettlementSummary({ rows, rowsLimit, onSelect }) {
                         <td colSpan={6} className="px-3 py-2">
                           <div className="space-y-1">
                             {d.items.map((r) => (
-                              <button
-                                type="button"
-                                key={r.id}
-                                onClick={() => onSelect?.(r)}
-                                className="w-full flex flex-wrap items-center gap-x-4 gap-y-0.5 text-xs text-gray-700 text-right rounded-lg px-2 py-1 hover:bg-white hover:text-teal-700"
-                                title="عرض تفاصيل العملية"
-                              >
-                                <span className="font-semibold">{r.providerName || r.providerPhone || '—'}</span>
-                                <span>{sar(Number(r.amount) || 0)} ر.س</span>
-                                <span dir="ltr" className="font-mono">RRN {r.ref || '—'}</span>
-                                <span className="text-gray-400">{cardLabel(r.cardType)}</span>
-                                <span className="text-teal-600 font-semibold">عرض</span>
-                              </button>
+                              <div key={r.id} className="flex items-center gap-1 rounded-lg hover:bg-white">
+                                <button
+                                  type="button"
+                                  onClick={() => onSelect?.(r)}
+                                  className="flex-1 min-w-0 flex flex-wrap items-center gap-x-4 gap-y-0.5 text-xs text-gray-700 text-right px-2 py-1 hover:text-teal-700"
+                                  title="عرض تفاصيل العملية"
+                                >
+                                  <span className="font-semibold">{r.providerName || r.providerPhone || '—'}</span>
+                                  <span>{sar(Number(r.amount) || 0)} ر.س</span>
+                                  <span dir="ltr" className="font-mono">RRN {r.ref || '—'}</span>
+                                  <span className="text-gray-400">{cardLabel(r.cardType)}</span>
+                                  <span className="text-teal-600 font-semibold">عرض</span>
+                                </button>
+                                {r.providerId && (
+                                  <Link
+                                    to={providerOrdersPath(r.providerId)}
+                                    className="shrink-0 inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-800 px-2 py-1"
+                                    title="ملف المزود — الطلبات المنفذة وتفاصيلها"
+                                  >
+                                    <UserRound className="w-3.5 h-3.5" />
+                                    ملف المزود
+                                  </Link>
+                                )}
+                              </div>
                             ))}
                           </div>
                         </td>

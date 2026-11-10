@@ -11,7 +11,10 @@ import {
   X,
   Copy,
   Wallet,
+  UserRound,
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { providerOrdersPath } from '../utils/providerLinks';
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
 import {
@@ -315,7 +318,17 @@ export default function WalletTopUps() {
                       ) : null}
                     </td>
                     <td className="px-4 py-3">
-                      <div className="font-bold text-gray-800">{row.providerName}</div>
+                      {row.providerId ? (
+                        <Link
+                          to={providerOrdersPath(row.providerId)}
+                          className="font-bold text-gray-800 hover:text-teal-700 hover:underline"
+                          title="ملف المزود — الطلبات المنفذة وتفاصيلها"
+                        >
+                          {row.providerName || '—'}
+                        </Link>
+                      ) : (
+                        <div className="font-bold text-gray-800">{row.providerName}</div>
+                      )}
                       <div className="text-xs text-gray-500 mt-0.5" dir="ltr">
                         {row.providerPhone}
                       </div>
@@ -423,6 +436,16 @@ export default function WalletTopUps() {
                   </span>
                 ) : null}
               </div>
+
+              {selected.providerId ? (
+                <Link
+                  to={providerOrdersPath(selected.providerId)}
+                  className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl bg-indigo-50 text-indigo-700 font-bold hover:bg-indigo-100"
+                >
+                  <UserRound className="w-4 h-4" />
+                  فتح ملف المزود — الطلبات المنفذة وتفاصيلها
+                </Link>
+              ) : null}
 
               <DetailGrid
                 items={[
