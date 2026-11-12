@@ -104,6 +104,20 @@ export const toSaudiLocalPhoneDigits = (phone) => {
  * مطابقة مرنة لرقم جوال في البحث الإداري
  * تقبل 966 / 00966 / 05 / 5 كصيغة واحدة لنفس الرقم
  */
+/**
+ * بحث مباشر في Firestore برقم الجوال — القائمة في الصفحة لقطة وقت فتحها، فالمزود الذي
+ * سجّل للتو لا يظهر فيها ولا في البحث المحلي (كان الأدمن يعيد تسجيله فيتضاعف رصيده).
+ */
+export const findProvidersByPhone = async (searchTerm) => {
+  const local = toSaudiLocalPhoneDigits(searchTerm);
+  if (local.length < 9) return [];
+  const variants = [...new Set([`966${local}`, `0${local}`, local])];
+  const snap = await getDocs(query(collection(db, 'providers'), where('phone', 'in', variants)));
+  return snap.docs
+    .filter((d) => !d.data()?.mergedInto)
+    .map((d) => withNormalizedProviderWallet({ ...d.data(), id: d.id }));
+};
+
 export const phonesMatchForSearch = (storedPhone, searchTerm, { minDigits = 3 } = {}) => {
   const searchKey = toSaudiLocalPhoneDigits(searchTerm);
   if (!searchKey || searchKey.length < minDigits) return false;
@@ -1862,6 +1876,14 @@ export const getCustomerRequestsSummary = async () => {
  * @param {Array} requests
  * @returns {Map<string, { total: number, completed: number, lastOrderMs: number }>}
  */
+// طلب فعلي = مكتمل أو ما زال جارياً. الملغى (بأي طرف) والمنتهي بلا مزود لا يُعد طلباً:
+// عميل جديد طلب تجربة وقبله مزود بعد 12ث ثم ألغاه (#100005067) كان يظهر «1 طلب»
+const NOT_REAL_ORDER_STATUSES = new Set(['timed_out', 'escalated_to_city_manager']);
+export const isRealCustomerOrder = (req) => {
+  const status = String(req?.status || '');
+  return !status.startsWith('canceled') && !status.startsWith('cancelled') && !NOT_REAL_ORDER_STATUSES.has(status);
+};
+
 export const buildCustomerOrderStats = (requests = []) => {
   const stats = new Map();
 
@@ -1869,12 +1891,19 @@ export const buildCustomerOrderStats = (requests = []) => {
     const customerId = req.customerId || req.userId;
     if (!customerId) continue;
 
-    const current = stats.get(customerId) || { total: 0, completed: 0, lastOrderMs: 0 };
+    const current = stats.get(customerId) || { total: 0, completed: 0, attempts: 0, lastOrderMs: 0 };
+    const createdMs = req.createdAt?.toMillis?.()
+      ?? (typeof req.createdAt?.seconds === 'number' ? req.createdAt.seconds * 1000 : null)
+      ?? (req.createdAt ? new Date(req.createdAt).getTime() || 0 : 0);
+
+    if (!isRealCustomerOrder(req)) {
+      current.attempts += 1;
+      stats.set(customerId, current);
+      continue;
+    }
+
     current.total += 1;
     if (req.status === 'completed') current.completed += 1;
-
-    const createdMs = req.createdAt?.toMillis?.()
-      ?? (req.createdAt ? new Date(req.createdAt).getTime() : 0);
     if (createdMs > current.lastOrderMs) current.lastOrderMs = createdMs;
 
     stats.set(customerId, current);
@@ -2616,6 +2645,21 @@ const generateAdminReferenceNumber = () => {
 };
 
 /** attachment (اختياري): إيصال/مستند مرجعي { url, type, name } يُحفظ مع العملية */
+const isWelcomeReason = (reason) => /ترحيب|ابتدائي/.test(String(reason || ''));
+
+/** وصف أول رصيد ترحيبي سابق (تاريخ + المبلغ) أو null */
+const findPreviousWelcomeCredit = async (providerId) => {
+  const snap = await getDocs(collection(db, 'providers', providerId, 'transactions'));
+  const hit = snap.docs
+    .map((d) => d.data())
+    .find((t) => t?.type === 'initial'
+      || (['addition', 'compensation'].includes(t?.type) && isWelcomeReason(t?.reason) && Number(t?.amount) > 0));
+  if (!hit) return null;
+  const at = hit.timestamp?.toDate?.() || (hit.createdAt ? new Date(hit.createdAt) : null);
+  const when = at && !Number.isNaN(at.getTime()) ? at.toLocaleDateString('en-GB') : 'تاريخ غير معروف';
+  return `${hit.amount} ر.س بتاريخ ${when}`;
+};
+
 export const adjustProviderWallet = async (providerId, amount, type, reason, attachment = null) => {
   try {
     const pricingSnap = await getDoc(doc(db, 'settings', 'distribution'));
@@ -2633,6 +2677,16 @@ export const adjustProviderWallet = async (providerId, amount, type, reason, att
     let unitValue = pricing.providerCommissionPerOrder;
     let walletAfter = null;
 
+    // الرصيد الترحيبي مرة واحدة للمزود: كان يُضاف يدوياً ثم يضيفه التطبيق تلقائياً (أو يُضاف يدوياً
+    // مرة ثانية بعد إعادة الاعتماد) — 74 مزوداً حصلوا عليه مرتين أو أكثر
+    const isWelcomeCredit = (type === 'addition' || type === 'compensation') && isWelcomeReason(reason);
+    if (isWelcomeCredit) {
+      const previous = await findPreviousWelcomeCredit(providerId);
+      if (previous) {
+        throw new Error(`حصل هذا المزود على الرصيد الترحيبي مسبقاً (${previous}). استخدم سبباً آخر إن كانت إضافة مختلفة.`);
+      }
+    }
+
     const result = await runTransaction(db, async (transaction) => {
       const providerDoc = await transaction.get(providerRef);
       if (!providerDoc.exists()) {
@@ -2647,6 +2701,16 @@ export const adjustProviderWallet = async (providerId, amount, type, reason, att
         'wallet.lastUpdated': serverTimestamp(),
         walletBalance: deleteField(),
       };
+
+      if (isWelcomeCredit) {
+        // فحص السجل خارج المعاملة لا يمنع ضغطتين متتاليتين — العلامة داخلها تمنع
+        if (providerData.welcomeCreditGrantedAt) {
+          throw new Error('حصل هذا المزود على الرصيد الترحيبي مسبقاً.');
+        }
+        walletUpdate.welcomeCreditGrantedAt = new Date().toISOString();
+        // يمنع تطبيق المزود من إضافة رصيد ترحيبي ثانٍ عند فتحه
+        walletUpdate.hasReceivedApprovalBonus = true;
+      }
 
       if (type === 'addition' || type === 'compensation') {
         const applied = applyTopUpCredits(

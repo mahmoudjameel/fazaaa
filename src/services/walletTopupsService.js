@@ -67,16 +67,7 @@ export async function getWalletTopUps({ state = 'all', max = DEFAULT_PAGE_SIZE }
     console.warn('getWalletTopUps open-state query failed:', e?.message || e);
   }
 
-  const rows = [...byId.values()].map((d) => {
-    const data = d.data() || {};
-    return {
-      id: d.id,
-      ...data,
-      createdAt: toDate(data.createdAt),
-      updatedAt: toDate(data.updatedAt),
-      paidAt: toDate(data.paidAt),
-    };
-  });
+  const rows = [...byId.values()].map(toTopUpRow);
   rows.sort((a, b) => {
     const aMs = a.createdAt?.getTime?.() || a.updatedAt?.getTime?.() || 0;
     const bMs = b.createdAt?.getTime?.() || b.updatedAt?.getTime?.() || 0;
@@ -86,7 +77,22 @@ export async function getWalletTopUps({ state = 'all', max = DEFAULT_PAGE_SIZE }
   const filtered =
     state && state !== 'all' ? rows.filter((r) => String(r.state || '') === state) : rows;
 
-  const providerIds = [...new Set(filtered.map((r) => r.uid || r.providerId).filter(Boolean))];
+  return attachProviders(filtered);
+}
+
+const toTopUpRow = (d) => {
+  const data = d.data() || {};
+  return {
+    id: d.id,
+    ...data,
+    createdAt: toDate(data.createdAt),
+    updatedAt: toDate(data.updatedAt),
+    paidAt: toDate(data.paidAt),
+  };
+};
+
+async function attachProviders(rows) {
+  const providerIds = [...new Set(rows.map((r) => r.uid || r.providerId).filter(Boolean))];
   const providersMap = {};
   await Promise.all(
     providerIds.map(async (providerId) => {
@@ -108,7 +114,7 @@ export async function getWalletTopUps({ state = 'all', max = DEFAULT_PAGE_SIZE }
     })
   );
 
-  return filtered.map((row) => {
+  return rows.map((row) => {
     const pid = row.uid || row.providerId;
     const provider = (pid && providersMap[pid]) || {};
     return {
@@ -119,6 +125,38 @@ export async function getWalletTopUps({ state = 'all', max = DEFAULT_PAGE_SIZE }
       providerApprovalStatus: provider.approvalStatus || null,
     };
   });
+}
+
+/**
+ * بحث مباشر في كل عمليات الشحن بأي رقم مرجعي من إيصال البنك أو رسالة المزود:
+ * RRN (ref) · Track ID · Payment ID · Trans ID · معرّف المستند · referenceNumber.
+ * الصفحة تحمّل آخر 300 فقط، فالعملية الأقدم لا يجدها البحث المحلي.
+ * transId قد يُخزَّن رقماً، فنبحث بالنص والرقم معاً.
+ */
+const REFERENCE_FIELDS = ['ref', 'trackId', 'paymentId', 'transId', 'referenceNumber'];
+
+export async function findWalletTopUpsByReference(rawTerm) {
+  const term = String(rawTerm || '').trim();
+  if (term.length < 6) return [];
+  const variants = [term, term.toUpperCase()];
+  if (/^\d+$/.test(term) && Number.isSafeInteger(Number(term))) variants.push(Number(term));
+  const values = [...new Set(variants)];
+  const col = collection(db, TOPUPS_COLLECTION);
+  const snaps = await Promise.all([
+    ...REFERENCE_FIELDS.map((field) => getDocs(query(col, where(field, 'in', values), limit(10))).catch(() => null)),
+    // doc() يرمي متزامناً إن احتوى المعرّف «/»
+    term.includes('/') ? null : getDoc(doc(db, TOPUPS_COLLECTION, term)).catch(() => null),
+  ]);
+  const byId = new Map();
+  snaps.forEach((snap) => {
+    if (!snap) return;
+    if (typeof snap.exists === 'function') {
+      if (snap.exists()) byId.set(snap.id, snap);
+      return;
+    }
+    snap.docs.forEach((d) => byId.set(d.id, d));
+  });
+  return attachProviders([...byId.values()].map(toTopUpRow));
 }
 
 export const WALLET_TOPUP_STATES = {
@@ -141,4 +179,18 @@ export function getTopUpStateMeta(state) {
 export function watchWalletTopUpChanges(onChange, onError) {
   return onSnapshot(query(collection(db, TOPUPS_COLLECTION), orderBy('updatedAt', 'desc'), limit(1)),
     onChange, onError);
+}
+
+/**
+ * كل عمليات شحن مزود (لملف الحالة). بعض المستندات فيها uid فقط وبعضها providerId،
+ * وبلا orderBy (يتطلب فهرساً مركّباً) — السقف واسع لأن المزود عادة لديه عشرات العمليات.
+ */
+export async function getProviderWalletTopUps(providerId, max = 500) {
+  if (!providerId) return [];
+  const col = collection(db, TOPUPS_COLLECTION);
+  const snaps = await Promise.all(['uid', 'providerId'].map((field) =>
+    getDocs(query(col, where(field, '==', providerId), limit(max))).catch(() => null)));
+  const byId = new Map();
+  snaps.forEach((snap) => snap?.docs.forEach((d) => byId.set(d.id, d)));
+  return attachProviders([...byId.values()].map(toTopUpRow));
 }

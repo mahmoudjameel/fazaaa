@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Send, History, Users, UserCheck, Bell, MessageSquare, Clock, Trash2, AlertCircle, Loader2 } from 'lucide-react';
 import { collection, addDoc, getDocs, query, orderBy, serverTimestamp, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
 import SAUDI_CITIES_RAW from '../services/cities.json';
+import { INACTIVITY_OPTIONS, selectInactiveProviders } from '../utils/inactiveAudience';
 
 const SAUDI_CITIES = [...SAUDI_CITIES_RAW]
     .sort((a, b) => (a.name || '').localeCompare((b.name || ''), 'ar'))
@@ -21,6 +22,29 @@ export const Notifications = () => {
         target: 'all', // 'all', 'customer', 'provider'
         providerCities: [], // فلترة خاصة بالمزودين حسب مدينة العمل
     });
+    // 0 = كل المزودين؛ غير ذلك = من لم يصل موقعه منذ هذه الدقائق (نفس صفحة غير النشطين)
+    const [inactivityMinutes, setInactivityMinutes] = useState(0);
+    const [allProviders, setAllProviders] = useState(null);
+    const [providersError, setProvidersError] = useState('');
+
+    const inactiveMode = formData.target === 'provider' && inactivityMinutes > 0;
+
+    useEffect(() => {
+        if (!inactiveMode || allProviders) return;
+        getDocs(collection(db, 'providers'))
+            .then((snap) => setAllProviders(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))
+            .catch((e) => setProvidersError(e?.message || 'تعذر تحميل المزودين'));
+    }, [inactiveMode, allProviders]);
+
+    const selectedCityNames = useMemo(
+        () => SAUDI_CITIES.filter((c) => formData.providerCities.includes(c.value)).map((c) => c.label),
+        [formData.providerCities]
+    );
+
+    const inactiveAudience = useMemo(() => {
+        if (!inactiveMode || !allProviders) return null;
+        return selectInactiveProviders(allProviders, { minMinutes: inactivityMinutes, cityNames: selectedCityNames });
+    }, [inactiveMode, allProviders, inactivityMinutes, selectedCityNames]);
 
     useEffect(() => {
         if (activeTab === 'history') {
@@ -52,19 +76,39 @@ export const Notifications = () => {
         e.preventDefault();
         if (!formData.title || !formData.message) return;
 
+        if (inactiveMode) {
+            if (!inactiveAudience) return;
+            if (inactiveAudience.length === 0) {
+                alert('لا يوجد مزودون غائبون بهذه الشروط');
+                return;
+            }
+            if (!window.confirm(`إرسال الإشعار إلى ${inactiveAudience.length} مزود غائب؟`)) return;
+        }
+
         setLoading(true);
         try {
+            // الغائبون: قائمة معرّفات محسوبة هنا (المدينة مطبقة فيها)، فلا نرسل فلتر مدن للسيرفر حتى لا يُطبَّق مرتين
+            const payload = inactiveMode
+                ? {
+                    title: formData.title,
+                    message: formData.message,
+                    target: 'provider',
+                    providerIds: inactiveAudience.map((p) => p.id),
+                    providerCities: [],
+                    providerCityNames: [],
+                    audience: { inactiveMinutes: inactivityMinutes, cityNames: selectedCityNames },
+                    source: 'notifications_center_inactive',
+                }
+                : { ...formData, providerCityNames: selectedCityNames };
             await addDoc(collection(db, 'admin_notifications'), {
-                ...formData,
-                providerCityNames: SAUDI_CITIES
-                    .filter((c) => formData.providerCities.includes(c.value))
-                    .map((c) => c.label),
+                ...payload,
                 createdAt: serverTimestamp(),
                 type: 'admin_broadcast'
             });
 
-            alert('تم إرسال الإشعار بنجاح');
+            alert(inactiveMode ? `تم إرسال الإشعار إلى ${inactiveAudience.length} مزود` : 'تم إرسال الإشعار بنجاح');
             setFormData({ title: '', message: '', target: 'all', providerCities: [] });
+            setInactivityMinutes(0);
             setActiveTab('history');
         } catch (error) {
             console.error('Error sending notification:', error);
@@ -189,6 +233,39 @@ export const Notifications = () => {
                             </div>
                         </div>
 
+                        {formData.target === 'provider' && (
+                            <div className="space-y-3">
+                                <label className="block text-sm font-bold text-gray-700 pr-1">آخر نشاط للمزود</label>
+                                <div className="flex flex-wrap gap-2">
+                                    {INACTIVITY_OPTIONS.map((opt) => (
+                                        <button
+                                            key={opt.value}
+                                            type="button"
+                                            onClick={() => setInactivityMinutes(opt.value)}
+                                            className={`px-4 py-2 rounded-xl text-sm font-bold border-2 transition-all ${inactivityMinutes === opt.value
+                                                ? 'bg-primary-orange/10 border-primary-orange text-primary-orange'
+                                                : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
+                                                }`}
+                                        >
+                                            {opt.label}
+                                        </button>
+                                    ))}
+                                </div>
+                                {inactiveMode && (
+                                    <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-sm font-bold">
+                                        {providersError
+                                            ? providersError
+                                            : !inactiveAudience
+                                                ? 'جاري حساب المزودين الغائبين…'
+                                                : `سيصل إلى ${inactiveAudience.length} مزود معتمد لم يُفتح تطبيقه (لم يصل موقعه) خلال الفترة — ${selectedCityNames.length ? selectedCityNames.join('، ') : 'كل المدن'}.`}
+                                        <div className="text-xs font-semibold text-amber-700 mt-1">
+                                            من تطبيقه مقفول تماماً قد لا يصله الإشعار — أرسل لهم SMS من صفحة «المزودون غير النشطين».
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
                         {targetIncludesProviders && (
                             <div className="space-y-3">
                                 <label className="block text-sm font-bold text-gray-700 pr-1">
@@ -240,7 +317,7 @@ export const Notifications = () => {
 
                         <button
                             type="submit"
-                            disabled={loading}
+                            disabled={loading || (inactiveMode && !inactiveAudience)}
                             className="w-full py-4 bg-primary-orange text-white rounded-2xl font-black text-lg shadow-lg shadow-primary-orange/30 hover:bg-primary-yellow hover:scale-[1.01] active:scale-[0.99] transition-all disabled:opacity-50 disabled:hover:scale-100"
                         >
                             {loading ? (
@@ -290,6 +367,12 @@ export const Notifications = () => {
                                                     }`}>
                                                     {getTargetLabel(notification.target)}
                                                 </span>
+                                                {notification.audience?.inactiveMinutes > 0 && (
+                                                    <span className="px-3 py-1 rounded-full text-[10px] font-black bg-rose-100 text-rose-700">
+                                                        {(INACTIVITY_OPTIONS.find((o) => o.value === notification.audience.inactiveMinutes)?.label) || 'غائبون'}
+                                                        {' '}({notification.providerIds?.length || 0} مزود · {notification.audience.cityNames?.length ? notification.audience.cityNames.join('، ') : 'كل المدن'})
+                                                    </span>
+                                                )}
                                                 {Array.isArray(notification.providerCityNames) && notification.providerCityNames.length > 0 && (
                                                     <span className="px-3 py-1 rounded-full text-[10px] font-black bg-amber-100 text-amber-700">
                                                         مدن مزودين محددة ({notification.providerCityNames.length})

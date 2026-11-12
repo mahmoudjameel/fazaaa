@@ -10,6 +10,7 @@ import {
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   getAllProviders,
+  findProvidersByPhone,
   getProviderById,
   updateProvider,
   updateProviderStatus,
@@ -440,6 +441,49 @@ export const Providers = () => {
     }
   };
 
+  // العودة للتبويب بعد دقيقة أو أكثر → قائمة جديدة (المزود الذي سجّل أمامك يظهر)
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && Date.now() - lastProvidersFetchRef.current > 60_000) {
+        fetchProviders();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
+    };
+  }, []);
+
+  // البحث برقم جوال كامل غير موجود في القائمة المحمّلة → سؤال Firestore مباشرة وإضافته
+  const [phoneLookupState, setPhoneLookupState] = useState('idle');
+  useEffect(() => {
+    const digits = String(searchTerm || '').replace(/\D/g, '');
+    if (digits.length < 9) {
+      setPhoneLookupState('idle');
+      return undefined;
+    }
+    let cancelled = false;
+    setPhoneLookupState('searching');
+    const timer = setTimeout(async () => {
+      try {
+        const found = await findProvidersByPhone(searchTerm);
+        if (cancelled) return;
+        setProviders((prev) => {
+          const known = new Set(prev.map((p) => String(p.id)));
+          const fresh = found.filter((p) => !known.has(String(p.id)));
+          return fresh.length ? [...fresh, ...prev] : prev;
+        });
+        setPhoneLookupState(found.length ? 'found' : 'not_found');
+      } catch (e) {
+        console.warn('findProvidersByPhone:', e?.message || e);
+        if (!cancelled) setPhoneLookupState('idle');
+      }
+    }, 400);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [searchTerm]);
+
   useEffect(() => {
     filterProviders();
   }, [providers, mainServices, searchTerm, statusFilter, verifiedFilter, typeFilter, groupFilter, serviceFilter, cityFilter, nationalityFilter, lowBalanceFilter, pricingSettings, executedOrdersFilter, locationIssueFilter, providerIdsWithCompletedOrders, executedOrdersCounts, cancelFreqFilter, cancelCounts, perfMostExecuted, perfLeastCancel, perfTopRated, perfCancelCounts, monthlyRank, monthlyPerf]);
@@ -589,9 +633,12 @@ export const Providers = () => {
 
   const normalizeCityText = (value) => String(value || '').trim().toLowerCase();
 
+  const lastProvidersFetchRef = useRef(0);
   const fetchProviders = async () => {
     try {
-      const result = await getAllProviders();
+      // force: بعد اعتماد/تعديل كانت تعود نسخة الكاش (45ث) فلا يظهر التغيير ولا المزود الجديد
+      const result = await getAllProviders({ force: true });
+      lastProvidersFetchRef.current = Date.now();
       const normalized = (result.providers || []).map((p) => withNormalizedProviderWallet(p));
       setProviders(normalized);
     } catch (error) {
@@ -1920,12 +1967,20 @@ export const Providers = () => {
                 <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
                 <input
                   type="text"
-                  placeholder="ابحث عن مزود..."
+                  placeholder="ابحث عن مزود بالاسم أو رقم الجوال..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full pr-10 pl-4 py-3 border-2 border-gray-200 rounded-lg focus:border-teal-400 focus:outline-none text-sm md:text-base"
                 />
               </div>
+              {phoneLookupState === 'searching' && (
+                <p className="text-xs text-gray-500">جاري البحث عن الرقم في كل المزودين…</p>
+              )}
+              {phoneLookupState === 'not_found' && (
+                <p className="text-xs font-bold text-amber-700">
+                  هذا الرقم غير مسجّل كمزود. إن كان سجّل للتو من التطبيق فلم يكتمل تسجيله — لا تضفه يدوياً قبل التأكد معه.
+                </p>
+              )}
 
               <ExportButtons baseName="providers" columns={buildProviderExportColumns} rows={filteredProviders} className="justify-end" />
 

@@ -19,6 +19,8 @@ import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
 import {
   getWalletTopUps,
+  findWalletTopUpsByReference,
+  getProviderWalletTopUps,
   watchWalletTopUpChanges,
   getTopUpStateMeta,
   WALLET_TOPUP_STATES,
@@ -26,6 +28,7 @@ import {
 import { WalletPackagesManager } from '../components/WalletPackagesManager';
 import { DailySettlementSummary } from '../components/DailySettlementSummary';
 import { RepairTopupReferences } from '../components/RepairTopupReferences';
+import { relatedTopUps, topUpCaseVerdict } from '../utils/topUpCase';
 
 const formatDt = (value) => {
   if (!value) return '—';
@@ -34,6 +37,59 @@ const formatDt = (value) => {
   } catch {
     return '—';
   }
+};
+
+const VERDICT_STYLES = {
+  ok: 'bg-emerald-50 border-emerald-200 text-emerald-800',
+  warn: 'bg-amber-50 border-amber-200 text-amber-800',
+  bad: 'bg-red-50 border-red-200 text-red-800',
+};
+
+/** ملف حالة: كل عمليات المزود حول العملية التي بحث عنها الأدمن + حكم واضح */
+const TopUpCaseCard = ({ caseData, onSelect }) => {
+  const { match, related, verdict } = caseData;
+  return (
+    <div className="bg-white rounded-2xl border-2 border-teal-200 shadow-sm p-4 space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="font-bold text-gray-900">
+          ملف الحالة: {match.providerName}
+          <span className="text-gray-500 font-normal text-sm mr-2" dir="ltr">{match.providerPhone}</span>
+        </div>
+        {match.providerId && (
+          <Link to={providerOrdersPath(match.providerId)} className="text-xs font-bold text-teal-700 hover:underline">
+            صفحة المزود
+          </Link>
+        )}
+      </div>
+      {verdict && (
+        <div className={`rounded-xl border px-3 py-2 text-sm font-bold ${VERDICT_STYLES[verdict.tone]}`}>{verdict.text}</div>
+      )}
+      <div className="text-xs text-gray-500">عمليات المزود خلال 24 ساعة من العملية:</div>
+      <div className="divide-y divide-gray-100 border border-gray-100 rounded-xl">
+        {related.map((row) => {
+          const meta = getTopUpStateMeta(row.state);
+          const isMatch = row.id === match.id;
+          const isPaidMatch = verdict?.paidRow?.id === row.id && !isMatch;
+          return (
+            <button
+              key={row.id}
+              type="button"
+              onClick={() => onSelect(row)}
+              className={`w-full text-right px-3 py-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs hover:bg-gray-50 ${isMatch ? 'bg-teal-50' : ''}`}
+            >
+              <span className="text-gray-700 min-w-[9rem]">{formatDt(row.createdAt)}</span>
+              <span className={`px-2 py-0.5 rounded-full font-bold ${meta.color}`}>{meta.label}</span>
+              <span className="font-bold text-gray-800">{row.amount} ر.س</span>
+              <span className="font-mono text-gray-600" dir="ltr">{row.trackId || row.referenceNumber || row.id}</span>
+              {row.ref && <span className="font-mono text-gray-500" dir="ltr">RRN {row.ref}</span>}
+              {isMatch && <span className="font-bold text-teal-700">← الرقم الذي بحثت عنه</span>}
+              {isPaidMatch && <span className="font-bold text-emerald-700">← الشحن الناجح</span>}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
 };
 
 const StatCard = ({ label, value, sub, colorClass }) => (
@@ -82,6 +138,10 @@ export default function WalletTopUps() {
   const [sourceFilter, setSourceFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [selected, setSelected] = useState(null);
+  // نتائج البحث المباشر في Firestore بالرقم المرجعي (العملية قد تكون خارج آخر 300 محمّلة)
+  const [referenceMatches, setReferenceMatches] = useState({ term: '', rows: [] });
+  const [referenceSearching, setReferenceSearching] = useState(false);
+  const [topUpCase, setTopUpCase] = useState(null);
 
   const load = useCallback(async () => {
     const version = ++loadVersion.current;
@@ -115,8 +175,52 @@ export default function WalletTopUps() {
     return rows;
   }, [rows, sourceFilter]);
 
+  useEffect(() => {
+    const term = searchTerm.trim();
+    if (term.length < 6) {
+      setReferenceMatches({ term: '', rows: [] });
+      setReferenceSearching(false);
+      return undefined;
+    }
+    let cancelled = false;
+    setReferenceSearching(true);
+    const timer = setTimeout(() => {
+      findWalletTopUpsByReference(term)
+        .then((found) => { if (!cancelled) setReferenceMatches({ term, rows: found }); })
+        .catch((e) => console.warn('findWalletTopUpsByReference:', e?.message || e))
+        .finally(() => { if (!cancelled) setReferenceSearching(false); });
+    }, 400);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [searchTerm]);
+
+  // رقم مرجعي مطابق لعملية واحدة → ملف حالة لمزودها (يحل «أرسل أرقام المحاولة الفاشلة»)
+  useEffect(() => {
+    const providerIds = [...new Set(referenceMatches.rows.map((r) => r.providerId).filter(Boolean))];
+    const match = referenceMatches.rows[0];
+    if (providerIds.length !== 1 || !match) {
+      setTopUpCase(null);
+      return undefined;
+    }
+    let cancelled = false;
+    getProviderWalletTopUps(providerIds[0])
+      .then((providerRows) => {
+        if (cancelled) return;
+        const related = relatedTopUps(match, providerRows.some((r) => r.id === match.id) ? providerRows : [match, ...providerRows]);
+        setTopUpCase({ term: referenceMatches.term, match, related, verdict: topUpCaseVerdict(match, related) });
+      })
+      .catch((e) => console.warn('getProviderWalletTopUps:', e?.message || e));
+    return () => { cancelled = true; };
+  }, [referenceMatches]);
+
   const filtered = useMemo(() => {
     let list = sourceRows;
+    const trimmedTerm = searchTerm.trim();
+    if (trimmedTerm && referenceMatches.term === trimmedTerm && referenceMatches.rows.length) {
+      const loadedIds = new Set(list.map((r) => r.id));
+      const extra = referenceMatches.rows.filter((r) => !loadedIds.has(r.id)
+        && (sourceFilter === 'all' || (sourceFilter === 'admin') === isAdminTopUp(r)));
+      list = [...extra, ...list];
+    }
     if (stateFilter !== 'all') {
       list = list.filter((r) => String(r.state || '').toUpperCase() === stateFilter);
     }
@@ -152,7 +256,7 @@ export default function WalletTopUps() {
       });
     }
     return list;
-  }, [sourceRows, stateFilter, searchTerm]);
+  }, [sourceRows, stateFilter, searchTerm, referenceMatches, sourceFilter]);
 
   // الإحصائيات تتبع فلتر المصدر — «مبالغ ناجحة» مع «عبر البنك» = ما دفعه المزودون فعلاً
   const stats = useMemo(() => {
@@ -237,7 +341,7 @@ export default function WalletTopUps() {
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="بحث برقم الجوال أو رقم مرجع الشحن…"
+            placeholder="بحث بالجوال أو أي رقم مرجعي: RRN · Track ID · Payment ID · Trans ID…"
             className="w-full pr-10 pl-4 py-2.5 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:border-teal-400 focus:ring-1 focus:ring-teal-400 outline-none text-sm"
           />
         </div>
@@ -282,6 +386,8 @@ export default function WalletTopUps() {
         </div>
       )}
 
+      {topUpCase && topUpCase.term === searchTerm.trim() && <TopUpCaseCard caseData={topUpCase} onSelect={setSelected} />}
+
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         {loading ? (
           <div className="flex items-center justify-center gap-2 py-16 text-gray-500">
@@ -291,7 +397,7 @@ export default function WalletTopUps() {
         ) : filtered.length === 0 ? (
           <div className="text-center py-16 text-gray-500">
             <Wallet className="w-10 h-10 mx-auto mb-3 text-gray-300" />
-            لا توجد عمليات مطابقة
+            {referenceSearching ? 'جاري البحث في كل العمليات…' : 'لا توجد عمليات مطابقة'}
           </div>
         ) : (
           <div className="overflow-x-auto">

@@ -332,11 +332,12 @@ export const Users = () => {
       });
 
       const usersData = Array.from(merged.values()).map((user) => {
-        const stats = orderStats.get(user.id) || { total: 0, completed: 0, lastOrderMs: 0 };
+        const stats = orderStats.get(user.id) || { total: 0, completed: 0, attempts: 0, lastOrderMs: 0 };
         return {
           ...user,
           orderCount: stats.total,
           completedOrderCount: stats.completed,
+          canceledAttemptCount: stats.attempts || 0,
           lastOrderAt: stats.lastOrderMs || null,
           serviceIds: Array.from(serviceIdsByCustomer.get(user.id) || []),
         };
@@ -355,6 +356,7 @@ export const Users = () => {
 
   const getUserCreatedMs = (user) => {
     if (user.createdAt?.toMillis) return user.createdAt.toMillis();
+    if (typeof user.createdAt?.seconds === 'number') return user.createdAt.seconds * 1000;
     if (user.createdAt) {
       const ms = new Date(user.createdAt).getTime();
       return Number.isNaN(ms) ? 0 : ms;
@@ -492,6 +494,7 @@ export const Users = () => {
     { header: 'الحالة', value: (u) => USER_STATUS_LABELS[u.status] || u.status || '' },
     { header: 'عدد الطلبات', value: (u) => u.orderCount || 0 },
     { header: 'طلبات مكتملة', value: (u) => u.completedOrderCount || 0 },
+    { header: 'طلبات ملغاة', value: (u) => u.canceledAttemptCount || 0 },
     { header: 'آخر طلب', value: (u) => (u.lastOrderAt ? new Date(u.lastOrderAt) : null) },
     { header: 'تاريخ التسجيل', value: (u) => { const ms = getUserCreatedMs(u); return ms ? new Date(ms) : null; } },
   ];
@@ -848,6 +851,16 @@ export const Users = () => {
                           <span className="inline-flex items-center gap-1 px-2 sm:px-3 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 whitespace-nowrap">
                             <UserX className="w-3 h-3" />
                             لم يطلب بعد
+                            {(user.canceledAttemptCount ?? 0) > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => setSelectedUser(user)}
+                                title="طلبات أُلغيت أو انتهت بلا مزود — لا تُحسب طلبات"
+                                className="opacity-75 underline-offset-2 hover:underline"
+                              >
+                                ({user.canceledAttemptCount} ملغى)
+                              </button>
+                            )}
                           </span>
                         ) : (
                           <button
@@ -869,6 +882,9 @@ export const Users = () => {
                             {(user.completedOrderCount ?? 0) > 0 && (
                               <span className="opacity-75">({user.completedOrderCount} مكتمل)</span>
                             )}
+                            {(user.canceledAttemptCount ?? 0) > 0 && (
+                              <span className="opacity-60">+{user.canceledAttemptCount} ملغى</span>
+                            )}
                           </button>
                         )}
                       </div>
@@ -888,11 +904,9 @@ export const Users = () => {
                         <div className="flex items-center gap-2">
                           <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
                           <span>
-                            {user.createdAt
-                              ? (() => {
-                                const date = new Date(user.createdAt);
-                                return isNaN(date.getTime()) ? '-' : format(date, 'dd MMM yyyy, HH:mm', { locale: ar });
-                              })()
+                            {/* createdAt قد يكون Timestamp من Firestore — new Date(Timestamp) كان يعطي «-» */}
+                            {getUserCreatedMs(user)
+                              ? format(new Date(getUserCreatedMs(user)), 'dd MMM yyyy, HH:mm', { locale: ar })
                               : '-'}
                           </span>
                         </div>

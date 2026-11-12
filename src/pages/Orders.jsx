@@ -62,7 +62,7 @@ import { db } from '../services/firebase';
 import SAUDI_CITIES_FALLBACK from '../services/cities.json';
 import { formatOrderNumberLabel } from '../utils/orderNumber';
 import { resolveServiceChange, serviceChangeBadge } from '../utils/serviceUpgrade';
-import { formatCancelReasonLabel, resolveActualArrivalMinutes, resolveUnverifiedArrivalMinutes, resolveOrderDelay } from '../utils/providerPerformance';
+import { formatCancelReasonLabel, resolveActualArrivalMinutes, isArrivalNotDetected, resolveOrderDelay } from '../utils/providerPerformance';
 import { summarizeCustomerDemand, buildAttemptLookup, lastFailedAttemptIds } from '../utils/customerDemand';
 import { formatPhoneForExport } from '../utils/exportTable';
 import { resolveRequestCityName } from '../utils/noCoverage';
@@ -2607,24 +2607,27 @@ export const Orders = () => {
                         <span
                           key="actual-arrival"
                           className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border ${isLate ? 'bg-red-50 text-red-700 border-red-200' : delay ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-50 text-gray-700 border-gray-200'}`}
-                          title="من قبول المزود حتى دخوله 500م من موقع العميل (موثّق بالموقع)"
+                          title={order.actual_geofence_arrival_at
+                            ? 'من قبول المزود حتى دخوله 500م من موقع العميل (موثّق بالموقع)'
+                            : 'طلب قديم قبل اعتماد نطاق 500م — الوقت حتى ضغط «وصلت»'}
                         >
                           <Clock size={11} />
-                          وصل فعلياً خلال {actualArrivalMinutes} د
+                          {order.actual_geofence_arrival_at
+                            ? <>وصل (دخل 500م) خلال {actualArrivalMinutes} د</>
+                            : <>وصل خلال {actualArrivalMinutes} د <span className="text-[10px] opacity-70">(طلب قديم)</span></>}
                           {isLate && <span className="text-[10px] font-black">متأخر (ضعف المتوقع)</span>}
                         </span>
                       );
                     } else {
-                      const unverifiedMinutes = resolveUnverifiedArrivalMinutes(order);
-                      if (unverifiedMinutes != null) {
+                      if (isArrivalNotDetected(order)) {
                         chips.push(
                           <span
                             key="actual-arrival"
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border border-dashed bg-amber-50 text-amber-800 border-amber-300"
-                            title="لم يُسجَّل دخول المزود 500م من موقع العميل (توقف إرسال موقعه أثناء المشوار) — هذا وقت ضغطه «وصلت» ولا يدخل مؤشرات الأداء"
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border border-dashed bg-gray-50 text-gray-600 border-gray-300"
+                            title="لم يصل موقع المزود وهو ضمن 500م من العميل (غالباً توقف إرسال موقعه) — لا يدخل مؤشرات الأداء"
                           >
                             <Clock size={11} />
-                            ضغط «وصلت» بعد {unverifiedMinutes} د · غير موثّق
+                            لم يُرصد دخوله نطاق 500م
                           </span>
                         );
                       }

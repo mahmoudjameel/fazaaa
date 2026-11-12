@@ -83,16 +83,21 @@ export const resolveActualArrivalMinutes = (order) => {
   return Math.round((arrivedMs - assignedMs) / 60000);
 };
 
+// حالات تعني أن المزود يُفترض أنه وصل للعميل (ضغط «وصلت» نفسه لا يهم كمعلومة)
+const PAST_ARRIVAL_STATUSES = new Set([
+  'arrived', 'in_progress', 'pending_legal_docs', 'pending_client_confirmation', 'pending_review', 'completed',
+]);
+
 /**
- * للعرض فقط (لا يدخل المؤشرات): من القبول حتى ضغط «وصلت» حين لا توجد قراءة سياج 500م —
- * يحدث إن توقف إرسال موقع المزود أثناء المشوار. null إن وُجد سياج أو نقص وقت.
+ * طلب جديد (بعد اعتماد السياج) يُفترض أن المزود وصل فيه، ولم يُرصد دخوله 500م من العميل —
+ * غالباً توقف إرسال موقعه. للعرض فقط ولا يدخل المؤشرات.
  */
-export const resolveUnverifiedArrivalMinutes = (order) => {
-  if (toMs(order?.actual_geofence_arrival_at)) return null;
-  const arrivedMs = toMs(order?.arrivedAt) || findLastHistoryStatusMs(order, 'arrived');
-  const assignedMs = toMs(order?.assignedAt) || findLastHistoryStatusMs(order, 'assigned', arrivedMs || Infinity);
-  if (!assignedMs || !arrivedMs || arrivedMs < assignedMs) return null;
-  return Math.round((arrivedMs - assignedMs) / 60000);
+export const isArrivalNotDetected = (order) => {
+  if (toMs(order?.actual_geofence_arrival_at)) return false;
+  if (toMs(order?.createdAt) < GEOFENCE_ONLY_SINCE_MS) return false;
+  if (!order?.providerId || !(toMs(order?.assignedAt) || findLastHistoryStatusMs(order, 'assigned'))) return false;
+  return PAST_ARRIVAL_STATUSES.has(order?.status)
+    || Boolean(toMs(order?.arrivedAt) || findLastHistoryStatusMs(order, 'arrived'));
 };
 
 /**
