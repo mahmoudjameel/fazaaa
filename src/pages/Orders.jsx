@@ -44,6 +44,7 @@ import {
   getProviderById,
   getUsersBySearch,
   getProvidersBySearch,
+  findAccountIdsByNumber,
   createManualOrder,
   updateOrderDetails,
   updateRequestRating,
@@ -513,12 +514,13 @@ export const Orders = () => {
     const timer = setTimeout(async () => {
       setIsSearchingUids(true);
       try {
-        const [usersRes, providersRes] = await Promise.all([
+        const [usersRes, providersRes, accountIds] = await Promise.all([
           getUsersBySearch(sTerm),
-          getProvidersBySearch(sTerm)
+          getProvidersBySearch(sTerm),
+          findAccountIdsByNumber(sTerm),
         ]);
 
-        const uids = new Set();
+        const uids = new Set(accountIds);
         if (usersRes.success) usersRes.users.forEach(u => uids.add(u.id));
         if (providersRes.success) providersRes.providers.forEach(p => uids.add(p.id));
 
@@ -1223,7 +1225,7 @@ export const Orders = () => {
       const orderPayload = {
         customerId: selectedCustomerForOrder.id,
         customerName: selectedCustomerForOrder.name || `${selectedCustomerForOrder.firstName || ''} ${selectedCustomerForOrder.lastName || ''}`.trim(),
-        customerPhone: selectedCustomerForOrder.phone,
+        // لا جوال في مستند الطلب: مقروء للجميع — الجوال يُقرأ من customers عبر customerId
         serviceId: newOrderData.serviceId,
         serviceName: serviceName || 'خدمة',
         serviceCategory: serviceCategory,
@@ -2751,7 +2753,9 @@ export const Orders = () => {
                         <h3 className="text-lg sm:text-xl font-bold text-gray-800">
                           {selectedCustomer.firstName || ''} {selectedCustomer.lastName || ''}
                         </h3>
-                        <p className="text-sm text-gray-600">العميل</p>
+                        <p className="text-sm text-gray-600">
+                          العميل{selectedCustomer.customerNumber ? <span className="font-bold" dir="ltr"> · {selectedCustomer.customerNumber}</span> : null}
+                        </p>
                       </div>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">

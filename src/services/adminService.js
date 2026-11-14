@@ -1919,6 +1919,21 @@ export const buildCustomerOrderStats = (requests = []) => {
  * @param {string} term - كلمة البحث
  * @returns {Promise<Object>}
  */
+/**
+ * معرّفات الحسابات بالرقم المرجعي (P10001 / C10001 / 10001) — استعلام مباشر لا يقيده حد الـ500.
+ */
+export const findAccountIdsByNumber = async (term) => {
+  const raw = String(term || '').trim().toUpperCase();
+  const match = raw.match(/^([PC])?(\d{5,})$/);
+  if (!match) return [];
+  const [, prefix, digits] = match;
+  const lookups = [];
+  if (prefix !== 'C') lookups.push(getDocs(query(collection(db, 'providers'), where('providerNumber', '==', `P${digits}`), limit(5))));
+  if (prefix !== 'P') lookups.push(getDocs(query(collection(db, 'customers'), where('customerNumber', '==', `C${digits}`), limit(5))));
+  const snaps = await Promise.all(lookups.map((p) => p.catch(() => null)));
+  return snaps.flatMap((snap) => (snap ? snap.docs.map((d) => d.id) : []));
+};
+
 export const getUsersBySearch = async (term) => {
   try {
     const cleanTerm = term.trim();

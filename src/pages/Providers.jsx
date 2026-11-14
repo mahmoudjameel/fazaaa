@@ -78,6 +78,7 @@ import { hasLocationTrackingIssue, inferLocationTrackingIssue, FRESH_MS, OK_MS }
 import { PhoneWithActions } from '../components/PhoneWithActions';
 import { normalizePricing, validateTopUpAmount, DEFAULT_PRICING, resolveNextDeductionAmount } from '../utils/providerPricing';
 import SAUDI_CITIES_RAW from '../services/cities.json';
+import { matchesAccountNumber } from '../utils/accountNumber';
 
 const APPROVAL_STATUS_LABELS = { pending: 'قيد المراجعة', approved: 'موافق عليه', rejected: 'مرفوض', suspended: 'موقوف مؤقتاً' };
 
@@ -1227,7 +1228,8 @@ export const Providers = () => {
       filtered = filtered.filter(p =>
         (p.firstName + ' ' + p.lastName).toLowerCase().includes(searchLower) ||
         p.email?.toLowerCase().includes(searchLower) ||
-        phonesMatchForSearch(p.phone, searchTerm)
+        phonesMatchForSearch(p.phone, searchTerm) ||
+        matchesAccountNumber(p.providerNumber, searchTerm)
       );
     }
 
@@ -3180,6 +3182,12 @@ export const Providers = () => {
                             );
                           })()}
 
+                          <div>
+                            <h3 className="font-semibold text-gray-700 mb-2">الرقم المرجعي</h3>
+                            <p className="text-gray-800 font-bold tracking-wide" dir="ltr">
+                              {selectedProvider.providerNumber || '—'}
+                            </p>
+                          </div>
                           <div>
                             <h3 className="font-semibold text-gray-700 mb-2">
                               {selectedProvider.providerType === 'non_saudi' ? 'اسم المفوض' : 'الاسم'}

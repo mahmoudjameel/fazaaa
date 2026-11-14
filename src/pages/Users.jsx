@@ -22,6 +22,7 @@ import {
 } from '../services/adminService';
 import SAUDI_CITIES_FALLBACK from '../services/cities.json';
 import { canonicalCityName } from '../utils/cityLabel';
+import { matchesAccountNumber } from '../utils/accountNumber';
 
 const SERVICE_TOKENS = ['بطار', 'إطار', 'اطار', 'بنشر', 'قفال', 'فتح', 'سطح', 'ونش', 'وقود'];
 
@@ -541,7 +542,8 @@ export const Users = () => {
           u.phone?.includes(searchTerm) ||
           (phoneKey.length >= 3 && toDigits(u.phone || u.phoneNumber).includes(phoneKey)) ||
           u.firstName?.toLowerCase().includes(searchLower) ||
-          u.lastName?.toLowerCase().includes(searchLower)
+          u.lastName?.toLowerCase().includes(searchLower) ||
+          matchesAccountNumber(u.customerNumber, searchTerm)
       );
     }
 
@@ -901,6 +903,9 @@ export const Users = () => {
                             <span>{user.phone}</span>
                           </div>
                         )}
+                        {user.customerNumber && (
+                          <div className="text-xs font-bold text-gray-500" dir="ltr">{user.customerNumber}</div>
+                        )}
                         <div className="flex items-center gap-2">
                           <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
                           <span>
@@ -974,6 +979,10 @@ export const Users = () => {
                 </div>
               </div>
               <div className="p-4 sm:p-5 md:p-6 space-y-3 sm:space-y-4">
+                <div>
+                  <h3 className="font-semibold text-sm sm:text-base text-gray-700 mb-1 sm:mb-2">الرقم المرجعي</h3>
+                  <p className="text-sm sm:text-base text-gray-800 font-bold tracking-wide" dir="ltr">{selectedUser.customerNumber || '—'}</p>
+                </div>
                 <div>
                   <h3 className="font-semibold text-sm sm:text-base text-gray-700 mb-1 sm:mb-2">الاسم</h3>
                   <p className="text-sm sm:text-base text-gray-800">{selectedUser.name || 'غير محدد'}</p>

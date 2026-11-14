@@ -323,7 +323,7 @@ export const OrderTestLab = () => {
       const payload = {
         customerId: selectedCustomer.id,
         customerName,
-        customerPhone: selectedCustomer.phone || selectedCustomer.phoneNumber || '',
+        // لا جوال في مستند الطلب: مقروء للجميع — الجوال يُقرأ من customers عبر customerId
         serviceId: selectedService.id,
         serviceName: selectedService.name,
         serviceCategory: selectedService.parentName || selectedService.name,
