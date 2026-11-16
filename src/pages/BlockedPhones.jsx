@@ -8,6 +8,7 @@ import {
   normalizeBanPhone966,
   unbanPhoneNumber,
 } from '../services/adminService';
+import CancelLimitBlocksPanel from '../components/CancelLimitBlocksPanel';
 
 const KIND_LABEL = {
   customer: 'عميل',
@@ -136,6 +137,8 @@ export default function BlockedPhones() {
           تحديث
         </button>
       </div>
+
+      <CancelLimitBlocksPanel />
 
       <form
         onSubmit={handleBan}

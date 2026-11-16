@@ -3645,7 +3645,7 @@ export const Orders = () => {
                         className="w-full h-auto object-cover cursor-pointer"
                         onClick={() => window.open(selectedRequest.carPlateImage, '_blank')}
                       />
-                      <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all flex items-center justify-center">
+                      <div className="absolute inset-0 pointer-events-none bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all flex items-center justify-center">
                         <Eye className="text-white opacity-0 group-hover:opacity-100 transition-opacity" size={32} />
                       </div>
                     </div>
@@ -3675,7 +3675,7 @@ export const Orders = () => {
                               className="w-full h-48 object-cover cursor-pointer"
                               onClick={() => window.open(selectedRequest.serviceDocumentationBefore, '_blank')}
                             />
-                            <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all flex items-center justify-center">
+                            <div className="absolute inset-0 pointer-events-none bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all flex items-center justify-center">
                               <Eye className="text-white opacity-0 group-hover:opacity-100 transition-opacity" size={28} />
                             </div>
                           </div>
@@ -3700,7 +3700,7 @@ export const Orders = () => {
                               className="w-full h-48 object-cover cursor-pointer"
                               onClick={() => window.open(selectedRequest.serviceDocumentationAfter, '_blank')}
                             />
-                            <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all flex items-center justify-center">
+                            <div className="absolute inset-0 pointer-events-none bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all flex items-center justify-center">
                               <Eye className="text-white opacity-0 group-hover:opacity-100 transition-opacity" size={28} />
                             </div>
                           </div>
@@ -3733,7 +3733,7 @@ export const Orders = () => {
                               className="w-full h-48 object-cover cursor-pointer"
                               onClick={() => window.open(selectedRequest.legalOwnershipProof, '_blank')}
                             />
-                            <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all flex items-center justify-center">
+                            <div className="absolute inset-0 pointer-events-none bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all flex items-center justify-center">
                               <Eye className="text-white opacity-0 group-hover:opacity-100 transition-opacity" size={28} />
                             </div>
                           </div>
@@ -3758,7 +3758,7 @@ export const Orders = () => {
                               className="w-full h-48 object-cover cursor-pointer"
                               onClick={() => window.open(selectedRequest.legalLockForm, '_blank')}
                             />
-                            <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all flex items-center justify-center">
+                            <div className="absolute inset-0 pointer-events-none bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all flex items-center justify-center">
                               <Eye className="text-white opacity-0 group-hover:opacity-100 transition-opacity" size={28} />
                             </div>
                           </div>
@@ -3783,7 +3783,7 @@ export const Orders = () => {
                               className="w-full h-48 object-cover cursor-pointer"
                               onClick={() => window.open(selectedRequest.legalDisclaimerForm, '_blank')}
                             />
-                            <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all flex items-center justify-center">
+                            <div className="absolute inset-0 pointer-events-none bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all flex items-center justify-center">
                               <Eye className="text-white opacity-0 group-hover:opacity-100 transition-opacity" size={28} />
                             </div>
                           </div>
