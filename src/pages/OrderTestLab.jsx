@@ -80,6 +80,7 @@ export const OrderTestLab = () => {
 
   const [providers, setProviders] = useState([]);
   const [selectedProviderId, setSelectedProviderId] = useState('');
+  const [providerSearch, setProviderSearch] = useState('');
 
   const [services, setServices] = useState([]);
   const [serviceKey, setServiceKey] = useState('');
@@ -167,6 +168,21 @@ export const OrderTestLab = () => {
   }, [customerSearch]);
 
   const selectedProvider = providers.find((p) => p.id === selectedProviderId);
+
+  // بحث بالاسم أو الجوال (آخر 9 أرقام، أي صيغة) أو الرقم المرجعي P…
+  const filteredProviders = (() => {
+    const term = providerSearch.trim().toLowerCase();
+    if (!term) return providers;
+    const digits = term.replace(/[^0-9]/g, '');
+    const phoneKey = digits.length >= 4 ? digits.slice(-9) : '';
+    const list = providers.filter((p) => {
+      const name = [p.firstName, p.lastName, p.fullName, p.shopName].filter(Boolean).join(' ').toLowerCase();
+      if (name.includes(term)) return true;
+      if (String(p.providerNumber || '').toLowerCase() === term) return true;
+      return !!phoneKey && String(p.phone || '').replace(/[^0-9]/g, '').includes(phoneKey);
+    });
+    return selectedProvider && !list.includes(selectedProvider) ? [selectedProvider, ...list] : list;
+  })();
   const selectedService = services.find((s) => s.key === serviceKey);
 
   const resolveCoordinates = useCallback(async () => {
@@ -463,19 +479,34 @@ export const OrderTestLab = () => {
             <label className="block text-sm font-semibold text-gray-700 mb-1 flex items-center gap-1">
               <Users className="w-4 h-4" /> المزود (المتوقع أن يستقبل)
             </label>
+            <input
+              type="search"
+              value={providerSearch}
+              onChange={(e) => {
+                const value = e.target.value;
+                setProviderSearch(value);
+                const term = value.trim().toUpperCase();
+                const exact = providers.find((p) => p.providerNumber && p.providerNumber.toUpperCase() === term);
+                if (exact) setSelectedProviderId(exact.id);
+              }}
+              placeholder="ابحث بالاسم أو الجوال أو P10023"
+              className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm mb-2"
+            />
             <select
               className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm"
               value={selectedProviderId}
               onChange={(e) => setSelectedProviderId(e.target.value)}
             >
-              <option value="">اختر مزوداً...</option>
-              {providers.map((p) => {
+              <option value="">
+                {providerSearch.trim() ? `${filteredProviders.length} نتيجة — اختر مزوداً...` : 'اختر مزوداً...'}
+              </option>
+              {filteredProviders.map((p) => {
                 const label = [p.firstName, p.lastName].filter(Boolean).join(' ') || p.fullName || p.phone || p.id;
                 const busy = p.isBusy || p.activeRequestId ? ' ⚠️ مشغول' : '';
                 const bal = p.wallet?.balance ?? 0;
                 return (
                   <option key={p.id} value={p.id}>
-                    {label} — رصيد {bal} — {p.isOnline ? 'متصل' : 'غير متصل'}
+                    {p.providerNumber ? `${p.providerNumber} · ` : ''}{label} — رصيد {bal} — {p.isOnline ? 'متصل' : 'غير متصل'}
                     {busy}
                   </option>
                 );
