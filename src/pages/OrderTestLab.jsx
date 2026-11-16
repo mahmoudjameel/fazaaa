@@ -188,9 +188,12 @@ export const OrderTestLab = () => {
   const resolveCoordinates = useCallback(async () => {
     if (locationMode === 'riyadh') return { ...RIYADH };
     if (locationMode === 'custom') {
-      const lat = parseFloat(customLat);
-      const lng = parseFloat(customLng);
+      let lat = parseFloat(customLat);
+      let lng = parseFloat(customLng);
       if (Number.isNaN(lat) || Number.isNaN(lng)) throw new Error('إحداثيات غير صالحة');
+      // السعودية: العرض 16–33 والطول 34–56 — إن انعكسا نصحّحهما بدل طلب على بعد آلاف الكيلومترات
+      const looksSwapped = lat >= 34 && lat <= 56 && lng >= 16 && lng <= 33;
+      if (looksSwapped) [lat, lng] = [lng, lat];
       return { latitude: lat, longitude: lng };
     }
     if (!selectedProviderId) throw new Error('اختر مزوداً لاستخدام موقعه');
@@ -582,21 +585,41 @@ export const OrderTestLab = () => {
             ))}
           </div>
           {locationMode === 'custom' && (
-            <div className="grid grid-cols-2 gap-2">
-              <input
-                className="border border-gray-300 rounded-xl px-3 py-2 text-sm font-mono"
-                placeholder="latitude"
-                value={customLat}
-                onChange={(e) => setCustomLat(e.target.value)}
-                dir="ltr"
-              />
-              <input
-                className="border border-gray-300 rounded-xl px-3 py-2 text-sm font-mono"
-                placeholder="longitude"
-                value={customLng}
-                onChange={(e) => setCustomLng(e.target.value)}
-                dir="ltr"
-              />
+            <div className="space-y-1">
+              <div className="grid grid-cols-2 gap-2">
+                <label className="text-xs font-semibold text-gray-600">
+                  خط العرض (Latitude) — في السعودية 16 إلى 33
+                  <input
+                    className="mt-1 w-full border border-gray-300 rounded-xl px-3 py-2 text-sm font-mono"
+                    placeholder="24.7136"
+                    value={customLat}
+                    onChange={(e) => {
+                      // لصق «24.80, 46.81» في خانة واحدة يملأ الاثنتين
+                      const parts = e.target.value.split(/[,،\s]+/).filter(Boolean);
+                      if (parts.length === 2 && parts.every((p) => !Number.isNaN(parseFloat(p)))) {
+                        setCustomLat(parts[0]);
+                        setCustomLng(parts[1]);
+                      } else {
+                        setCustomLat(e.target.value);
+                      }
+                    }}
+                    dir="ltr"
+                  />
+                </label>
+                <label className="text-xs font-semibold text-gray-600">
+                  خط الطول (Longitude) — في السعودية 34 إلى 56
+                  <input
+                    className="mt-1 w-full border border-gray-300 rounded-xl px-3 py-2 text-sm font-mono"
+                    placeholder="46.6753"
+                    value={customLng}
+                    onChange={(e) => setCustomLng(e.target.value)}
+                    dir="ltr"
+                  />
+                </label>
+              </div>
+              <p className="text-[11px] text-gray-500">
+                يمكنك لصق الإحداثيات كما تُنسخ من خرائط Google «24.80, 46.81» في الخانة الأولى، وإن انعكس الرقمان يُصحَّحان تلقائياً.
+              </p>
             </div>
           )}
         </div>
