@@ -2,7 +2,7 @@ import { listenToWaitingMembershipPayments } from '../services/membershipsServic
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Users, ShoppingBag, LogOut, Menu, X,
-  MessageSquare, MessageCircle, UserCheck, Sliders, MapPin, History,
+  MessageSquare, MessageCircle, UserCheck, Sliders, MapPin, History, Bug,
   UserCog, CreditCard, Banknote, AlertCircle, Shield,
   ChevronLeft, UserPlus, Bell, ImageIcon, Ticket, Timer,
   PanelRight, PanelLeft,   Route, Globe, AlertTriangle, Stethoscope, FlaskConical, Ban, FileText, BarChart3, Wallet,
@@ -274,6 +274,7 @@ export const Layout = () => {
     { id: 'provider_documents',      path: '/admin/provider-documents',       icon: FileUp,          label: 'إرسال الوثائق للمزودين',   category: 'management' },
     { id: 'users',                   path: '/admin/users',                    icon: UserCheck,       label: 'العملاء',                  category: 'management' },
     { id: 'account_history',         path: '/admin/account-history',          icon: History,         label: 'سجل الحساب',               category: 'management' },
+    { id: 'app_errors',              path: '/admin/app-errors',               icon: Bug,             label: 'أعطال تطبيق المزود',       category: 'management' },
     { id: 'blocked_phones',          path: '/admin/blocked-phones',           icon: Ban,             label: 'حظر الأرقام',              category: 'management' },
     { id: 'notifications',           path: '/admin/notifications',            icon: Bell,            label: 'الإشعارات',                category: 'management' },
     { id: 'marketing_insights',      path: '/admin/marketing-insights',       icon: BarChart3,       label: 'تحليلات التسويق',          category: 'management' },

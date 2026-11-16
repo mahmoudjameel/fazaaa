@@ -58,6 +58,7 @@ const ArticleDetail = lazy(() => import('./pages/ArticleDetail').then((m) => ({ 
 const DeleteAccount = lazy(() => import('./pages/DeleteAccount').then((m) => ({ default: m.DeleteAccount })));
 const BlockedPhones = lazy(() => import('./pages/BlockedPhones'));
 const AccountHistory = lazy(() => import('./pages/AccountHistory'));
+const AppErrors = lazy(() => import('./pages/AppErrors'));
 const MarketingInsights = lazy(() => import('./pages/MarketingInsights'));
 const QrLink = lazy(() => import('./pages/QrLink'));
 const SiteQr = lazy(() => import('./pages/SiteQr'));
@@ -156,6 +157,7 @@ function App() {
             <Route path="users" element={<Users />} />
             <Route path="blocked-phones" element={<BlockedPhones />} />
             <Route path="account-history" element={<AccountHistory />} />
+            <Route path="app-errors" element={<AppErrors />} />
             <Route path="notifications" element={<Notifications />} />
             <Route path="sla-tracking" element={<SLATracking />} />
             <Route path="escalations" element={<Escalations />} />
