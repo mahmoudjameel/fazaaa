@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { findAccounts, loadAccountHistory, toMs } from '../services/accountHistoryService';
 import { TRACKED_FIELD_LABELS, formatPhoneLocal } from '../utils/accountChangeLog';
+import AccountNumberUnifyPanel from '../components/AccountNumberUnifyPanel';
 
 /**
  * سجل الحساب: ابحث برقم مرجعي (C14044 / P10023) أو بأي جوال حالي أو سابق،
@@ -104,7 +105,9 @@ export default function AccountHistory() {
     try {
       const found = await findAccounts(q);
       setResults(found);
+      const active = found.filter((a) => !a.data.mergedInto);
       if (found.length === 1) openAccount(found[0]);
+      else if (active.length === 1) openAccount(active[0]);
     } catch (e) {
       setError(e?.message || 'تعذر البحث');
     } finally {
@@ -161,6 +164,8 @@ export default function AccountHistory() {
           {searching ? <Loader2 className="w-4 h-4 animate-spin" /> : 'بحث'}
         </button>
       </form>
+
+      {!selected && !results && <AccountNumberUnifyPanel />}
 
       {error && <p className="text-sm text-red-600">{error}</p>}
 

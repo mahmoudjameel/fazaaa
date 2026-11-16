@@ -276,6 +276,8 @@ export const Users = () => {
 
       const addEntry = (docSnap, source) => {
         const data = docSnap.data();
+        // نسخة قديمة لنفس الشخص (نفس الجوال) — تظهر في «سجل الحساب» لا في القائمة
+        if (data?.mergedInto) return;
         const id = docSnap.id;
         const existing = merged.get(id);
         const name =

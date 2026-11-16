@@ -9,6 +9,7 @@ import { ACCOUNT_CHANGE_LOG, normalizePhone966, phoneVariants } from '../utils/a
  */
 const KIND_BY_PREFIX = { C: 'customers', P: 'providers' };
 const NUMBER_FIELD = { customers: 'customerNumber', providers: 'providerNumber' };
+const PREVIOUS_NUMBER_FIELD = { customers: 'previousCustomerNumbers', providers: 'previousProviderNumbers' };
 
 const toMs = (v) => {
   if (!v) return 0;
@@ -66,8 +67,13 @@ export async function findAccounts(term) {
   if (numberMatch) {
     const kind = KIND_BY_PREFIX[numberMatch[1]];
     const number = `${numberMatch[1]}${numberMatch[2]}`;
-    const snaps = await docsOf(query(collection(db, kind), where(NUMBER_FIELD[kind], '==', number)));
-    return snaps.map((s) => accountOf(kind, s));
+    const [current, previous] = await Promise.all([
+      docsOf(query(collection(db, kind), where(NUMBER_FIELD[kind], '==', number))),
+      docsOf(query(collection(db, kind), where(PREVIOUS_NUMBER_FIELD[kind], 'array-contains', number))),
+    ]);
+    // الحساب النشط أولاً (المدموج في غيره بعده)
+    return dedupeAccounts([...current, ...previous].map((s) => accountOf(kind, s)))
+      .sort((a, b) => Number(!!a.data.mergedInto) - Number(!!b.data.mergedInto));
   }
   if (/^[+\d\s-]{9,}$/.test(raw)) return accountsByPhones([raw]);
 
@@ -140,7 +146,12 @@ export async function loadAccountHistory(account) {
     if (keeper?.exists() && !linked.some((a) => a.id === keeper.id)) linked.push(accountOf(kind, keeper));
   }
 
-  const requests = requestSnaps.map((s) => ({ id: s.id, ...s.data(), createdAtMs: toMs(s.data().createdAt) }))
+  // طلبات النسخ المدموجة في هذا الحساب (نفس الشخص بمعرّف قديم)
+  const mergedRequestSnaps = (await Promise.all(mergedSnaps.map((m) => docsOf(query(
+    collection(db, 'requests'), where(isProvider ? 'providerId' : 'customerId', '==', m.id),
+  ))))).flat();
+  const requests = [...new Map([...requestSnaps, ...mergedRequestSnaps].map((s) => [s.id, s])).values()]
+    .map((s) => ({ id: s.id, ...s.data(), createdAtMs: toMs(s.data().createdAt) }))
     .sort((a, b) => b.createdAtMs - a.createdAtMs);
 
   const blockedPhones = (await Promise.all(
