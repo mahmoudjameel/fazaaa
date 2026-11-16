@@ -7,7 +7,7 @@ import {
   UserCheck, Users, Plus, Edit2, Trash2, Tag, X, FileText, Copy, ShieldBan, ShieldOff, ShieldCheck, Loader2,
   MapPin, Globe, Smartphone, RefreshCw, ExternalLink, Navigation, ShieldAlert, MessageCircle, PauseCircle,
 } from 'lucide-react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   getAllProviders,
   findProvidersByPhone,
@@ -3185,7 +3185,7 @@ export const Providers = () => {
                           <div>
                             <h3 className="font-semibold text-gray-700 mb-2">الرقم المرجعي</h3>
                             <p className="text-gray-800 font-bold tracking-wide" dir="ltr">
-                              {selectedProvider.providerNumber || '—'}
+                              {selectedProvider.providerNumber ? <Link to={`/admin/account-history?q=${selectedProvider.providerNumber}`} className="text-teal-700 underline decoration-dotted hover:text-teal-900" title="سجل الحساب">{selectedProvider.providerNumber}</Link> : '—'}
                             </p>
                           </div>
                           <div>

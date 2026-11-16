@@ -28,6 +28,7 @@ import { normalizePricing, validateTopUpAmount, applyTopUpCredits, ensureWalletC
 import { diagnoseProviderForRequest, evaluateProviderEligibility } from '../utils/dispatchDiagnostics';
 import { getCached, setCached, createSharedSnapshotListener } from '../utils/adminQueryCache';
 import { resolveProviderOrderOutcome } from '../utils/providerPerformance';
+import { recordAccountChange } from '../utils/accountChangeLog';
 
 // Providers Management
 
@@ -827,6 +828,9 @@ export const updateProvider = async (providerId, data) => {
       updates.freelanceDocumentNumber = String(data.freelanceDocumentNumber || '').trim();
     }
     await updateDoc(providerRef, updates);
+    await recordAccountChange({
+      kind: 'providers', accountId: providerId, before: providerSnap.data(), updates, source: 'admin_edit',
+    });
     return { success: true };
   } catch (error) {
     console.error('Update provider error:', error);
@@ -3325,6 +3329,14 @@ export const approveProviderProfileChange = async (requestId) => {
       updatedAt: serverTimestamp(),
     };
     await updateDoc(providerRef, updates);
+    await recordAccountChange({
+      kind: 'providers',
+      accountId: data.providerId,
+      before: providerSnap.exists() ? providerSnap.data() : (data.currentData || {}),
+      updates,
+      source: 'profile_change_request',
+      note: requestId,
+    });
     await updateDoc(requestRef, {
       status: 'approved',
       reviewedAt: serverTimestamp(),

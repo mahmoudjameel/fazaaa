@@ -3,7 +3,7 @@ import {
   resolveProviderAppArrival,
   formatProviderAppArrivalLabel,
 } from '../utils/providerEtaDisplay';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import {
   Search,
   Eye,
@@ -2754,7 +2754,7 @@ export const Orders = () => {
                           {selectedCustomer.firstName || ''} {selectedCustomer.lastName || ''}
                         </h3>
                         <p className="text-sm text-gray-600">
-                          العميل{selectedCustomer.customerNumber ? <span className="font-bold" dir="ltr"> · {selectedCustomer.customerNumber}</span> : null}
+                          العميل{selectedCustomer.customerNumber ? <span className="font-bold" dir="ltr"> · <Link to={`/admin/account-history?q=${selectedCustomer.customerNumber}`} className="text-teal-700 underline decoration-dotted hover:text-teal-900" title="سجل الحساب">{selectedCustomer.customerNumber}</Link></span> : null}
                         </p>
                       </div>
                     </div>

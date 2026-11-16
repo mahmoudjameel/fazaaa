@@ -1,7 +1,7 @@
 import { ExportButtons } from '../components/ExportButtons';
 import { formatPhoneForExport } from '../utils/exportTable';
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Search, Users as UsersIcon, Mail, Phone, Calendar, MapPin, Filter, Loader2, Package, Clock, AlertCircle, XCircle, Plus, ShieldBan, ShieldOff, Trash2, Award, UserX, ArrowUpDown } from 'lucide-react';
 import { collection, getDocs, query, orderBy, where, doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
@@ -981,7 +981,7 @@ export const Users = () => {
               <div className="p-4 sm:p-5 md:p-6 space-y-3 sm:space-y-4">
                 <div>
                   <h3 className="font-semibold text-sm sm:text-base text-gray-700 mb-1 sm:mb-2">الرقم المرجعي</h3>
-                  <p className="text-sm sm:text-base text-gray-800 font-bold tracking-wide" dir="ltr">{selectedUser.customerNumber || '—'}</p>
+                  <p className="text-sm sm:text-base text-gray-800 font-bold tracking-wide" dir="ltr">{selectedUser.customerNumber ? <Link to={`/admin/account-history?q=${selectedUser.customerNumber}`} className="text-teal-700 underline decoration-dotted hover:text-teal-900" title="سجل الحساب">{selectedUser.customerNumber}</Link> : '—'}</p>
                 </div>
                 <div>
                   <h3 className="font-semibold text-sm sm:text-base text-gray-700 mb-1 sm:mb-2">الاسم</h3>

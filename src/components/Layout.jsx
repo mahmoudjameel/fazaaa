@@ -2,7 +2,7 @@ import { listenToWaitingMembershipPayments } from '../services/membershipsServic
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Users, ShoppingBag, LogOut, Menu, X,
-  MessageSquare, MessageCircle, UserCheck, Sliders, MapPin,
+  MessageSquare, MessageCircle, UserCheck, Sliders, MapPin, History,
   UserCog, CreditCard, Banknote, AlertCircle, Shield,
   ChevronLeft, UserPlus, Bell, ImageIcon, Ticket, Timer,
   PanelRight, PanelLeft,   Route, Globe, AlertTriangle, Stethoscope, FlaskConical, Ban, FileText, BarChart3, Wallet,
@@ -273,6 +273,7 @@ export const Layout = () => {
     { id: 'inactive_providers',      path: '/admin/inactive-providers',       icon: WifiOff,         label: 'المزودون غير النشطين',     category: 'management' },
     { id: 'provider_documents',      path: '/admin/provider-documents',       icon: FileUp,          label: 'إرسال الوثائق للمزودين',   category: 'management' },
     { id: 'users',                   path: '/admin/users',                    icon: UserCheck,       label: 'العملاء',                  category: 'management' },
+    { id: 'account_history',         path: '/admin/account-history',          icon: History,         label: 'سجل الحساب',               category: 'management' },
     { id: 'blocked_phones',          path: '/admin/blocked-phones',           icon: Ban,             label: 'حظر الأرقام',              category: 'management' },
     { id: 'notifications',           path: '/admin/notifications',            icon: Bell,            label: 'الإشعارات',                category: 'management' },
     { id: 'marketing_insights',      path: '/admin/marketing-insights',       icon: BarChart3,       label: 'تحليلات التسويق',          category: 'management' },
@@ -304,7 +305,7 @@ export const Layout = () => {
     { key: 'overview',   label: 'نظرة عامة',          ids: ['dashboard', 'dashboard_stats'] },
     { key: 'operations', label: 'العمليات',           ids: ['orders', 'sla_tracking', 'escalations', 'complaints', 'support_tickets', 'chats', 'notifications'] },
     { key: 'coverage',   label: 'التغطية',            ids: ['providers_map', 'city_report', 'dispatch_diagnostics', 'distribution', 'inactive_providers', 'cities', 'city_managers'] },
-    { key: 'people',     label: 'المزودون والعملاء',  ids: ['providers', 'add_provider', 'provider_profile_requests', 'provider_performance', 'provider_cancellations', 'service_upgrades', 'provider_documents', 'users', 'blocked_phones'] },
+    { key: 'people',     label: 'المزودون والعملاء',  ids: ['providers', 'add_provider', 'provider_profile_requests', 'provider_performance', 'provider_cancellations', 'service_upgrades', 'provider_documents', 'users', 'account_history', 'blocked_phones'] },
     { key: 'finance',    label: 'المالية والنمو',      ids: ['wallet_topups', 'withdrawal_requests', 'provider_earnings', 'memberships', 'fleets', 'marketing_insights', 'qr_link', 'banners', 'landing_settings', 'articles'] },
     { key: 'admin',      label: 'الإدارة والتقنية',    ids: [] }, // كل ما لم يُذكر أعلاه (الخدمات، الإعدادات، المختبر، المديرون…)
   ];

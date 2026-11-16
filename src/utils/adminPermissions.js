@@ -27,6 +27,7 @@ export const ADMIN_PERMISSION_DEFS = [
   { id: 'provider_documents', path: '/admin/provider-documents', category: 'management', label: 'إرسال الوثائق للمزودين' },
   { id: 'users', path: '/admin/users', category: 'management', label: 'العملاء' },
   { id: 'blocked_phones', path: '/admin/blocked-phones', category: 'management', label: 'حظر الأرقام' },
+  { id: 'account_history', path: '/admin/account-history', category: 'management', label: 'سجل الحساب' },
   { id: 'notifications', path: '/admin/notifications', category: 'management', label: 'الإشعارات' },
   { id: 'support_tickets', path: '/admin/support-tickets', category: 'management', label: 'تذاكر الدعم' },
   { id: 'complaints', path: '/admin/complaints', category: 'management', label: 'الشكاوي' },
