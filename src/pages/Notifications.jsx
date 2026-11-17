@@ -92,7 +92,7 @@ export const Notifications = () => {
                 ? {
                     title: formData.title,
                     message: formData.message,
-                    target: 'provider',
+                    target: 'provider_direct',
                     providerIds: inactiveAudience.map((p) => p.id),
                     providerCities: [],
                     providerCityNames: [],

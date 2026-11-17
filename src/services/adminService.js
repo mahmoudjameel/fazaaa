@@ -614,7 +614,8 @@ export const suspendProvider = async (providerId, { reason, days = null }) => {
   await addDoc(collection(db, 'admin_notifications'), {
     title: 'تم إيقاف حسابك مؤقتاً',
     message: `تم إيقاف حسابك مؤقتاً ${untilText}. السبب: ${trimmedReason}`,
-    target: 'provider',
+    // provider_direct: لا تعرضه نسخ التطبيق القديمة لكل المزودين (يصل لصاحبه عبر صندوقه)
+    target: 'provider_direct',
     providerIds: [providerId],
     providerCities: [],
     providerCityNames: [],
@@ -646,7 +647,8 @@ export const liftProviderSuspension = async (providerId) => {
   await addDoc(collection(db, 'admin_notifications'), {
     title: 'تم رفع الإيقاف عن حسابك',
     message: 'يمكنك الآن تفعيل حالتك واستقبال الطلبات.',
-    target: 'provider',
+    // provider_direct: لا تعرضه نسخ التطبيق القديمة لكل المزودين (يصل لصاحبه عبر صندوقه)
+    target: 'provider_direct',
     providerIds: [providerId],
     providerCities: [],
     providerCityNames: [],
@@ -1755,7 +1757,7 @@ export const sendAdminPushToProviders = async ({ title, message, providerIds, te
   const docRef = await addDoc(collection(db, 'admin_notifications'), {
     title: title.trim(),
     message: message.trim(),
-    target: 'provider',
+    target: 'provider_direct',
     providerIds: ids,
     providerCities: [],
     providerCityNames: [],
@@ -3656,4 +3658,10 @@ export const getProviderPerformanceSince = async (days = 30) => {
   });
 
   return stats;
+};
+
+/** إخراج كل الأجهزة من حساب مزود (functions: adminRevokeProviderDevices) */
+export const revokeProviderDevices = async (providerId) => {
+  const res = await httpsCallable(functions, 'adminRevokeProviderDevices')({ providerId });
+  return res.data;
 };

@@ -5,7 +5,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   Search, CheckCircle, XCircle, Clock, Eye, Phone, Mail, Star, Power,
   UserCheck, Users, Plus, Edit2, Trash2, Tag, X, FileText, Copy, ShieldBan, ShieldOff, ShieldCheck, Loader2,
-  MapPin, Globe, Smartphone, RefreshCw, ExternalLink, Navigation, ShieldAlert, MessageCircle, PauseCircle,
+  MapPin, Globe, Smartphone, RefreshCw, ExternalLink, Navigation, ShieldAlert, MessageCircle, PauseCircle, LogOut,
 } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -16,6 +16,7 @@ import {
   updateProviderStatus,
   suspendProvider,
   liftProviderSuspension,
+  revokeProviderDevices,
   getAllProviderGroups,
   createProviderGroup,
   updateProviderGroup,
@@ -1462,6 +1463,18 @@ export const Providers = () => {
     }
   };
 
+  const handleRevokeDevices = async (provider) => {
+    const name = provider.fullName || provider.firstName || 'المزود';
+    if (!window.confirm(`إخراج كل الأجهزة من حساب ${name}؟\nيخرج أي جوال داخل على الحساب، ولا يصله رنين ولا إشعارات حتى يدخل صاحبه من جديد برمز التحقق.`)) return;
+    try {
+      await revokeProviderDevices(provider.id);
+      alert('تم: الأجهزة الحديثة تخرج فوراً، والنسخ القديمة خلال ساعة كحد أقصى');
+    } catch (error) {
+      console.error('Revoke devices error:', error);
+      alert(error?.message || 'تعذر إخراج الأجهزة');
+    }
+  };
+
   const handleLiftSuspension = async (provider) => {
     if (!window.confirm(`رفع الإيقاف عن ${provider.fullName || provider.firstName || 'المزود'} وإعادته معتمداً؟`)) return;
     try {
@@ -2527,6 +2540,16 @@ export const Providers = () => {
                                           رفض
                                         </button>
                                       </>
+                                    )}
+                                    {(approvalStatus === 'approved' || approvalStatus === 'suspended') && (
+                                      <button
+                                        onClick={() => handleRevokeDevices(provider)}
+                                        className="inline-flex items-center gap-1.5 min-w-[110px] justify-center px-3 py-2 bg-slate-700 text-white rounded-xl hover:bg-slate-800 shadow-sm transition-all text-xs font-bold"
+                                        title="يُخرج أي جوال داخل على هذا الحساب ويوقف إشعاراته — لمن يتشارك حسابه"
+                                      >
+                                        <LogOut size={14} />
+                                        إخراج كل الأجهزة
+                                      </button>
                                     )}
                                     {approvalStatus === 'rejected' && (
                                       <>
