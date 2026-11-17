@@ -60,6 +60,7 @@ const BlockedPhones = lazy(() => import('./pages/BlockedPhones'));
 const AccountHistory = lazy(() => import('./pages/AccountHistory'));
 const AppErrors = lazy(() => import('./pages/AppErrors'));
 const ProviderDevices = lazy(() => import('./pages/ProviderDevices'));
+const AiAssistant = lazy(() => import('./pages/AiAssistant'));
 const MarketingInsights = lazy(() => import('./pages/MarketingInsights'));
 const QrLink = lazy(() => import('./pages/QrLink'));
 const SiteQr = lazy(() => import('./pages/SiteQr'));
@@ -160,6 +161,7 @@ function App() {
             <Route path="account-history" element={<AccountHistory />} />
             <Route path="app-errors" element={<AppErrors />} />
             <Route path="provider-devices" element={<ProviderDevices />} />
+            <Route path="ai-assistant" element={<AiAssistant />} />
             <Route path="notifications" element={<Notifications />} />
             <Route path="sla-tracking" element={<SLATracking />} />
             <Route path="escalations" element={<Escalations />} />

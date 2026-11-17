@@ -2,7 +2,7 @@ import { listenToWaitingMembershipPayments } from '../services/membershipsServic
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Users, ShoppingBag, LogOut, Menu, X,
-  MessageSquare, MessageCircle, UserCheck, Sliders, MapPin, History, Bug, MonitorSmartphone,
+  MessageSquare, MessageCircle, UserCheck, Sliders, MapPin, History, Bug, MonitorSmartphone, Bot,
   UserCog, CreditCard, Banknote, AlertCircle, Shield,
   ChevronLeft, UserPlus, Bell, ImageIcon, Ticket, Timer,
   PanelRight, PanelLeft,   Route, Globe, AlertTriangle, Stethoscope, FlaskConical, Ban, FileText, BarChart3, Wallet,
@@ -260,6 +260,7 @@ export const Layout = () => {
     { id: 'providers',               path: '/admin/providers',                icon: Users,           label: 'المزودون',                 category: 'management' },
     { id: 'providers_map',           path: '/admin/providers-map',            icon: MapPin,          label: 'خريطة المزودين',           category: 'management' },
     { id: 'add_provider',            path: '/admin/add-provider',             icon: UserPlus,        label: 'إضافة مزود',              category: 'management' },
+    { id: 'ai_assistant',            path: '/admin/ai-assistant',             icon: Bot,             label: 'مساعد الإدارة (AI)',       category: 'management' },
     { id: 'orders',                  path: '/admin/orders',                   icon: ShoppingBag,     label: 'الطلبات',                  category: 'management' },
     { id: 'sla_tracking',            path: '/admin/sla-tracking',             icon: Timer,           label: 'متابعة SLA',               category: 'management' },
     { id: 'escalations',             path: '/admin/escalations',              icon: AlertTriangle,   label: 'تصعيدات النظام',           category: 'management' },
@@ -304,7 +305,7 @@ export const Layout = () => {
   const filteredMenuItems = menuItems.filter((item) => canAccessMenuItem(item, session));
   // الأقسام الستة للتصفح (مستقلة عن category التي تبني عليها الصلاحيات — لا يتغير وصول أي مدير)
   const MENU_SECTIONS = [
-    { key: 'overview',   label: 'نظرة عامة',          ids: ['dashboard', 'dashboard_stats'] },
+    { key: 'overview',   label: 'نظرة عامة',          ids: ['dashboard', 'ai_assistant', 'dashboard_stats'] },
     { key: 'operations', label: 'العمليات',           ids: ['orders', 'sla_tracking', 'escalations', 'complaints', 'support_tickets', 'chats', 'notifications'] },
     { key: 'coverage',   label: 'التغطية',            ids: ['providers_map', 'city_report', 'dispatch_diagnostics', 'distribution', 'inactive_providers', 'cities', 'city_managers'] },
     { key: 'people',     label: 'المزودون والعملاء',  ids: ['providers', 'add_provider', 'provider_profile_requests', 'provider_performance', 'provider_cancellations', 'service_upgrades', 'provider_documents', 'provider_devices', 'users', 'account_history', 'blocked_phones'] },
