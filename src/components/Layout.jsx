@@ -6,7 +6,8 @@ import {
   UserCog, CreditCard, Banknote, AlertCircle, Shield,
   ChevronLeft, UserPlus, Bell, ImageIcon, Ticket, Timer,
   PanelRight, PanelLeft,   Route, Globe, AlertTriangle, Stethoscope, FlaskConical, Ban, FileText, BarChart3, Wallet,
-  UserX, WifiOff, FileUp, QrCode, TrendingUp, Gauge, Map as MapIcon, BadgeCheck, Landmark, CarFront
+  UserX, WifiOff, FileUp, QrCode, TrendingUp, Gauge, Map as MapIcon, BadgeCheck, Landmark, CarFront,
+  Home, Headphones, Truck, Network, Building2, Megaphone, Settings, Cpu, ChevronDown, Contact
 } from 'lucide-react';
 import { useState, useEffect, useRef, Fragment } from 'react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
@@ -304,13 +305,20 @@ export const Layout = () => {
   void sessionVersion;
   const filteredMenuItems = menuItems.filter((item) => canAccessMenuItem(item, session));
   // الأقسام الستة للتصفح (مستقلة عن category التي تبني عليها الصلاحيات — لا يتغير وصول أي مدير)
+  // أقسام رئيسية قابلة للطي، وكل قسم بترتيب عناصره. عنصر غير مذكور يذهب لقسم «النظام» (الأخير).
+  // مستقلة عن category الصلاحيات (adminPermissions.js).
   const MENU_SECTIONS = [
-    { key: 'overview',   label: 'نظرة عامة',          ids: ['dashboard', 'ai_assistant', 'dashboard_stats'] },
-    { key: 'operations', label: 'العمليات',           ids: ['orders', 'sla_tracking', 'escalations', 'complaints', 'support_tickets', 'chats', 'notifications'] },
-    { key: 'coverage',   label: 'التغطية',            ids: ['providers_map', 'city_report', 'dispatch_diagnostics', 'distribution', 'inactive_providers', 'cities', 'city_managers'] },
-    { key: 'people',     label: 'المزودون والعملاء',  ids: ['providers', 'add_provider', 'provider_profile_requests', 'provider_performance', 'provider_cancellations', 'service_upgrades', 'provider_documents', 'provider_devices', 'users', 'account_history', 'blocked_phones'] },
-    { key: 'finance',    label: 'المالية والنمو',      ids: ['wallet_topups', 'withdrawal_requests', 'provider_earnings', 'memberships', 'fleets', 'marketing_insights', 'qr_link', 'banners', 'landing_settings', 'articles'] },
-    { key: 'admin',      label: 'الإدارة والتقنية',    ids: [] }, // كل ما لم يُذكر أعلاه (الخدمات، الإعدادات، المختبر، المديرون…)
+    { key: 'home',       label: 'الرئيسية',             icon: Home,       ids: ['dashboard', 'ai_assistant', 'dashboard_stats'] },
+    { key: 'orders',     label: 'الطلبات والتشغيل',      icon: ShoppingBag, ids: ['orders', 'sla_tracking', 'escalations', 'chats'] },
+    { key: 'support',    label: 'خدمة العملاء',         icon: Headphones, ids: ['complaints', 'support_tickets', 'notifications'] },
+    { key: 'providers',  label: 'المزودون',             icon: Truck,      ids: ['providers', 'add_provider', 'provider_profile_requests', 'providers_map', 'provider_performance', 'provider_cancellations', 'service_upgrades', 'inactive_providers', 'provider_devices', 'provider_documents'] },
+    { key: 'customers',  label: 'العملاء والحسابات',     icon: Contact,    ids: ['users', 'account_history', 'blocked_phones'] },
+    { key: 'dispatch',   label: 'التوزيع والتغطية',      icon: Network,    ids: ['distribution', 'dispatch_diagnostics', 'order_test_lab', 'city_report', 'cities', 'city_managers'] },
+    { key: 'finance',    label: 'المالية',              icon: Wallet,     ids: ['wallet_topups', 'withdrawal_requests', 'provider_earnings', 'bank_settings'] },
+    { key: 'business',   label: 'الباقات والشركات',      icon: Building2,  ids: ['memberships', 'fleets'] },
+    { key: 'marketing',  label: 'التسويق والمحتوى',      icon: Megaphone,  ids: ['marketing_insights', 'banners', 'landing_settings', 'articles', 'qr_link'] },
+    { key: 'apps',       label: 'الخدمات والتطبيقات',    icon: Settings,   ids: ['emergency_services', 'app_settings', 'provider_drawer_sections', 'customer_drawer_sections'] },
+    { key: 'system',     label: 'النظام',               icon: Cpu,        ids: ['app_errors', 'admins'] },
   ];
   const sectionOf = (item) => (MENU_SECTIONS.find((sec) => sec.ids.includes(item.id)) || MENU_SECTIONS[MENU_SECTIONS.length - 1]).key;
   const groupedMenuItems = Object.fromEntries(MENU_SECTIONS.map((sec) => [
@@ -320,6 +328,38 @@ export const Layout = () => {
       .sort((a, b) => (sec.ids.length ? sec.ids.indexOf(a.id) - sec.ids.indexOf(b.id) : 0)),
   ]));
   const categoryLabels = Object.fromEntries(MENU_SECTIONS.map((sec) => [sec.key, sec.label]));
+
+  // أرقام التنبيه على العنصر — مجموعها يظهر على رأس القسم وهو مطوي
+  const itemBadge = (item) => ({
+    orders: pendingReviewCount,
+    support_tickets: openTicketsCount,
+    complaints: pendingComplaintsCount,
+    memberships: waitingMembershipsCount,
+    escalations: (generalEscalationsCount || 0) + (newEscalationsCount || 0),
+  }[item.id] || 0);
+
+  const activeSectionKey = (() => {
+    const active = filteredMenuItems.find((item) => location.pathname === item.path);
+    return active ? sectionOf(active) : null;
+  })();
+  const [openSections, setOpenSections] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('admin_menu_open_sections') || 'null');
+      if (saved && typeof saved === 'object') return saved;
+    } catch (_) { /* تخزين غير متاح */ }
+    return { home: true };
+  });
+  useEffect(() => {
+    if (activeSectionKey && !openSections[activeSectionKey]) {
+      setOpenSections((prev) => ({ ...prev, [activeSectionKey]: true }));
+    }
+    // يفتح قسم الصفحة الحالية عند التنقل فقط
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSectionKey]);
+  useEffect(() => {
+    try { localStorage.setItem('admin_menu_open_sections', JSON.stringify(openSections)); } catch (_) { /* تجاهل */ }
+  }, [openSections]);
+  const toggleSection = (key) => setOpenSections((prev) => ({ ...prev, [key]: !prev[key] }));
 
   // دالة عرض (وليست مكوّناً) — تعريف مكوّن داخل Layout كان يعيد تركيب الأزرار عند كل تحديث فيضيع الضغط
   const renderNavItem = (item) => {
@@ -474,21 +514,48 @@ export const Layout = () => {
 
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5 scrollbar-thin">
-          {Object.entries(groupedMenuItems).map(([cat, items]) => {
+          {MENU_SECTIONS.map((sec) => {
+            const items = groupedMenuItems[sec.key] || [];
             if (!items.length) return null;
+            // القائمة المصغّرة (أيقونات فقط): كل العناصر مع فاصل بين الأقسام
+            if (!sidebarOpen) {
+              return (
+                <div key={sec.key} className="mb-1">
+                  <div className="my-2 mx-2 h-px bg-white/6" />
+                  <div className="space-y-0.5">
+                    {items.map((item) => <Fragment key={item.path}>{renderNavItem(item)}</Fragment>)}
+                  </div>
+                </div>
+              );
+            }
+            const isOpen = !!openSections[sec.key];
+            const SectionIcon = sec.icon;
+            const badgeTotal = items.reduce((sum, item) => sum + itemBadge(item), 0);
+            const hasActive = sec.key === activeSectionKey;
             return (
-              <div key={cat} className="mb-1">
-                {sidebarOpen && (
-                  <div className="px-3 pt-3 pb-1.5">
-                    <span className="text-[10px] font-bold text-white/20 uppercase tracking-widest">
-                      {categoryLabels[cat]}
+              <div key={sec.key} className="mb-0.5">
+                <button
+                  type="button"
+                  onClick={() => toggleSection(sec.key)}
+                  aria-expanded={isOpen}
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-right transition-colors
+                    ${hasActive ? 'text-white/90' : 'text-white/60 hover:text-white/85'} hover:bg-white/5`}
+                >
+                  <SectionIcon className={`flex-shrink-0 ${hasActive ? 'text-amber-400' : 'text-white/40'}`} style={{ width: '17px', height: '17px' }} />
+                  <span className="flex-1 text-[13px] font-bold truncate">{sec.label}</span>
+                  {!isOpen && badgeTotal > 0 && (
+                    <span className="bg-red-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
+                      {badgeTotal}
                     </span>
+                  )}
+                  <span className="text-[10px] text-white/25 font-bold">{items.length}</span>
+                  <ChevronDown className={`w-3.5 h-3.5 text-white/30 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {isOpen && (
+                  <div className="mt-0.5 mb-1.5 mr-3 pr-2 border-r border-white/8 space-y-0.5">
+                    {items.map((item) => <Fragment key={item.path}>{renderNavItem(item)}</Fragment>)}
                   </div>
                 )}
-                {!sidebarOpen && <div className="my-2 mx-2 h-px bg-white/6" />}
-                <div className="space-y-0.5">
-                  {items.map(item => <Fragment key={item.path}>{renderNavItem(item)}</Fragment>)}
-                </div>
               </div>
             );
           })}
