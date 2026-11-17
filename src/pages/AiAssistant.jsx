@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { collection, doc, getDocs, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, onSnapshot, query, where } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
@@ -46,6 +46,13 @@ const ACTION_STATUS = {
   expired: { text: 'انتهت صلاحيته', cls: 'bg-gray-100 text-gray-600' },
   failed: { text: 'فشل التنفيذ', cls: 'bg-red-100 text-red-700' },
 };
+
+// نفس مفاتيح السيرفر (functions/lib/adminAssistant/budget.js) — توقيت الرياض
+const usageKeys = () => {
+  const iso = new Date(Date.now() + 3 * 3600000).toISOString();
+  return { day: `day-${iso.slice(0, 10)}`, month: `month-${iso.slice(0, 7)}` };
+};
+const money = (n) => `${(Number(n) || 0).toFixed(2)}$`;
 
 const fmtTime = (ms) => (ms ? format(new Date(ms), 'dd MMM، HH:mm', { locale: ar }) : '');
 
@@ -164,7 +171,28 @@ export default function AiAssistant() {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
+  const [usage, setUsage] = useState(null);
   const endRef = useRef(null);
+
+  const loadUsage = useCallback(async () => {
+    const keys = usageKeys();
+    const [day, month, settings] = await Promise.all([
+      getDoc(doc(db, 'ai_usage', keys.day)).catch(() => null),
+      getDoc(doc(db, 'ai_usage', keys.month)).catch(() => null),
+      getDoc(doc(db, 'settings', 'aiAssistant')).catch(() => null),
+    ]);
+    const s = settings?.exists() ? settings.data() : {};
+    const monthly = Number(s.monthlyBudgetUsd) > 0 ? Number(s.monthlyBudgetUsd) : 5;
+    const daily = Number(s.dailyBudgetUsd) > 0 ? Number(s.dailyBudgetUsd) : Math.round((monthly / 30) * 100) / 100;
+    setUsage({
+      day: day?.exists() ? day.data().costUsd || 0 : 0,
+      month: month?.exists() ? month.data().costUsd || 0 : 0,
+      daily,
+      monthly,
+    });
+  }, []);
+
+  useEffect(() => { loadUsage(); }, [loadUsage]);
 
   const loadConversations = useCallback(async () => {
     const uid = auth.currentUser?.uid;
@@ -211,6 +239,7 @@ export default function AiAssistant() {
     } finally {
       setPendingUserText('');
       setSending(false);
+      loadUsage();
     }
   };
 
@@ -255,6 +284,16 @@ export default function AiAssistant() {
             <h1 className="font-bold text-gray-900">مساعد الإدارة</h1>
             <p className="text-[11px] text-gray-500">يقرأ قاعدة البيانات والسجلات مباشرة. أي تعديل يظهر لك للتأكيد قبل تنفيذه.</p>
           </div>
+          {usage && (
+            <div className="mr-auto text-left text-[11px] leading-tight">
+              <div className={usage.day >= usage.daily ? 'text-red-600 font-bold' : 'text-gray-600'}>
+                اليوم {money(usage.day)} من {money(usage.daily)}
+              </div>
+              <div className={usage.month >= usage.monthly ? 'text-red-600 font-bold' : 'text-gray-400'}>
+                الشهر {money(usage.month)} من {money(usage.monthly)}
+              </div>
+            </div>
+          )}
         </header>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
