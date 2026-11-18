@@ -13,15 +13,6 @@ import SimpleMarkdown from '../components/SimpleMarkdown';
  * مساعد الإدارة بالذكاء الاصطناعي (Claude) — functions/lib/adminAssistant.
  * يقرأ قاعدة البيانات والسجلات بنفسه، وأي تعديل يظهر هنا «اقتراحاً» لا يُنفَّذ إلا بزر التأكيد.
  */
-const SUGGESTIONS = [
-  'شخّص الطلب 100005246 وقل لي ليش راح لمزود غير المحدد',
-  'ملخص آخر 7 أيام: الطلبات والإلغاءات والمدن الأضعف',
-  'مين المزودين الموقوفين حالياً ولماذا؟',
-  'عملاء موقوفين حالياً بسبب تكرار الإلغاء',
-  'طلبات اليوم اللي انتهت بلا مزود — وين كانت وليش؟',
-  'افتح ملف الحساب P10014 وأعطني ملاحظاتك',
-];
-
 const TOOL_LABEL = {
   diagnose_request: 'تشخيص طلب',
   account_lookup: 'ملف حساب',
@@ -183,11 +174,9 @@ export default function AiAssistant() {
     ]);
     const s = settings?.exists() ? settings.data() : {};
     const monthly = Number(s.monthlyBudgetUsd) > 0 ? Number(s.monthlyBudgetUsd) : 5;
-    const daily = Number(s.dailyBudgetUsd) > 0 ? Number(s.dailyBudgetUsd) : Math.round((monthly / 30) * 100) / 100;
     setUsage({
       day: day?.exists() ? day.data().costUsd || 0 : 0,
       month: month?.exists() ? month.data().costUsd || 0 : 0,
-      daily,
       monthly,
     });
   }, []);
@@ -220,9 +209,32 @@ export default function AiAssistant() {
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, [shown.length, sending]);
 
+  /** بعد انقطاع الاتصال: ينتظر حتى يحفظ السيرفر الرد (حتى 6 دقائق) ثم يفتح المحادثة. يعيد true إن وصل */
+  const waitForSavedReply = async (conversationId, startedAtMs) => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return false;
+    setError('انقطع الاتصال، والرد ما زال يُجهَّز وسيظهر هنا تلقائياً — لا تُعد إرسال السؤال.');
+    for (let attempt = 0; attempt < 72; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+      const snap = await getDocs(query(collection(db, 'ai_conversations'), where('adminUid', '==', uid))).catch(() => null);
+      const done = snap?.docs.find((d) => (
+        (d.data().updatedAt?.toMillis?.() || 0) >= startedAtMs - 60000
+        && (conversationId ? d.id === conversationId : (d.data().createdAt?.toMillis?.() || 0) >= startedAtMs - 60000)
+      ));
+      if (done) {
+        setActiveId(done.id);
+        setError('');
+        loadConversations();
+        return true;
+      }
+    }
+    return false;
+  };
+
   const send = async (textArg) => {
     const text = String(textArg ?? input).trim();
     if (!text || sending) return;
+    const startedAtMs = Date.now();
     setSending(true);
     setError('');
     setInput('');
@@ -234,8 +246,17 @@ export default function AiAssistant() {
         loadConversations();
       }
     } catch (e) {
-      setError(e?.message || 'تعذر الرد');
-      setInput(text);
+      // انقطاع الاتصال من المتصفح (شائع في الجوال مع الردود الطويلة) لا يوقف السيرفر: الرد يُحفظ في المحادثة.
+      // إعادة الإرسال هنا كانت تكرر السؤال وتضاعف التكلفة، فننتظر الرد المحفوظ بدل إرجاع السؤال لخانة الكتابة.
+      const dropped = e?.code === 'functions/deadline-exceeded'
+        || (e?.code === 'functions/internal' && (!e?.message || e.message === 'internal'));
+      const recovered = dropped && await waitForSavedReply(activeId, startedAtMs);
+      if (!recovered) {
+        setError(dropped
+          ? 'انقطع الاتصال ولم يصل الرد. افتح المحادثة من القائمة بعد دقيقة قبل أن تعيد السؤال.'
+          : (e?.message || 'تعذر الرد'));
+        if (!dropped) setInput(text);
+      }
     } finally {
       setPendingUserText('');
       setSending(false);
@@ -286,8 +307,8 @@ export default function AiAssistant() {
           </div>
           {usage && (
             <div className="mr-auto text-left text-[11px] leading-tight">
-              <div className={usage.day >= usage.daily ? 'text-red-600 font-bold' : 'text-gray-600'}>
-                اليوم {money(usage.day)} من {money(usage.daily)}
+              <div className="text-gray-600">
+                اليوم {money(usage.day)}
               </div>
               <div className={usage.month >= usage.monthly ? 'text-red-600 font-bold' : 'text-gray-400'}>
                 الشهر {money(usage.month)} من {money(usage.monthly)}
@@ -302,18 +323,6 @@ export default function AiAssistant() {
               <Bot className="w-10 h-10 text-teal-600 mx-auto" />
               <p className="mt-2 font-bold text-gray-900">اسأل عن أي شيء في النظام</p>
               <p className="text-sm text-gray-500">طلب، مزود، عميل، شكوى، أرقام، أو مشكلة تحتاج تشخيص.</p>
-              <div className="mt-5 grid sm:grid-cols-2 gap-2 text-right">
-                {SUGGESTIONS.map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => send(s)}
-                    className="px-3 py-2.5 rounded-xl bg-white border border-gray-200 text-sm text-gray-700 hover:border-teal-400 hover:bg-teal-50/40"
-                  >
-                    {s}
-                  </button>
-                ))}
-              </div>
             </div>
           )}
 
