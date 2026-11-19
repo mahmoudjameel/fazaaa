@@ -423,7 +423,7 @@ export const Users = () => {
       const result = await permanentlyDeleteCustomer(userId);
       const s = result?.summary;
       const detail = s
-        ? `\nطلبات: ${s.requests || 0} | رسائل: ${s.chatMessages || 0} | شكاوى: ${s.complaints || 0}`
+        ? `\nطلبات: ${s.requests || 0} | رسائل: ${s.chatMessages || 0} | شكاوى وتذاكر محفوظة: ${(s.complaintsKept || 0) + (s.supportTicketsKept || 0)}`
         : '';
       alert(`تم حذف المستخدم نهائياً${detail}`);
       setShowDeleteUserModal(false);
@@ -1265,7 +1265,7 @@ export const Users = () => {
                 {isSuperAdmin && (
                   <div className="pt-4 border-t border-gray-200">
                     <p className="text-xs text-gray-500 mb-3">
-                      يحذف الحساب نهائياً من قاعدة البيانات: الطلبات، المحادثات، التقييمات، الشكاوى، تذاكر الدعم، وإشعارات العميل.
+                      يحذف الحساب نهائياً من قاعدة البيانات: الطلبات، المحادثات، التقييمات، وإشعارات العميل. الشكاوى وتذاكر الدعم تبقى في اللوحة بعلامة «حساب محذوف».
                     </p>
                     <button
                       type="button"
@@ -1292,7 +1292,7 @@ export const Users = () => {
               {selectedUser.phone && <span dir="ltr">({selectedUser.phone})</span>}
             </p>
             <p className="text-xs text-red-700 bg-red-50 border border-red-100 rounded-lg p-3 mb-5">
-              لا يمكن التراجع. سيُحذف الحساب وجميع الطلبات والمحادثات والشكاوى المرتبطة به من Firebase.
+              لا يمكن التراجع. سيُحذف الحساب وجميع الطلبات والمحادثات المرتبطة به من Firebase. الشكاوى وتذاكر الدعم تبقى محفوظة.
               إن وُجد طلب نشط سيُرفض الحذف.
             </p>
             <div className="flex gap-2">

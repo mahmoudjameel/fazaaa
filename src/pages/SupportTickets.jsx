@@ -279,6 +279,11 @@ export const SupportTickets = () => {
                           الموقع
                         </span>
                       )}
+                      {ticket.accountDeleted && (
+                        <span className="text-[10px] font-bold px-2 py-1 rounded-lg bg-gray-100 text-gray-600 border border-gray-200">
+                          حساب محذوف
+                        </span>
+                      )}
                     </div>
                     <h3 className="flex-1 text-sm font-bold text-gray-800 text-right line-clamp-1">{ticket.subject}</h3>
                   </div>

@@ -379,6 +379,11 @@ export const Complaints = () => {
                         <span className={`px-2 sm:px-3 py-1 rounded-full text-xs font-semibold ${typeBadge.color} whitespace-nowrap`}>
                           {typeBadge.text}
                         </span>
+                        {complaint.accountDeleted && (
+                          <span className="px-2 sm:px-3 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-600 whitespace-nowrap">
+                            حساب محذوف
+                          </span>
+                        )}
                         <span className={`px-2 sm:px-3 py-1 rounded-full text-xs font-semibold ${priorityBadge.color} whitespace-nowrap`}>
                           {priorityBadge.text}
                         </span>
