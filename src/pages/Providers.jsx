@@ -865,9 +865,9 @@ export const Providers = () => {
   };
 
   const formatSessionDate = (ts) => {
-    if (!ts) return '—';
-    const d = ts?.toDate?.() || (ts?.seconds ? new Date(ts.seconds * 1000) : null);
-    if (!d || Number.isNaN(d.getTime())) return '—';
+    // locationUpdatedAt/lastHeartbeat يكتبهما تطبيق المزود نصاً ISO لا Timestamp
+    const d = timestampToDate(ts);
+    if (!d) return '—';
     return format(d, 'dd MMM yyyy, HH:mm', { locale: ar });
   };
 
